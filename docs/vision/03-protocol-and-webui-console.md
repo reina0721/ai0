@@ -51,7 +51,7 @@
 2. **`PerceptionEnvelope`**：上行标准化感知信封，携带 `actor`、`lifecycle (activity | interim | commit | retract)`、`modality`、`summary_text`、`confidence` 与 `extensions`；
 3. **`ExpressionEnvelope`**：下行表达与具身动作意图信封，携带 `action_type (speak | explicit_silence | invoke_actuator)`、`fallback_text` 与 `extensions (ext.affect.v1 / ext.rhythm.v1 / ext.embodied.v1)`；
 4. **`DeliveryReceipt`**：上行播放、打断与动作执行回执，携带 `status (completed | interrupted | degraded | failed)`、`spoken_char_offset` 与 `actuator_outcome`；
-5. **`ControlSignal`**：双向流控与注意力焦点信号（`barge_in_cancel` / `focus_changed` / `system_break_reminder`）。
+5. **`ControlSignal`**：双向流控与注意力焦点信号（`barge_in_cancel` / `focus_shifted` / `sb243_break_reminder` / `crisis_intervention_card`）。
 
 ---
 
@@ -81,20 +81,30 @@
 2. **在系统工程架构中，远超普通静态 `Settings` 页面**：
    由于 `ai0` 是无头（Headless）中枢、大脑状态随时间自发演化、且拥有八大扩展生态，它的 `WebUI 控制台` 除了常规参数配置外，还承担着**“无头内核的开箱互动沙盒与官方协议样板间（内置 WebChat）”、“活体记忆血缘与人格成长手术台”、“八大扩展生态的装配车间与插件 UI 宿主”、以及“跨时间尺度的认知时光机与回归实验室”**四大工程职责。
 
-### 4.2 `WebUI 控制台` 的正式定义
+### 4.2 `WebUI 控制台` 的正式定义与“运行扩展 vs. 管理扩展”职责边界
 
-> **`WebUI 控制台（ai0 WebUI Console）`** 是 `ai0` 数字生命认知中枢自带的**可视化系统控制平面、灵魂主权治理中心、全维度扩展宿主与内置交互仿真沙盒**。
+> **`WebUI 控制台（ai0 WebUI Console）` 是官方随项目提供的浏览器管理、观测与实验界面。使用者通过它与内置标准协议 WebChat 日常相处、配置灵魂实例、管理扩展与权限、查证数字个体的行为轨迹、治理其记忆血缘与存档，并在隔离的实验副本上执行感官模拟、时间拨快、模块消融与回归回放。**
 
-### 4.3 核心安全边界：WebUI 控制台（宿主特权层） vs. 内置 WebChat（零特权标准 Shell 插件）
+* **关键工程边界：“运行扩展”在后台内核，“管理扩展”在网页控制台**：
+  * **前 7 大扩展维度（`ext.shell` 至 `ext.soul_asset`）由后台无头守护进程 `@ai0/kernel` & `@ai0/daemon` 宿主运行**。使用者在网页里启用一个睡眠记忆插件或 IM 躯壳插件后，即使彻底关闭浏览器，后台内核依然继续运行该插件、接收消息并整理记忆；
+  * **只有第 8 维度 `ext.console_ui`（插件贡献的配置表单或可视化监控卡片）才在浏览器打开控制台时由网页按需加载渲染**。此外，所有的管理 API 均同样支持通过本地 CLI 调用，数字个体的存活绝不依赖浏览器进程。
 
-* **`@ai0/plugin-webchat`（内置 WebChat 独立 Shell 插件）**：**100% 纯粹走标准协议 v0 的零特权 Shell 插件**，既用于日常陪伴聊天，也作为社区躯壳插件的官方参考代码模板。标准 Shell 协议绝不向下传输脑内私密记忆 ID、权限裁决明细或未说出口的思考（防止第三方外部 Shell 插件窃取脑内隐私）。
-* **`@ai0/console-webui`（WebUI 控制台宿主）**：在主舞台左侧**挂载（Embed）**走标准协议的 `WebChat` 插件，在右侧与后台各工作区通过**仅供宿主控制台访问的 `Kernel Admin & Audit Telemetry Bus`** 提供完整的脑内观测与全域治理功能。
+### 4.3 核心安全边界与“三大清晰入口（日常相处 vs. 实例管理 vs. 隔离实验）”
+
+1. **WebUI 控制台（特权管理层） vs. 内置 WebChat（零特权标准 Shell 插件）**：
+   * **`@ai0/plugin-webchat`**：**100% 纯粹走标准协议 v0 的零特权 Shell 插件**（既可独立打开，也可嵌入控制台），标准 Shell 协议绝不向下传输脑内私密记忆 ID、权限裁决明细或未说出口的思考。
+   * **`@ai0/console-webui`**：通过仅供所有者访问的 `Kernel Admin & Audit Telemetry Bus` 提供管理与只读决策轨迹查证。
+2. **把“日常正式相处（`live`）”与“破坏性时间/消融实验（`sandbox:<fork_id>`）”物理分开**：
+   对于一个要陪伴用户数年的数字个体，“观察她刚才为什么这么回答”与“把她经历的时间拨快 7 天或关掉她的情绪脑区”是后果完全不同的两件事（在正式个体上直接拨快 7 天会导致真实的周二约定立刻变成过期违约！）。因此控制台提供**三个入口**并绑定严格的**实例目标隔离**：
+   * **入口 A：和她日常相处（Companion Entry — 作用于 `live` 正式实例）**：直接打开普通 WebChat 继续昨天的话题；虚拟时钟严格锁定为 `1x` 物理时钟，**在 `live` 实例上硬性禁用时间拨快、虚假感官注入与脑区消融**。
+   * **入口 B：管理实例与事后查证（Manage & Audit Entry — 作用于 `live` 正式实例）**：查看当前在线躯壳、待批准的行动/人格变更与最近故障；需要解释某次行为时，展开该轮对话的**只读 8 步可验证决策轨迹（`VerifiableTurnTrace`）**，观察而不篡改她的时间线。
+   * **入口 C：做认知实验（Cognitive Lab Entry — 强制要求先从指定快照派生 `sandbox:<fork_id>` 实验副本）**：一切**感官模拟注入、虚拟时间拨快（Time-Warp）、认知模块消融（Ablation）与 `.scenario.yaml` 剧本回放**均在秒级克隆出的实验副本上执行，实验产生的提醒和工具调用全部由沙盒模拟端（`MockSandboxSink`）接收，实验完毕一键销毁，对正式相处的她**零污染**。
 
 ### 4.4 结合项目架构的控制台四大工作区与 19 项功能面板全景（详细架构见 `docs/architecture/06-webui-console-and-observability-arch.md`）
 
 | 工作区划分 | 包含的核心功能面板（共 19 项） | 对应的内核与扩展架构层 |
 | :--- | :--- | :--- |
-| **工作区 I：日常陪伴与认知沙盒**<br/>*(Stage & Cognitive Sandbox)* | **1. 内置标准协议 WebChat 舞台**（支持一键切入全屏纯净沉浸陪伴模式）<br/>**2. 本轮 8 步可验证决策轨迹抽屉**（即“白盒观测”面板：展示输入事件 $\rightarrow$ 门控 $\rightarrow$ 召回记忆 ID $\rightarrow$ 稳态变化 $\rightarrow$ 策略与模型自述推演 [含日常剧透遮罩] $\rightarrow$ 权限裁决 $\rightarrow$ 输出指令 $\rightarrow$ 播放/打断字数回执）<br/>**3. 感官事件模拟注入器**（手动模拟摸头、视觉变化、游戏掉血、打字撤回）<br/>**4. 虚拟时间拨快控制器（Time-Warp）**（`+15m` ~ `+30d`，区分运行静默 vs 关机冬眠） | 协议 v0 网关 + 权威状态协调器 + `VirtualClock` 引擎 + 决策审计日志 |
-| **工作区 II：灵魂、记忆血缘与关系治理**<br/>*(Soul, Memory & Relationship)* | **5. 灵魂实例与三层人格配置台**（Tier 0 底线预览 / Tier 1 核心 DNA 与存在论契约 / **Tier 2 可演化自我叙事成长 Diff 审批** / `.soul-template` 与 `Lorebook` 装载）<br/>**6. 内稳态动力学、作息生物钟与主动搭话策略面板**（情绪/心境/双轨精力曲线、主动配额上限与免打扰）<br/>**7. 原始对话与事件流水审计台**（多维检索、审计、导出微调数据）<br/>**8. 主观记忆血缘树（Lineage DAG）与前瞻承诺治理台**（溯源分类 `亲历|传闻|揣测` 查看、**连根真遗忘 `Hard Forget`**、**痛点话题封印 `Topic Seal`**、睡眠防火墙异常审批、承诺状态机管理）<br/>**9. 客观外部知识库热插拔挂载台**（Obsidian/Notion/Wiki 挂载与卸载常识摘要卡 Gist Cards 管理）<br/>**10. 关系羁绊、用户模型与跨平台身份显式绑定台**（信任/亲密/默契、**心结成因查看与一键释怀**、可打扰度模型、跨平台账号显式合并绑定） | 大脑七大认知模块 + 睡眠写入防火墙 + `.soul` 存储底座 |
-| **工作区 III：八大扩展生态、媒体管线与行动编排**<br/>*(8-Dimension Ecosystem & Agency)* | **11. 八大扩展工作坊与插件宿主管理面板**（统一安装、启停、监控全部 8 类扩展插件及签发 Scoped Capability Tokens）<br/>**12. 多模态语音、情感 TTS 与感官媒体管线调音台**（配置 `ext.media_pipeline`：TTS 声线情绪试听、流式 ASR 与 VAD 打断阈值、视觉语义置信度门控）<br/>**13. 一等行动能力（MCP / Skills / Shell Actuators）与运行中长任务监控台**（监控后台 8 步行动任务进度，支持随时暂停或中止）<br/>**14. 多端注意力焦点与跨插件联动规则编排器**（配置多 Shell 同时在线时的响应优先级与触发规则）<br/>**15. 第三方插件动态 UI 扩展槽容器（Plugin UI Slots）**（渲染社区插件注册的专属配置页与实时监控卡片） | 八大扩展总线 + 注意力仲裁器 + 8 步一等行动认知环 |
-| **工作区 IV：算力路由、安全主权、系统监控与回归实验室**<br/>*(Compute, Sovereignty & Replay Lab)* | **16. 大模型接入、五脑区分层路由与 Token 预算“犯困降级”中心**（快对话/慢反思/睡眠整理/行动规划/多模态各配最优模型 + 预算熔断）<br/>**17. 安全围栏、三维权限审批矩阵与 SB 243 合规中心**（`主体×受众×工具风险` 矩阵、公私隐私隔离墙、全局紧急停止开关 Kill Switch、危机热线与 3 小时休息提醒配置）<br/>**18. Git 式灵魂快照时间线、回档断层弥合与整包迁移中心**（快照分支、**静默硬回滚 / 诚实共知翻篇回滚 / 梦境余温回滚**、`.soul` 整包导入导出）<br/>**19. 并发协调器监控、消融开关、场景回归回放与声线语料精炼实验室**（监控 MVCC `state_rev` 与四路 Worker 队列、一键开关认知模块做消融、运行 `.scenario.yaml` 剧本回放、提炼黄金声线样本与 LoRA 训练集） | 模型路由器 + Tier 0 安全层 + MVCC 协调器 + 回归评估引擎 |
+| **工作区 I：日常陪伴与只读轨迹查证**<br/>*(Live Stage & Read-Only Trace Inspector)* | **1. 内置标准协议 WebChat 舞台**（连接 `live` 正式个体，支持独立打开或一键全屏沉浸陪伴）<br/>**2. 本轮 8 步可验证决策轨迹只读抽屉**（事后或实时查证：`step1_perception` $\rightarrow$ `step2_gate_safety` $\rightarrow$ `step3_memory_recall` $\rightarrow$ `step4_homeostasis` $\rightarrow$ `step5_strategy_proposal` [含剧透遮罩] $\rightarrow$ `step6_tool_auth` $\rightarrow$ `step7_emitted_intent` $\rightarrow$ `step8_delivery_receipt`）<br/>**3. 当前个体状态总览卡**（在线躯壳媒介、待审批行动提醒、最近运行故障告警） | 协议 v0 网关 + 权威状态协调器 + 只读审计轨迹表 |
+| **工作区 II：灵魂、记忆血缘与关系治理**<br/>*(Soul, Memory & Relationship)* | **4. 灵魂实例与三层人格配置台**（Tier 0 底线预览 / Tier 1 核心 DNA 审批 / **Tier 2 自我叙事：日常自动演进日志回退 & 高冲突变更审批** / `.soul-template` 与 `Lorebook` 装载）<br/>**5. 内稳态动力学、作息生物钟与主动搭话策略面板**（情绪/心境/双轨精力曲线、主动配额上限与免打扰）<br/>**6. 原始对话与事件流水审计台**（多维检索、审计、导出微调数据）<br/>**7. 主观记忆血缘树（Lineage DAG）与前瞻承诺治理台**（溯源分类 `亲历|传闻|揣测` 查看、**全副本连根真遗忘 `Hard Forget` [含跨回档永久墓碑账本]**、**痛点话题封印 `Topic Seal`**、承诺状态机管理）<br/>**8. 客观外部知识库热插拔挂载台**（Obsidian/Notion/Wiki 挂载与卸载常识摘要卡 Gist Cards 管理）<br/>**9. 关系羁绊、用户模型与跨平台身份显式绑定台**（信任/亲密/默契、**心结成因查看与一键释怀**、可打扰度模型、跨平台账号显式合并绑定） | 大脑七大认知模块 + 睡眠写入防火墙 + `.soul` 存储底座 |
+| **工作区 III：八大扩展管理、媒体管线与行动编排**<br/>*(8-Dimension Extension Management & Agency)* | **10. 八大扩展管理中心**（管理由后台内核运行的 7 类扩展启停与配置，签发 Scoped Capability Tokens）<br/>**11. 多模态语音、情感 TTS 与感官媒体管线调音台**（配置 `ext.media_pipeline`：TTS 声线情绪试听、流式 ASR 与 VAD 打断阈值、视觉语义置信度门控）<br/>**12. 一等行动能力（MCP / Skills / Shell Actuators）与运行中长任务监控台**（监控后台 8 步行动任务进度，支持随时暂停或中止）<br/>**13. 多端注意力焦点与跨插件联动规则编排器**（配置多 Shell 同时在线时的响应优先级与触发规则）<br/>**14. 第三方插件动态 UI 视图容器（`ext.console_ui` Slots）**（在浏览器端按需加载插件贡献的配置表单与实时监控卡片） | 八大扩展总线 + 注意力仲裁器 + 8 步一等行动认知环 |
+| **工作区 IV：算力路由、安全主权与隔离实验沙盒**<br/>*(Compute, Sovereignty & Sandbox Lab)* | **15. 大模型接入、五脑区分层路由与 Token 预算“犯困降级”中心**（快对话/慢反思/睡眠整理/行动规划/多模态各配最优模型 + 预算熔断）<br/>**16. 安全围栏、三维权限审批矩阵与 SB 243 合规中心**（`主体×受众×工具风险` 矩阵、公私隐私隔离墙、全局急停开关 Kill Switch、危机热线与 3 小时休息提醒）<br/>**17. Git 式灵魂快照时间线、回档断层弥合与整包迁移中心**（快照分支、三种回档弥合模式、**恢复旧快照时自动重放永久遗忘墓碑账本**、`.soul` 整包导入导出）<br/>**18. 隔离实验沙盒（`Sandbox Fork`：感官模拟注入 + 虚拟时间拨快 + 模块消融开关 + `.scenario.yaml` 剧本回放）**（显式绑定测试副本 ID，由模拟端接收提醒与工具调用）<br/>**19. 并发协调器监控与声线语料精炼工作台**（监控 MVCC `state_rev` 与四路 Worker 队列、提炼黄金声线样本与 LoRA 训练集） | 模型路由器 + Tier 0 安全层 + MVCC 协调器 + 沙盒 Fork 与回归评估引擎 |

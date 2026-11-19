@@ -55,7 +55,7 @@ sequenceDiagram
 | **`D2_HOMEOSTASIS_AFFECT`** | 瞬时情绪、持久心境、双轨精力、社交渴望与好奇心驱动力 | **可交换增量叠加（Commutative Impulse Accumulation）**：由于情绪与稳态提案提交的是**定性冲量（Impulse $\Delta$）**而非绝对值覆写，协调器在当前最新解析时间状态 $\mathbf{S}(t)$ 上叠加阻尼冲量并做上下界 Clamping，**永不发生丢失更新（Zero Lost Update）**！ |
 | **`D3_MEMORY_PROJECTION`** | `memories` 表、`memory_lineage_edges` 血缘图 | **基于源事件血缘的乐观校验（Lineage-Scoped OCC）**：后台 `W3`（睡眠整理）提交新记忆提案时，协调器检查其引用的 `source_event_ids[]` 在 `W3` 运行期间是否被主人在前台执行了 `Hard Forget`（真遗忘擦除）。若源事件完好无损，则直接安全合入；若源事件已被擦除，则拒绝该条记忆提案！ |
 | **`D4_COMMITMENTS_TASKS`** | 前瞻承诺状态机、正在运行的 8 步行动任务状态树 | **按对象 ID 细粒度乐观锁（Entity-Level Revision Lock）**：只要前台没有取消该 `task_id` / `commitment_id`，后台 `W2` 的步骤进度更新直接合入。 |
-| **`D5_IDENTITY_NARRATIVE`** | `identity.yaml` (Tier 1) 与 `narrative.md` (Tier 2) | **审批门控队列（Gated Approval Queue）**：Tier 1 变更强制挂起至控制台待主人 Approve；Tier 2 变更经受众作用域与无矛盾校验后追加快照。 |
+| **`D5_IDENTITY_NARRATIVE`** | `identity.yaml` (Tier 1) 与 `narrative.md` (Tier 2) | **双轨分级演化与审批门控（Dual-Track Narrative Evolution & Approval Queue）**：<br/>• **Tier 1（`identity.yaml` 核心身份与长期价值观）**：100% 强制挂起至控制台 `PendingApproval` 队列，必须由主人显式批准方可合入；<br/>• **Tier 2（`narrative.md` 可演化自我叙事）**：由协调器统一按冲突等级分流——① **常规日常演进（`routine_append`）**（新增日常经历形成的内部梗、近期话题兴趣或默契，且无价值观冲突）自动生效并写入版本审计记录（支持在控制台一键回退）；② **高影响/冲突变更（`high_impact_shift`）**（涉及改写或删除既有自我叙事观点、对主人关系定性发生极性反转、或与 Tier 1 存在边缘张力）自动升级进入控制台 `PendingApproval` 队列并展示升级理由，待主人批准后生效。 |
 
 ### 2.2 协调器内置的三大确定性防火墙
 
@@ -68,9 +68,12 @@ sequenceDiagram
 
 ## 三、`VirtualClock` 与时间状态三分法引擎架构
 
-### 3.1 全局时间注入铁律与冬眠识别（Hibernation Gap Detection）
+### 3.1 全局时间注入铁律、正式实例与实验沙盒隔离（Live vs. Sandbox Target Isolation）与冬眠识别
 
 * **禁止裸调系统时钟**：`@ai0/kernel` 内所有模块一律通过注入的 `IVirtualClock` 接口获取时间，严禁直接调用 `Date.now()`。
+* **正式陪伴实例（`live`）与实验副本（`sandbox:<fork_id>`）的时钟与操作硬隔离**：
+  * 在 **`instance_mode == "live"`（正式陪伴个体）** 上：`VirtualClock` 锁定为 `1x` 物理时钟同步模式，**协调器在代码层硬性拒绝 `advanceClock()`（时间拨快）、`injectSyntheticPerception()`（虚假感官注入）与 `setOrganAblation(false)`（核心脑区消融）调用**，防止实验操作使正式个体的真实承诺提前过期违约或污染真实记忆。
+  * 在 **`instance_mode == "sandbox_fork"`（从指定快照秒级派生的隔离实验副本）** 上：完全解锁 `VirtualClock.advanceBy()`、感官模拟注入、认知模块消融与剧本回放，且沙盒实例的一切出站表达与工具调用均被重定向至 `MockSandboxSink`。
 * **区分“运行静默（Active Unattended）”与“关机冬眠（Kernel Hibernation）”**：
   内核守护进程运行时，每 $60$ 秒向存储层轻量更新一次 `last_alive_heartbeat_ts`。当系统关机重启或导入 `.soul` 存档时：
   $$\Delta t_{\text{gap}} = t_{\text{boot}} - t_{\text{last\_alive}}$$

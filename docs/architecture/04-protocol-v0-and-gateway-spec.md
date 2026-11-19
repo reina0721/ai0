@@ -16,12 +16,30 @@ export type VenueType = "private_1on1" | "group_chat" | "public_livestream" | "l
 export type AudienceScope = "only_owner" | `group:${string}` | "public_all";
 
 /**
- * 原语 1：HandshakeManifest (Shell -> Kernel 连接握手与三平面具身能力声明)
+ * 开放能力类型约定：知名核心枚举 + 带命名空间的开放扩展字符串
+ * 确保社区作者新增自定义躯壳类型或新型传感器时，无需修改协议核心即可合法握手，由网关按未知能力降级规则透传。
+ */
+export type WellKnownShellKind = "webchat" | "desktop_avatar" | "im_bridge" | "game_embodied" | "hardware_iot" | "cli";
+export type ShellKind = WellKnownShellKind | `custom.${string}`;
+
+export type WellKnownSensorModality =
+  | "text"
+  | "audio_transcript"
+  | "vad_activity"
+  | "typing_activity"
+  | "tactile"
+  | "window_focus"
+  | "game_state"
+  | "visual_semantic";
+export type SensorModality = WellKnownSensorModality | `custom.${string}`;
+
+/**
+ * 原语 1：HandshakeManifest (连接建立后由 Shell 发送给 Kernel 的能力与场合声明)
  */
 export interface HandshakeManifest {
   protocol_version: ProtocolVersion;
   shell_id: string;                          // 如 "builtin.webchat.default" 或 "community.live2d.desktop"
-  shell_kind: "webchat" | "desktop_avatar" | "im_bridge" | "game_embodied" | "hardware_iot" | "cli";
+  shell_kind: ShellKind;
   display_name: string;
   venue_type: VenueType;
   current_audience: {
@@ -31,8 +49,8 @@ export interface HandshakeManifest {
   };
   latency_budget_ms: number;                 // 实时语音 ~600ms，桌面聊天 ~1500ms，异步IM ~5000ms
   capabilities: {
-    /** 平面 1：端侧可采集并上报的感知模态 */
-    sensors: Array<"text" | "audio_transcript" | "vad_activity" | "typing_activity" | "tactile" | "window_focus" | "game_state" | "visual_semantic">;
+    /** 平面 1：端侧可采集并上报的感知模态 (支持 WellKnownSensorModality 及 custom.* 开放扩展) */
+    sensors: SensorModality[];
     /** 平面 2：支持解析渲染的下行扩展命名空间 */
     supported_extensions: string[];          // 如 ["ext.affect.v1", "ext.rhythm.v1", "ext.embodied.v1"]
     /** 平面 3：端侧暴露的具身执行器契约 (供大脑 8 步行动认知环调用) */
@@ -175,7 +193,24 @@ export interface ExtEmbodiedV1 {
 
 ---
 
-## 三、网关层安全验签与话轮流控状态机（`@ai0/gateway`）
+## 三、连接发起方向与未知能力降级规范（Connection Topology & Unknown Capability Degradation）
+
+为了确保社区插件作者只看本规范（及导出的 `@ai0/protocol` JSON Schema）就能在任何网络拓扑下接入，协议明确将**“底层传输连接发起方向（Connection Initiation Direction）”**与**“应用层五原语消息流向（Message Flow Direction）”**解耦：
+
+1. **双向对等连接发起拓扑（Inbound & Outbound Connection Initiation）**：
+   * **拓扑 A：Shell 主动连入 Kernel（Inbound WebSocket — 默认模式）**
+     Shell 作为 WebSocket Client 连接 `ws://kernel-host:port/protocol/v0/shell`。连接建立后，Shell 立即发送第一帧 `HandshakeManifest`，Kernel 校验 `auth_token` 后返回 `HandshakeAck`，会话正式建立。
+   * **拓扑 B：Kernel 主动拨号连出至远端 Shell（Outbound WebSocket — 反向桥接/云端 Webhook 躯壳模式）**
+     当 Shell 运行在公网/远端守护进程且不便向本地内网 Kernel 发起入站连接时，使用者在控制台登记远端 Shell 的 `endpoint_url` 与 `Scoped Capability Token`。由 `@ai0/gateway` 作为 WebSocket Client 主动拨号连接远端 Shell 并出示令牌挑战帧，远端 Shell 响应 `HandshakeManifest` 后，双工会话建立。
+   * **消息流向恒等性**：无论底层连接是由哪一方发起建立的，一旦握手完成，**五原语的消息流向 100% 恒定**（`PerceptionEnvelope` 与 `DeliveryReceipt` 永远由 Shell 发往 Kernel；`ExpressionEnvelope` 永远由 Kernel 发往 Shell；`ControlSignal` 双向对等发送）。
+
+2. **未知能力与未知扩展的优雅降级规则（Graceful Degradation Contract）**：
+   * **Kernel 遇到未知的 `shell_kind` 或 `custom.*` 传感器模态**：网关绝不报错或断开连接，而是将该未知模态依赖事件原样记录于 `PerceptionEnvelope.extensions` 中并读取其必选的 `summary_text` 作为语义保底，同时透传给订阅了该命名空间的自定义认知器官（`ext.cognitive_organ`）。
+   * **Shell 遇到不认识的 `ExpressionEnvelope.extensions` 键**：Shell 直接忽略不认识的扩展命名空间，仅渲染自己声明支持的扩展层及核心 `fallback_text`，并在 `DeliveryReceipt.degraded_extensions` 中如实上报被忽略的扩展名列表。
+
+---
+
+## 四、网关层安全验签与话轮流控状态机（`@ai0/gateway`）
 
 ### 3.1 `Scoped Capability Token` 防伪造验签机制
 

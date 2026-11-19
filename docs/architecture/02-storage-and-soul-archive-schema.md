@@ -22,7 +22,8 @@ souls/reina.soul/
 ├── lorebooks/                     # 【可热插拔世界观词条库】(按关键词/语义激活的背景设定集)
 │   └── default_world.yaml
 ├── state/
-│   └── soul_core.sqlite           # 【核心状态与事件溯源数据库】(SQLite 3 + WAL 模式 + sqlite-vec 向量扩展)
+│   ├── soul_core.sqlite           # 【核心状态与事件溯源数据库】(SQLite 3 + WAL 模式 + sqlite-vec 向量扩展)
+│   └── redaction_ledger.json      # 【跨快照永久遗忘墓碑账本】记录已生效的真遗忘目标 ID，恢复旧快照时强制重放擦除!
 ├── attachments/                   # 经授权保存的共同经历多媒体快照 (按内容哈希寻址)
 └── .git/                          # 内置轻量 Git 版本库，记录每次人格审批、睡眠整理检查点与显式快照
 ```
@@ -238,11 +239,20 @@ flowchart LR
     M1 & M2 -.->|"3. 仅针对剩余合法源事件 evt_102<br/>局部重算生成纯净记忆 mem_A'"| Clean["重算后纯净记忆 mem_A'<br/>(只保留喜欢吃火锅，住址彻底消失)"]
 ```
 
-1. **执行 `Hard Forget(target_event_ids | target_memory_ids)`**：
+1. **执行 `Hard Forget(target_event_ids | target_memory_ids)` —— 全受管副本擦除与跨回档永久墓碑账本**：
    * **Step 1（溯源定位）**：若用户指定删除某条记忆 $M$，通过 `memory_lineage_edges` 反向向上遍历，找到其根源事件集合 $\{E_{\text{target}}\}$；
    * **Step 2（物理载荷擦除与墓碑追加）**：在单一事务中，将 `event_log` 中 $\{E_{\text{target}}\}$ 的 `summary_text` 覆写为 `'[REDACTED_BY_OWNER]'`、`payload_json` 覆写为 `'{}'`，并追加一条 `memory_redacted_tombstone` 事件；
    * **Step 3（正向血缘级联失效与局部重算）**：从 $\{E_{\text{target}}\}$ 出发沿 `memory_lineage_edges` 正向 BFS 遍历所有下游衍生记忆节点 $\{M_{\text{tainted}}\}$：
      * 若某衍生记忆 $M_k$ 的所有上游源事件均被擦除 $\rightarrow$ 直接从 `memories` 与 `memories_vec` 中**物理硬删除**；
      * 若某衍生记忆 $M_k$ 还依赖同一场对话中的其他合法源事件（如上图中的 `evt_102`） $\rightarrow$ 将旧 $M_k$ 物理删除，并触发一次**仅以剩余未擦除源事件为输入的局部微重算（Targeted Micro-Reprojection）**，彻底解决“全量重放算力破产”与“衍生反思残留”两大难题！
+   * **Step 4（全受管副本同步脱敏擦除 —— 杜绝审计轨迹与检查点残留）**：
+     在同一数据库事务中，同步清理除 `event_log` 与 `memories` 之外的所有受管副本：
+     * **`turn_decision_traces`（决策轨迹表）**：将所有 `turn_event_id IN {E_target}` 或在 `step3_memory_recall_json` 中召回了 `{M_tainted}` 的轨迹记录中对应的输入摘要、召回正文与输出文本物理覆写为 `'[REDACTED_BY_FORGET]'`；
+     * **`cognitive_state_checkpoints`（状态检查点表）**：清理历史检查点中 `working_memory_json` 与 `mood_attribution` 内关联 `{E_target}` 的文本片段；
+     * **`prospective_commitments`（前瞻承诺表）**：物理删除 `source_event_id IN {E_target}` 的未决承诺；
+     * **磁盘空闲页物理清零**：数据库连接强制开启 `PRAGMA secure_delete = ON` 并执行增量页清理，防止已删明文残留在 SQLite 空闲磁盘页中。
+   * **Step 5（写入跨时间线永久墓碑账本 `state/redaction_ledger.json` —— 防止旧存档回档复活）**：
+     * 将本次遗忘的 `{ target_event_ids, target_memory_ids, redacted_at_wall_ts }` 追加写入独立于快照分支的 `state/redaction_ledger.json`。
+     * **恢复旧快照时的强制重放契约（Mandatory Tombstone Replay on Snapshot Restore）**：每当用户从更早的 `.soul` 快照或 Git Commit 恢复历史存档时，存储恢复引擎在挂载旧快照数据库后、对外恢复服务前，**自动遍历 `redaction_ledger.json` 并对旧快照中存在的目标事件与衍生血缘重新执行 Step 2~4 的全套擦除**。这保证了**“一旦真遗忘生效，即使回档到遗忘前的旧快照，检索层与管理后台也永远无法重新取出已删原文”**。
 2. **执行 `Topic Seal(topic_description)`（“别再提这件事”）**：
    * 同样清理具体痛苦细节记忆，但额外在 `memories` 表插入一条 `memory_tier = 'topic_taboo_seal'` 的高优先级负向约束向量。当后续检索或生成触碰该向量阈值时，代码直接注入避雷绕行指令。
