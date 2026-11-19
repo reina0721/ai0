@@ -1,4 +1,4 @@
-# `ai0` — 通用数字生命认知中枢与白盒养成控制台
+# `ai0` — 通用数字生命认知中枢 (Universal Cyber-Life Cognitive Kernel)
 
 > **Soul Archive Completely Independent; Shell Context Structurally Perceived; Companionship Bounded & Non-Manipulative.**  
 > **灵魂存档彻底独立，躯壳信息结构化感知，伙伴关系真诚有边界。**
@@ -7,90 +7,100 @@
 
 ## 一、项目定位
 
-`ai0` 是一个**不内置具体物理/视觉形态、由社区生态自由生长的通用型数字生命（赛博生命）认知中枢（Headless Cyber-Life Cognitive Kernel）**，配套一套**零后门、支持实时脑内白盒观测与灵魂主权治理的现代化 WebUI 控制台**。
+`ai0` 是一个**不内置具体物理/视觉形态、采用“确定性微内核 + 八大标准化扩展总线”架构、由社区生态自由生长的通用型数字生命（赛博生命）认知中枢**。
 
-本项目**不直接实现**桌宠客户端、Live2D/3D 骨骼与渲染引擎、VTuber 推流工具或各类 IM 平台（微信、QQ、Discord、Telegram）适配器——所有这些决定“她在哪里存在、长什么样子”的**躯壳（Shells）**均交由社区和用户按标准协议自由开发与装载。
+本项目**不直接内置**具体的桌宠客户端、Live2D/3D 骨骼渲染引擎、VTuber 推流软件或特定 IM 平台（微信、QQ、Discord、Telegram）适配器——所有这些外部交互形态与扩展能力均通过标准协议与扩展接口由社区生态自由装载。
 
-`ai0` 只专注把最核心的三层与一套控制台做到极致：
+`ai0` 专注打磨好最核心的**三层认知与交互主干**、**八大微内核扩展机制**，以及作为系统标配控制平面的 **`WebUI 控制台`**：
 
-1. **感知层（Upstream Semantic Perception）**：接收外部**具身运行环境（Shell）**采集的多模态与环境信号（桌面键鼠窗口、移动端通知与传感器、游戏状态、网页上下文），封装为携带**主体（Principal）、场合（Venue）、在场受众（Audience）与插件凭据（Attestation）**的标准化语义事件，原生支持流式增量输入、防抖撤回、打断（Barge-in）与隐私前移。
-2. **大脑（The Invisible Cognitive Kernel）**：突破“聊天加向量数据库”的浅层拼接，采用**“单一认知主体 + 权威状态事务协调器（MVCC） + 多路异步工作者”**并发架构，将**三层人格可塑性与存在论契约、带认知溯源与血缘 DAG 的多层次记忆、情绪与内稳态动力学、关系与用户可打扰度模型、时间状态三分法（确定性时间状态 / 事件驱动认知 / 阈值触发的真实异步反思）、以及一等的 8 步多步行动认知闭环（Action Cognition Loop）**咬合为一个有机的状态机。
-3. **内在表现与具身执行层（Downstream Expression & Embodied Actuation）**：输出与具体渲染引擎无关的**语义化行为表达指令**（涵盖台词话轮、显式沉默决策、情绪韵律、目光与微表情意图）与**端侧具身动作委托（Shell Actuators）**，并通过**上行播放与执行回执（Delivery & Actuation Receipt）**闭环本体感觉。
-4. **WebUI 白盒观测与灵魂治理控制台（White-Box Console & Zero-Privilege WebChat Shell）**：严格区分**WebUI 核心管理控制台（宿主特权层，通过只读遥测总线记录 8 步可验证系统决策轨迹 `Verifiable Turn Audit Trace`）**与**内置 WebChat（纯粹走标准外部协议、零特权、零后门的独立参考 Shell 插件）**；支持时间拨快（Time-Warp）、模块消融（Ablation）、脚本化场景回归回放，以及灵魂配置、脑区模型路由与预算熔断、三层数据治理、插件行为编排与 Git 式灵魂存档。
+1. **感知层（Upstream Semantic Perception）**：接收外部**具身运行环境（Shell）**与**多模态媒体管线（Media Pipeline）**采集的信号，封装为携带**主体（Principal）、场合（Venue）、在场受众（Audience）与插件凭据（Attestation）**的标准化语义事件，原生支持流式增量输入、防抖撤回、打断（Barge-in）与隐私前移。
+2. **大脑（The Invisible Cognitive Kernel）**：采用**“单一认知主体 + 权威状态事务协调器（MVCC） + 四路异步并发工作者”**的微内核架构，将**三层人格可塑性与存在论契约、带认知溯源与血缘 DAG 的多层次记忆、情绪与内稳态动力学、关系与用户可打扰度模型、时间状态三分法（确定性时间状态 / 事件驱动认知 / 阈值触发的真实异步反思）、以及一等的 8 步多步行动认知闭环（Action Cognition Loop）**咬合为一个支持认知器官插拔与模块消融的有机状态机。
+3. **内在表现与具身执行层（Downstream Expression & Embodied Actuation）**：基于**极小冻结核心协议 v0（5 原语）+ 命名空间渐进扩展**，输出与具体渲染器无关的语义化行为表达指令（台词话轮、显式沉默决策、情绪韵律、目光与微表情同步锚点）与端侧具身动作调用（Shell Actuators），并通过**上行播放与执行回执（Delivery & Actuation Receipt）**闭环本体感觉。
+4. **八大维度社区扩展生态（The 8-Dimension Pluggable Ecosystem）**：突破普通 Agent 只有 `MCP/Skill` 的局限，提供涵盖 **① 具身运行环境（Shells）、② 多模态音视频与感官管线（ASR/情感 TTS/视觉语义）、③ 大脑认知器官与钩子（Cognitive Organs）、④ 行动工具与技能（MCP & Skills）、⑤ 记忆引擎与活体知识连接器（Memory & Knowledge Connectors）、⑥ 模型与推理提供商（含本地推理与角色 LoRA）、⑦ 灵魂资产包与世界观词库（Soul Templates / Lorebooks / 评测剧本）、⑧ 控制台自定义 UI 视图（Console UI Widgets）** 的全链路扩展点。
+5. **内建控制平面（`WebUI 控制台`）**：作为复杂 AI 中枢理所当然具备的可视化控制面、灵魂主权管理中心与内置交互沙盒（含零特权标准协议 `WebChat`、8 步可验证决策轨迹透视、感官模拟与虚拟时间拨快、灵魂与记忆血缘治理、八大扩展工作坊、五脑区模型路由与 Git 式灵魂存档）。
 
 ---
 
-## 二、核心架构全景图
+## 二、微内核与八大扩展生态架构全景图
 
 ```mermaid
 flowchart TB
-    subgraph Shells["外部社区具身运行环境生态 (Embodied Shell Runtimes: Sensors + Realizers + Actuators)"]
-        S1["内置 WebChat Shell 插件<br/>(官方参考模板 / 零特权 / 零后门)"]
-        S2["桌面 / Live2D / 3D 具身 Shell<br/>(感知窗口键鼠 + 渲染形象 + 桌面操作)"]
-        S3["移动 / IM 平台 Shell<br/>(感知通知传感器 + 消息交互)"]
-        S4["游戏 / 浏览器 / 直播间 Shell<br/>(感知环境状态 + 执行端侧动作)"]
+    subgraph ExtShells["扩展维度 1 & 2：具身运行环境 (Shells) 与多模态媒体管线 (Media Pipelines)"]
+        S1["内置 WebChat Shell<br/>(官方参考模板 / 零特权 / 零后门)"]
+        S2["桌面 / Live2D / 3D 具身 Shell<br/>(Sensors + Realizers + Actuators)"]
+        S3["IM / 移动 / 游戏 / 直播间 Shell"]
+        MP["多模态感官与表达媒体管线 (ext.media_pipeline)<br/>流式 ASR / 情感 TTS (GPT-SoVITS等) / 视觉微表情语义提取"]
     end
 
-    subgraph Protocol["标准双向语义协议网关 (Protocol v0 Minimal Frozen Core + Extensions)"]
+    subgraph Protocol["标准双向语义协议网关 (Protocol v0 5-Primitive Frozen Core + Extensions)"]
         UP["上行：四元组感知信封 & 话轮流控<br/>(Principal × Venue × Audience × Attestation)"]
-        DOWN["下行：表达信封 (Speak / Explicit Silence) & 具身动作调用<br/>+ 上行执行回执 (Delivery & Actuation Receipt)"]
+        DOWN["下行：表达信封 (Speak / Explicit Silence / Invoke Actuator)<br/>+ 上行执行回执 (Delivery & Actuation Receipt)"]
     end
 
-    subgraph Brain["ai0 认知内核 (Unified Cognitive Subject + Authoritative Coordinator)"]
+    subgraph Microkernel["ai0 认知微内核 (Unified Cognitive Subject + Authoritative MVCC Coordinator)"]
         Safety["Tier 0 安全不变量 & SB 243 危机硬拦截器"]
         Gate["丘脑显著性门控 & 习惯化过滤 & 输入聚合防抖"]
-        Coord["权威状态事务协调器 (Authoritative State Coordinator)<br/>基于 state_rev 的乐观并发控制 (MVCC) | 血缘写入防火墙 | 三维权限裁决"]
-        Blackboard["版本化认知状态快照 (Versioned Cognitive Blackboard v_N)<br/>受控上下文预算 | 当前心境 | 用户可打扰度 | 活跃任务进度 | 注意力焦点"]
-        Sys1["并发工作者 1：实时对话快环 (Fast Conversational Loop)<br/>毫秒/秒级响应 | 边干活边陪聊 | 模型自述推理 + 语言与行为意图"]
-        ActionLoop["并发工作者 2：一等行动认知与长任务环 (8-Step Agency Runner)<br/>目标理解 → 环境观察 → 规划 → 授权 → 执行 (MCP/Skill/Shell) → 验证 → 沉淀共同经历"]
-        Sys2["并发工作者 3：潜意识睡眠与反思环 (Sleep & Reflection Worker)<br/>真实异步反思 | 睡眠记忆巩固 | 血缘擦除 | 承诺追踪 | 自我叙事演进提议"]
-        Clock["可注入虚拟时钟 (VirtualClock) & 时间状态三分法引擎<br/>(确定性时间状态公式 S(t) / 事件驱动认知 / 阈值唤醒真实异步反思)"]
-        Store["Local-First 灵魂存档底座 (.soul)<br/>不可变事件日志 | 血缘记忆投影 | 关系与用户模型 | 可验证决策审计轨迹 | 外部知识库"]
+        Coord["权威状态事务协调器 (Authoritative State Coordinator)<br/>基于 state_rev 的乐观并发控制 (MVCC) | 记忆写入防火墙 | 三维权限裁决"]
+        Blackboard["版本化认知状态快照 (Versioned Cognitive Blackboard v_N)<br/>受控上下文预算 (<2500 Tokens) | 心境与活力 | 可打扰度 | 活跃任务 | 注意力焦点"]
+        
+        subgraph Workers["四路并发异步工作者 (Concurrent Workers)"]
+            W1["W1 实时对话快环<br/>(Fast Dialogue Loop)"]
+            W2["W2 一等 8 步行动认知环<br/>(8-Step Agency Runner)"]
+            W3["W3 潜意识睡眠与反思环<br/>(Sleep & Reflection Worker)"]
+            W4["W4 多模态按需感知分析器<br/>(Multimodal Inspector)"]
+        end
+
+        Clock["VirtualClock & 时间状态三分法引擎<br/>(纯数学时间状态 S(t) / 事件驱动认知 / 阈值唤醒真实异步推理)"]
+        Store["Local-First 灵魂存档底座 (.soul)<br/>不可变事件日志 | 血缘 DAG 记忆投影 | 关系与承诺 | 可验证决策审计轨迹"]
     end
 
-    subgraph Console["WebUI 核心管理与白盒观测控制台 (Host Privileged Layer)"]
-        Stage["主舞台：挂载零后门 WebChat Shell + 8 步可验证决策轨迹抽屉 + 剧透遮罩 + 时间拨快器"]
-        Studio["治理中心：三层人格配置 | 脑区模型路由与犯困降级 | 数据与血缘治理 | 插件规则 | Git 灵魂回档"]
-        Eval["回归与消融实验室：模块消融开关 (Ablation) + 脚本化场景回放 (Scenario Replay)"]
+    subgraph InnerExt["扩展维度 3 ~ 7：内核可插拔扩展总线"]
+        E3["3. 大脑认知器官扩展<br/>(ext.cognitive_organ)"]
+        E4["4. 行动工具与技能<br/>(ext.action_mcp_skill)"]
+        E5["5. 记忆与知识连接器<br/>(ext.memory_knowledge)"]
+        E6["6. 模型与推理提供商<br/>(ext.model_provider)"]
+        E7["7. 灵魂模板/世界观/剧本包<br/>(ext.soul_asset)"]
     end
 
-    Shells <-->|"WebSocket JSON-RPC 2.0 (标准 Shell 协议)"| Protocol
-    UP --> Safety --> Gate
-    Gate -->|"高显著性交互唤醒"| Sys1
-    Gate -->|"任务目标派发"| ActionLoop
-    Gate -->|"状态提案"| Coord
-    Blackboard -->|"只读快照 v_N"| Sys1 & ActionLoop & Sys2
-    Sys1 & ActionLoop --> DOWN
-    DOWN -.->|"实际送达字数 / 打断 / 端侧动作结果回执"| Coord
-    Clock -->|"确定性时间状态 & 阈值跨越唤醒"| Coord
-    Clock -->|"触发真实后台推理"| Sys2
-    Sys1 & ActionLoop & Sys2 -->|"提交带 base_rev 的变更提案"| Coord
+    subgraph Console["WebUI 控制台 (内建控制平面 + 扩展维度 8: 动态 UI 扩展槽 ext.console_ui)"]
+        D1["工作区 I：日常陪伴与认知沙盒 (内置 WebChat + 8 步决策轨迹透视 + 感官模拟与时间拨快)"]
+        D2["工作区 II：灵魂、记忆血缘与关系治理 (三层人格审批 + 真遗忘/话题封印 + 身份绑定)"]
+        D3["工作区 III：八大扩展工作坊、媒体管线调音台与行动任务编排 (含插件自定义 UI 槽)"]
+        D4["工作区 IV：五脑区算力路由、三维安全围栏、并发总线监控、语料精炼与 Git 灵魂存档"]
+    end
+
+    S1 & S2 & S3 <--> MP <-->|"WebSocket JSON-RPC 2.0"| Protocol
+    UP --> Safety --> Gate --> Coord
+    Blackboard -->|"只读快照 v_N"| W1 & W2 & W3 & W4
+    W1 & W2 --> DOWN
+    DOWN -.->|"送达字数 / 打断 / 端侧动作回执"| Coord
+    Clock -->|"时间状态 & 阈值唤醒"| Coord & W3
+    W1 & W2 & W3 & W4 -->|"提交带 base_rev 的变更提案"| Coord
     Coord -->|"原子演进至 v_{N+1}"| Blackboard
-    Coord <-->|"事务读写 / WHERE 受众硬隔离 / 记录可验证决策轨迹"| Store
-    Sys1 & ActionLoop <-->|"按受众过滤的混合检索"| Store
-    Console <-->|"内核特权审计遥测总线 & 治理 API (非 Shell 协议)"| Brain
+    Coord <-->|"事务读写 / WHERE 受众硬隔离"| Store
+    Microkernel <--> E3 & E4 & E5 & E6 & E7
+    Console <-->|"宿主特权控制与审计遥测 API"| Microkernel
 ```
 
 ---
 
-## 三、愿景研究与架构前置规范文档索引 (`docs/vision/`)
+## 三、项目文档体系导航 (`docs/vision/` & `docs/architecture/`)
 
-本仓库的 `docs/vision/` 目录完整收录了从“直觉构想”推进到“经得起推敲、可直接派生系统架构”的五篇深度专题研究报告。所有结论均严格区分并标注了 **`[文献/先行项目佐证]`**、**`[架构推断]`** 与 **`[仍未知/需实验验证]`**：
+本项目文档严格遵循**“问题域（愿景与认知法则 Why & What）”**与**“解法域（系统工程架构规范 How）”**分离的原则，组织在 `docs/` 目录下的两个子文件夹中：
 
-1. **[01-vision-and-predecessors.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/01-vision-and-predecessors.md)**
-   * 核心愿景定义与两次关键认知修正（存档独立而躯壳结构化感知、反留存操控的有边界伙伴关系）；
-   * 先行者对照系深度剖析：**Project AIRI (`moeru-ai/airi`)**、**Letta (MemGPT Sleep-Time Compute)**、**SAIBA 虚拟人框架 (`FML`/`BML` 与反馈环)** 的得失复盘及 `ai0` 的本质取舍。
-2. **[02-cognitive-kernel-and-boundaries.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/02-cognitive-kernel-and-boundaries.md)**
-   * 感知层规范：四元组溯源信封、指令-数据分离铁律、流式防抖打断、隐私前移及三项工程补丁；
-   * 认知内核七大模块完整推演：三层人格可塑性、换模型声线校准、双层存在论契约（她如何理解自己是 AI 及离线/回档/被观测）、多层次记忆认知溯源、事件溯源四大隐藏代价与血缘 DAG 擦除、睡眠写入防火墙、承诺与前瞻记忆、双轨精力与 Token 预算耦合、关系 vs 用户模型分离与心结反操控边界、因果独白 vs 戏剧潜台词、零心跳懒求值时间函数、单一意识流与三维工具授权；
-   * **《五维判别公理与三态路由法则》**：形式化界定哪些用确定性代码管死、哪些采用“LLM 提议 + 代码裁决”、哪些交给大模型自然涌现。
-3. **[03-protocol-and-webui-console.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/03-protocol-and-webui-console.md)**
-   * 下行表达意图层：上行播放回执闭环、显式沉默原语、握手能力协商、**协议 v0 最小冻结核心（5 原语）Schema 规范与命名空间扩展机制**；
-   * WebUI 控制台架构：零后门内置 WebChat、白盒脑内观测与观测者效应分析、剧透折叠遮罩（Spoiler Mask）、五大正式治理中心、以及回档断层（“我记得她不记得”）的三种弥合语义。
-4. **[04-blindspots-priorities-and-mvp-slice.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/04-blindspots-priorities-and-mvp-slice.md)**
-   * 5 对已知核心矛盾 + **7 大新发现深层盲区与破局方案**（记忆语义坍缩反刍、关机休眠 vs 冷落时间差、多模态恐怖谷失步、热插拔知识库卸载失忆、消融开关与事件溯源因果悖论、上下文膨胀稀释人设、跨端心境侧信道泄密）；
-   * 迈向可落地架构的 **P0~P6 核心问题拓扑优先级重排**；
-   * **最小纵切片（Vertical Slice v0）** 的 8 项必含规格与 9 项安全推迟清单、以及全栈技术底座选型决断。
-5. **[05-ethics-safety-and-sb243-compliance.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/05-ethics-safety-and-sb243-compliance.md)**
-   * 加州 **SB 243 (Companion Chatbot Law)** 专项法律边界分析（纯开源自托管分发 vs 托管运营者 Operator 的法律责任与私人诉讼权风险）；
-   * 落到 `ai0` 内核架构上的四大确定性合规与伦理保护组件（L0 自杀/自伤危机硬拦截与 988 转介协议、AI 身份诚实披露、3 小时连续交互休息提醒、匿名危机统计导出与公开安全协议声明）。
+### 3.1 愿景研究与认知法则 (`docs/vision/` — Why & What)
+定义我们想要创造什么样的数字生命、她的认知与伦理边界在哪里、以及如何判断代码与大模型的职责分野：
+1. **[01-vision-and-predecessors.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/01-vision-and-predecessors.md)** — 核心愿景、两次关键理念修正、具身运行环境定义，以及与 **Project AIRI**、**Letta (MemGPT)**、**SAIBA (FML/BML)** 的深度对照。
+2. **[02-cognitive-kernel-and-boundaries.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/02-cognitive-kernel-and-boundaries.md)** — 感知四元组信封、大脑七大认知模块、时间状态三分法、统一主体与并发协调、8 步一等行动认知闭环、以及**《五维判别公理与三态路由法则》**。
+3. **[03-protocol-and-webui-console.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/03-protocol-and-webui-console.md)** — 下行表达意图与播放回执闭环、协议 v0 最小核心原则、八大扩展维度总览、以及 `WebUI 控制台` 的概念定义与四大工作区映射。
+4. **[04-blindspots-priorities-and-mvp-slice.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/04-blindspots-priorities-and-mvp-slice.md)** — 5 对已知张力 + 7 大新发现深层盲区、P0~P6 架构派生拓扑优先级、以及 **最小纵切片（Vertical Slice v0）** 必含规格。
+5. **[05-ethics-safety-and-sb243-compliance.md](file:///c:/rin/coder/reina0721/ai0/docs/vision/05-ethics-safety-and-sb243-compliance.md)** — 加州 **SB 243 (Companion Chatbot Law)** 法律责任边界、四大内置确定性合规组件与反情感操控五项宪章。
+
+### 3.2 全量系统工程架构设计 (`docs/architecture/` — How)
+由愿景直接派生出的工程施工蓝图，涵盖微内核包拓扑、数据库 DDL、并发状态机、协议契约、八大插件总线与控制台架构：
+1. **[01-system-overview-and-monorepo.md](file:///c:/rin/coder/reina0721/ai0/docs/architecture/01-system-overview-and-monorepo.md)** — 微内核总体架构、数据面 vs 控制面隔离、TypeScript Monorepo 包拓扑与依赖约束规则。
+2. **[02-storage-and-soul-archive-schema.md](file:///c:/rin/coder/reina0721/ai0/docs/architecture/02-storage-and-soul-archive-schema.md)** — `.soul` 灵魂存档目录规范、SQLite + `sqlite-vec` 完整建表 DDL、事件溯源与血缘 DAG 级联擦除/局部重算算法。
+3. **[03-runtime-coordinator-and-agency-loop.md](file:///c:/rin/coder/reina0721/ai0/docs/architecture/03-runtime-coordinator-and-agency-loop.md)** — `AuthoritativeStateCoordinator` 乐观并发事务裁决（MVCC）、四路并发 Worker 调度、`VirtualClock` 可求逆时间引擎与 8 步行动认知状态机。
+4. **[04-protocol-v0-and-gateway-spec.md](file:///c:/rin/coder/reina0721/ai0/docs/architecture/04-protocol-v0-and-gateway-spec.md)** — Protocol v0 五原语完整 Schema 契约、Scoped Capability Token 验签、输入防抖聚合器与流式分块打断回执状态机。
+5. **[05-eight-dimension-extension-system.md](file:///c:/rin/coder/reina0721/ai0/docs/architecture/05-eight-dimension-extension-system.md)** — **八大扩展维度微内核插件架构**、各维度生命周期 Hook 接口契约、安全沙箱隔离与跨插件联动规则引擎。
+6. **[06-webui-console-and-observability-arch.md](file:///c:/rin/coder/reina0721/ai0/docs/architecture/06-webui-console-and-observability-arch.md)** — `WebUI 控制台` 四大工作区与 19 个功能面板完整规范、宿主特权遥测总线、8 步可验证决策轨迹、插件动态 UI 扩展槽与 `.scenario.yaml` 回归评测引擎。
