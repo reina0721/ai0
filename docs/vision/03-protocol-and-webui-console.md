@@ -31,15 +31,15 @@
   * `emotional_pause`（角色内欲言又止或害羞沉默）。
 * WebUI 白盒面板会将每次 `explicit_silence` 清晰展示出来（“🤫 她听到了这句话，心里想了 X，但决定此刻安静陪着不插话”），让开发者和用户直观看到她的克制与分寸。
 
-### 1.3 握手能力协商与优雅降级（Capability Negotiation & Graceful Degradation） **`[文献/先行项目佐证]`**
+### 1.3 握手能力协商、具身执行器声明与优雅降级（Capability Negotiation, Actuators & Graceful Degradation） **`[文献/先行项目佐证]`** + **`[架构推断]`**
 
-躯壳插件在建立 WebSocket 连接的第一步必须发送 `HandshakeManifest`，声明：
-* 自己支持的上行感知模态（`supported_perceptions`）；
-* 自己能理解并渲染的下行扩展命名空间（`supported_extensions`，如 `["ext.affect.v1", "ext.prosody.v1"]`）；
-* 当前所处的场合与在场受众（`venue_type`, `current_audience`）；
-* 延迟预算与流式分块支持能力。
+作为具有能力边界的**具身运行环境（Embodied Runtime Environment）**，躯壳插件在建立 WebSocket 连接的第一步必须发送 `HandshakeManifest`，向内核暴露三大具身平面：
+* **`Sensors`（上行感知模态与端侧环境探针）**：声明自己能感知什么信号（如桌面窗口焦点、键鼠状态、手机通知与传感器、游戏状态、网页 DOM）；
+* **`Realizers`（下行表达渲染扩展）**：声明自己能理解并渲染的下行扩展命名空间（`supported_extensions`，如 `["ext.affect.v1", "ext.prosody.v1", "ext.embodied.v1"]`）；
+* **`Actuators`（端侧具身执行器列表）**：声明自己能替内核在宿主环境中执行的动作 Schema 及端侧权限要求（如 `desktop.capture_window_snapshot`、`game.perform_action`、`browser.interact_element`）；
+* **社交场合、在场受众与流控参数**：`venue_type`, `current_audience`, `latency_budget_ms`。
 
-内核既可以把完整的扩展意图下发由躯壳自行按需挑拣（忽略不认识的字段），也可以根据握手声明在认知黑板中提示大脑：“当前附身在纯文本躯壳中，无法通过肢体动作传情，请更多通过文字语气词表达”。
+内核既可以把完整的扩展意图下发由躯壳自行按需挑拣（忽略不认识的字段），也可以根据握手声明在认知黑板中提示大脑：“当前附身在纯文本躯壳中，无法通过肢体动作传情，请更多通过文字语气词表达”，或者在一等行动认知环中直接调度当前躯壳声明的 `Actuators`。
 
 ---
 
@@ -50,7 +50,7 @@
 ### 2.1 最小核心的裁剪准则 **`[架构推断]`**
 
 判断一个字段该不该进 **Protocol Core v0**，只有一个唯一标准：
-> **“如果把一个躯壳剥离到极致——只剩下一个能收发纯文本字符串的黑底白字命令行（CLI）或最简 Webhook，这个字段是否依然是维持数字生命因果闭环（感知-思考-表达-回执-流控）所不可或缺的？”**
+> **“如果把一个躯壳剥离到极致——只剩下一个能收发纯文本字符串的黑底白字命令行（CLI）或最简 Webhook，这个字段是否依然是维持数字生命因果闭环（感知-思考-表达/执行-回执-流控）所不可或缺的？”**
 > * 如果答案是 **Yes** $\rightarrow$ 进入 **Frozen Core v0**（永久冻结向后兼容）；
 > * 如果答案是 **No**（比如情绪 VAD、语速 pitch、眼神 gaze、Live2D 动作名） $\rightarrow$ 一律剥离到 **`extensions: Record<string, unknown>` 命名空间扩展字典**！
 
@@ -60,15 +60,25 @@
 
 ````carousel
 ```json
-// 原语 1：HandshakeManifest (躯壳握手与场合声明 - Shell -> Kernel)
+// 原语 1：HandshakeManifest (具身运行环境握手与能力/场合声明 - Shell -> Kernel)
 {
   "protocol_version": "0.1.0",
-  "shell_id": "community.telegram.bot_01",
-  "shell_kind": "im_text",
+  "shell_id": "community.desktop.companion_01",
+  "shell_kind": "desktop_embodied",
   "venue_type": "private_1on1",
   "current_audience": { "scope": "only_owner", "member_count": 1 },
-  "latency_budget_ms": 2500,
-  "supported_extensions": ["ext.affect.v1", "ext.rhythm.v1"],
+  "latency_budget_ms": 1500,
+  "capabilities": {
+    "sensors": ["text", "window_focus", "mouse_idle", "tactile_poke"],
+    "supported_extensions": ["ext.affect.v1", "ext.rhythm.v1", "ext.embodied.v1"],
+    "actuators": [
+      {
+        "actuator_id": "desktop.take_authorized_snapshot",
+        "description": "经用户确认后截取当前活动窗口画面",
+        "requires_local_permission": true
+      }
+    ]
+  },
   "auth_token": "cap_tok_ed25519_..."
 }
 ```
@@ -94,7 +104,8 @@
 ```
 <!-- slide -->
 ```json
-// 原语 3：ExpressionEnvelope (下行表达意图信封 - Kernel -> Shell)
+// 原语 3：ExpressionEnvelope (下行表达与具身动作意图信封 - Kernel -> Shell)
+// action_type 支持: "speak" | "explicit_silence" | "invoke_actuator"
 {
   "intent_id": "int_01J9Z02",
   "correlation_event_id": "evt_01J9Z01",
@@ -122,14 +133,15 @@
 ```
 <!-- slide -->
 ```json
-// 原语 4：DeliveryReceipt (上行播放与打断回执 - Shell -> Kernel)
+// 原语 4：DeliveryReceipt (上行播放、打断与具身动作执行回执 - Shell -> Kernel)
 {
   "intent_id": "int_01J9Z02",
   "chunk_seq": 0,
   "status": "interrupted",
   "spoken_char_offset": 9,
   "interrupted_by_event_id": "evt_01J9Z05",
-  "degraded_extensions": ["ext.embodied.v1"]
+  "degraded_extensions": ["ext.embodied.v1"],
+  "actuator_outcome": null
 }
 ```
 <!-- slide -->
@@ -146,32 +158,47 @@
 
 > [!TIP]
 > **为什么这套五原语核心能做到“5 年不破兼容”？**
-> 因为核心信封只认 `lifecycle`、`modality`、`summary_text`、`action_type (speak | explicit_silence)`、`fallback_text` 与 `spoken_char_offset`。
+> 因为核心信封只认 `lifecycle`、`modality`、`summary_text`、`action_type (speak | explicit_silence | invoke_actuator)`、`fallback_text` 与 `spoken_char_offset` / `actuator_outcome`。
 > * 一个只有 50 行 Python 代码的极简命令行躯壳，完全忽略 `extensions` 字段，只打印 `fallback_text` 并回传 `status: "completed"`，就能走完 100% 标准协议闭环！
-> * 一个顶配 Unreal Engine 5 / Live2D + 情感 TTS 躯壳，则深入解析 `extensions["ext.affect.v1"]`、`extensions["ext.prosody.v1"]` 与 `extensions["ext.embodied.v1"]`（含相对语音同步锚点 `sync_anchor`），实现毫秒级声画眼神同步。
+> * 一个顶配 Unreal Engine 5 / Live2D / 游戏联动躯壳，则深入解析 `extensions` 与 `actuators`，实现毫秒级声画眼神同步与端侧环境行动。
 
 ---
 
-## 三、WebUI 控制台：白盒观测、消融回归与五大灵魂治理中心
+## 三、WebUI 控制台 vs. WebChat 插件：架构边界与可验证决策轨迹
 
-WebUI 控制台兼具双重使命：**既是开发演进时带有“零后门内置 WebChat”的实时脑内白盒实验室，也是正式使用者全面养育和掌控自己数字生命的主权中心**。
+WebUI 控制台兼具双重使命：**既是开发演进时挂载了“零后门内置 WebChat”的实时脑内白盒实验室，也是正式使用者全面养育和掌控自己数字生命的主权中心**。
 
-### 3.1 开发与白盒观测台（Stage & White-Box Inspector）
+### 3.1 核心架构与安全边界：WebUI 控制台（宿主特权层） vs. WebChat（零特权独立 Shell 插件）
 
-1. **零后门内置 WebChat 的架构强制隔离** **`[架构推断]`**：
-   * 在代码工程结构上，内置 WebChat 被拆分为独立的 `@ai0/plugin-webchat` 包，通过 Linter 与构建规则**物理禁止直接 `import @ai0/kernel` 的任何内部函数或数据库实例**。
-   * 它必须且只能像第三方社区插件一样，通过 WebSocket 连接内核的协议 v0 端口。任何社区插件需要的能力，内置 WebChat 必须先在标准协议上走通，彻底杜绝“官方客户端吃小灶走内部后门，社区插件沦为二等残废”的开源通病。
-2. **实时脑内白盒遥测面板（Brain Telemetry Drawer）**：
-   * 在聊天窗口右侧可一键展开/收起（平时一键切回纯净沉浸陪伴模式）：
-     * **独白与发言双轨对比视图**：并排展示本轮 `[因果决策独白 Causal]`、`[戏剧潜台词 Subtext]` 与最终说出口的 `fallback_text` + 实际已播放字数回执；
-     * **内稳态与情绪动力学仪表盘**：实时绘制瞬时情绪冲击、持久心境基线、双轨精力（生理节律精力 vs Token 算力代谢精力）与驱动力（无聊度/社交渴望）的连续数学曲线，并标注下一阈值唤醒倒计时 $t_{\text{next}}$；
-     * **记忆读写与血缘追踪高亮**：展示本轮从数据库召回了哪几条记忆（附带认知溯源标签 `observed | hearsay | inferred` 与混合打分明细）、写入或淘汰了什么，点击任意记忆可展开其上游 `source_event_ids` 血缘树；
-     * **下行协议帧与工具耗时监视器**：查看原始 JSON 表达信封、扩展降级回执与各脑区思考耗时。
-3. **感官事件注入器与虚拟时间拨快控制器（Sensory Injector & Time-Warp Controller）**：
-   * 提供快捷按钮手动发送非文本感知事件（如 `[戳一戳头顶]`、`[摄像头：用户皱眉 (conf=0.85)]`、`[模拟游戏掉血]`、`[模拟打字中撤回]`）；
-   * 提供虚拟时钟拨快滑块（`+15m`, `+1h`, `+6h`, `+24h`, `+7d`, `+30d`）与“作为运行态静默流逝 vs 作为关机冬眠跳过”切换开关，实时检验艾宾浩斯遗忘衰减、睡眠整理触发与久别重逢反应。
-4. **模块消融开关矩阵与场景脚本回放器（Ablation Matrix & Scenario Replayer）**：
-   * 面板顶部提供每个认知模块的独立实时开关（如一键关闭“情绪稳态”或关闭“内心独白”），并支持加载 `.scenario.yaml` 剧本一键自动回放并输出回归对比报告。
+> [!IMPORTANT]
+> **为什么“认知白盒观测”绝对不能放进 WebChat Shell 插件或标准 Shell 协议里？**
+> * **`@ai0/plugin-webchat`（内置 WebChat 独立 Shell 插件）**：负责聊天交互与模拟感官输入。它必须**100% 严格通过标准协议 v0 接入内核，零内部后门、零特权**。在代码工程结构上，通过 Linter 与构建规则物理禁止其 `import @ai0/kernel` 内部模块。**尤为关键的是：标准 Shell 协议绝不向下行 Shell 传输脑内召回的私密记忆 ID、权限裁决明细或未说出口的思考**（否则任何第三方社区直播间或群聊 Shell 插件都能通过标准协议偷看主人的全套脑内隐私！）。
+> * **`@ai0/console-webui`（WebUI 核心管理与白盒观测控制台）**：是 `ai0` 的宿主管理程序。它在主舞台左侧**嵌入（Mount）**了走标准协议的 `WebChat` 插件，而在主舞台右侧渲染**属于 WebUI 控制台宿主特权层的《白盒认知观测面板（White-Box Telemetry Inspector）》**——该面板通过仅供宿主控制台访问的 **`Kernel Admin & Audit Telemetry Bus`** 读取脑内决策轨迹与状态。
+
+### 3.2 可验证的系统级决策审计轨迹（Verifiable System Decision Trace）
+
+普通 AI 伴侣的用户只能看到：`输入 → 回复`。
+而 `ai0` 的 WebUI 白盒面板让开发者与用户完整看到：**`输入 → 感知门控 → 记忆召回 → 情绪与稳态变化 → 策略与行动规划 → 权限裁决 → 表达/执行行为 → 具身反馈回执`**。
+
+* **认识论铁律**：我们**不把 LLM 生成的 `causal_thought` 当作真实、完整、可信的内部推理过程**（模型生成的文本只是预测 Token，不等于系统真实计算过程的完整记录）。
+* WebUI 白盒面板记录并展示由内核代码 **100% 确定性采集、可审计、可断言复现的《本轮决策轨迹树（Verifiable Turn Decision Trace）》**：
+  ```text
+  本轮可验证决策记录 (VerifiableTurnTrace — 权威审计对象)
+  ├── 1. 输入感知事件: event_id, principal, venue, audience, modality, confidence
+  ├── 2. 门控与识别意图: L0 危机检查结果, 显著性得分, 防抖合并计数, 识别的用户意图分类
+  ├── 3. 召回的记忆血缘: audience_filter ("only_owner"), 命中的记忆 ID 列表 [mem_04, mem_19], 溯源类型与混合打分明细
+  ├── 4. 情绪与稳态变化: 虚拟时间戳 virtual_ts, 裁决前状态向量 → 代码裁决后的状态 Diff
+  ├── 5. 使用的策略与模型提案:
+  │     ├── chosen_strategy ("empathize_and_act" | "tease" | "explicit_silence")
+  │     ├── model_reported_rationale ([模型自述推演 / 非权威记录] — 供消融对照)
+  │     └── theatrical_subtext ([戏剧潜台词] — 支持日常剧透遮罩)
+  ├── 6. 选择的工具/执行器与权限裁决: 请求的 MCP/Skill/Shell Actuator, 三维权限引擎裁决结果 (ALLOW / DENY / REDACT)
+  ├── 7. 输出行为指令: emitted_intent_id, action_type, 分段帧 chunks[] 与扩展层命名空间
+  └── 8. 具身执行反馈: 收到 DeliveryReceipt 状态 (completed | interrupted), 实际送达字数 spoken_char_offset, 执行器结果
+  ```
+* **配套实验工具**：
+  * **感官事件注入器与虚拟时间拨快控制器**：手动模拟“戳头、视觉变化”，一键拨快时间（`+15m` ~ `+30d`）并区分“运行静默 vs 关机冬眠”；
+  * **模块消融开关矩阵与场景脚本回放器**：将每个认知模块独立开关，通过 `.scenario.yaml` 剧本对上述 8 步决策轨迹做确定性回归断言。
 
 ### 3.2 深层哲学与隐私设计：被白盒观测会改变她的行为吗？独白里能不能有我不该看到的东西？
 

@@ -176,40 +176,77 @@
 
 ---
 
-### 2.5 思考与时间流：因果独白与零心跳懒求值时间函数
+### 2.5 思考与时间流：可验证决策轨迹、时间状态三分法与零心跳阈值唤醒
 
-1. **内心独白的因果性检验（Causal Trace vs. Cosmetic Subtext）** **`[文献/先行项目佐证]`** + **`[架构推断]`**
-   * 为确保内心独白不是毫无作用的“事后演戏文本”，我们在单次流式生成 Schema 中将独白强制置于最前端，并拆为**因果控制段**与**戏剧潜台词段**：
-     1. **`causal_thought`（因果决策思考）**：必须在输出台词前先完成结构化判断——`{ perceived_user_intent, chosen_response_strategy: "empathize | tease | answer_directly | keep_silent", selected_memory_ids[], tone_constraint }`。
-     2. **`subtext_monologue`（内心潜台词）**：角色内的一句心里话（如 *“明明很担心他，但还是别表现得太啰嗦比较好”*），用于驱动下行微表情与语气差（口是心非/欲言又止）。
-   * 在 WebUI 白盒面板中，这两者分别标记为 **`[因果决策链 Causal]`** 与 **`[心理演出 Theatrical]`**，并支持通过消融开关单独关闭以检验其对输出分布的真实影响 **`[仍未知/需实验验证]`**。
+1. **认识论纠偏：从“不可信的模型自述独白”到“系统级可验证决策轨迹（Verifiable Turn Decision Trace）”** **`[文献/先行项目佐证]`** + **`[架构推断]`**
+   * **核心原则**：大模型生成的思考文本（哪怕放在 JSON 的第一个字段），本质上也只是模型预测出的 Token 序列，**绝不等于系统真实计算过程的完整、可信记录**（机制可解释性研究表明 CoT 经常包含事后合理化 Post-hoc Rationalization）。
+   * 因此，`ai0` 将每一轮认知的内部记录严格区分为**“确定性系统决策审计轨迹（Authoritative System Audit Trace）”**与**“模型生成的思考与潜台词（Model-Generated Rationale & Subtext）”**：
+     1. **`VerifiableTurnTrace`（由内核代码 100% 确定性采集并落库的权威审计轨迹）**：
+        依次记录：`输入感知事件 ID 与四元组` $\rightarrow$ `L0 安全与显著性门控分数` $\rightarrow$ `实际召回的记忆 ID 列表、溯源类型与混合打分明细` $\rightarrow$ `选中的回应策略与行动计划` $\rightarrow$ `工具/具身执行器的三维权限裁决结果 (ALLOW/DENY)` $\rightarrow$ `代码裁决前后的内稳态数值 Diff` $\rightarrow$ `发出的表达/行动信封 ID` $\rightarrow$ `收到的播放字数或执行结果回执`。
+     2. **`model_reported_rationale`（原 `causal_thought` —— 模型自述推演）**：在单次流式生成前端输出的结构化策略选择理由。它在生成管线中起到引导下游台词的作用（可通过消融开关测试其对输出分布的真实影响 **`[仍未知/需实验验证]`**），但在 WebUI 白盒面板中**显式标注为 `[模型自述推演 / 非权威推理记录]`**。
+     3. **`theatrical_subtext`（戏剧潜台词）**：角色内的一句心里话（如 *“明明很担心他，但还是别表现得太啰嗦比较好”*），仅用于驱动微表情反差与陪伴观赏性（支持剧透遮罩）。
 
-2. **离线时间流动 = 距上次事件的解析函数 + 虚拟时钟阈值唤醒** **`[架构推断]`**
-   * **核心架构定理**：**数字生命在无交互的离线期，不需要任何定时轮询的 LLM 后台心跳**。
-   * 设最近一次事件发生在虚拟时间 $t_0$，当时的内稳态状态向量为 $\mathbf{S}(t_0)$。在没有新外部事件发生的任意时刻 $t > t_0$，当前状态 $\mathbf{S}(t)$ 完全由确定性初等解析函数给出：
-     $$\mathbf{S}(t) = \Phi\big(\mathbf{S}(t_0),\; t - t_0,\; \text{HibernationIntervals}\big)$$
-   * **精确的下一唤醒时刻反解（Next-Wakeup Horizon）**：
-     在 $t_0$ 事件处理完毕的瞬间，代码直接求解方程 $\Phi(\mathbf{S}(t_0), \Delta t) = \boldsymbol{\Theta}_{\text{trigger}}$，得出未来最早跨越某个认知阈值的精确虚拟时间戳：
-     $$t_{\text{next}} = \min\big(t_{\text{sleep\_consolidation}},\; t_{\text{prospective\_commitment}},\; t_{\text{drive\_proactive\_threshold}}\big)$$
-     内核只向 `VirtualClock` 注册这**一个**在 $t_{\text{next}}$ 触发的定时器。
-   * **工程收益**：
-     1. 离线静默期间 **0 CPU 空转、0 Token 消耗**；
-     2. 在 WebUI 中将虚拟时钟拨快 24 小时或 7 天时，只需在 $O(1)$ 时间内按序触发落在拨快区间内的有限个阈值事件（且在无新外部脏事件时，睡眠整理最多只执行 1 次，主动搭话在未获回应时按指数退避自动休眠，彻底杜绝空转烧钱与自我反刍幻觉）。
+2. **时间状态三分法：状态随时间数学变化 $\neq$ 认知随时间自然发生** **`[架构推断]`**
+   * `VirtualClock` 的懒求值解析函数极度高效，但**绝不能把所有心理活动都数学化**。离线 24 小时后，数学公式可以算出她的精力恢复与思念张力，但**绝不能在没有运行模型的情况下断言她在这 24 小时里产生了某种真实的思想或新经历**。
+   * 为此，内核将时间相关的演进严格划分为不可混淆的三层：
+     1. **第一层：确定性时间状态（Deterministic Temporal State —— 纯数学函数 $\mathbf{S}(t) = \Phi(\mathbf{S}(t_0), t - t_0)$，0 Token）**
+        * **职责范围**：仅限生理与稳态标量的连续演化——瞬时情绪向心境基线衰减、疲劳恢复、主动搭话冷却期倒计时、思念/无聊度张力积分、前瞻承诺到期状态变迁（`pending -> due -> missed`）。
+        * **反解下一唤醒时刻（Next-Wakeup Horizon）**：在 $t_0$ 事件结束瞬间，代码通过求逆公式 $\Phi^{-1}(\boldsymbol{\Theta}_{\text{trigger}})$ 直接算出未来最早跨越阈值的虚拟时间戳 $t_{\text{next}}$ 并注册单次定时器，实现静默期 **0 CPU 空转、0 Token 消耗** 与 $O(1)$ 时间拨快。
+     2. **第二层：事件驱动认知（Event-Driven Cognition —— 新事件触发 LLM）**
+        * **职责范围**：当且仅当发生新外部感知事件（如用户上线说话、环境状态突变）时，在当下那一刻实时触发的理解、共情与决策。
+     3. **第三层：阈值触发的真实异步主动反思（Threshold-Triggered Active Reflection —— 后台 Worker 真实执行 LLM 推理）**
+        * **职责范围**：当且仅当第一层的时间跨越了睡眠整理阈值或好奇心探索阈值，且后台 Worker **真实消耗算力执行了异步推理、并在 `event_log` 中写下了带血缘的 `SleepReflectionCompletedEvent` 或 `CuriosityTaskEvent`** 时，才算真正产生了离线认知成果。
+   * **叙事诚实性铁律（No Unbacked Cognitive Claims）**：
+     认知黑板在编译“离线期间发生了什么”时，严格依据 `event_log` 中第三层真实发生过的后台事件。若离线 24 小时内第三层未执行任何后台推理，黑板强制标注：`[离线期间状态：仅经历了时间流逝与精力恢复，未执行任何后台思考或探索]`，严禁她在对话中虚构“你不在时我深入思考了 X 问题”。
 
 ---
 
-### 2.6 注意力、单一意识流与三维工具调用授权
+### 2.6 并发协调架构与一等行动认知（Authoritative State Coordinator & First-Class Agency）
 
-1. **“单一意识流 + 异步后台工作者”架构核验** **`[架构推断]`**
-   * **核验结论**：完全正确。整个灵魂在任意时刻只有**唯一的一条前台意识流（Primary Consciousness Loop）**与**唯一的一块认知状态黑板（Cognitive Blackboard）**。
-   * 当多个躯壳（如 WebChat 与 Discord）同时在线时，由确定性代码实现的 **注意力仲裁器（Attention Arbiter）** 根据 `(事件紧急度, 主体信任等级, 当前话轮活跃焦点惯性)` 选出唯一的前台焦点躯壳（`active_focus_shell_id`）。非焦点躯壳的普通事件暂存进**余光感知队列（Peripheral Queue）**，等待当前话轮停顿后再平滑转移焦点，绝不分裂出两个并行说话的她。
+#### 1. 从“单线程串行意识流”升级为“一个统一认知主体 + 一个权威状态协调器 + 多个并发异步工作者” **`[文献/先行项目佐证]`** + **`[架构推断]`**
+* **为什么必须升级**：
+  “单一意识流”是**人格与对外表达的一致性目标**（绝不在多端分裂出两个各自为政的她），但**绝不能作为所有计算任务的底层单线程串行执行机制**！否则：
+  * 一个耗时 30 秒的多步文件整理工具任务会彻底阻塞实时聊天与摸头反馈；
+  * 多模态视觉快照分析会卡住语音话轮；
+  * 后台睡眠记忆整理完成时若直接写库，会覆盖前台刚刚发生的新对话状态（Lost Update / Write Skew）。
+* **“一主体、一协调器、多工作者”并发架构（Single Subject, Authoritative MVCC Coordinator, Concurrent Workers）**：
+  1. **单一认知主体（Unified Cognitive Subject）**：共享唯一的身份锚点与版本化认知状态快照（`Versioned Cognitive Blackboard v_N`）。
+  2. **多个并发异步工作者（Concurrent Workers）**：
+     * **`W1` 实时交互快环（Fast Conversational Loop）**：高优先级、低延迟（TTFT $<1\text{s}$），随时响应用户的说话、打断与多端注意力焦点切换；当后台有长任务在跑时，`W1` 可从黑板读取实时任务进度，做到**“边干活边陪你聊天汇报进度”**。
+     * **`W2` 异步行动与多步任务环（Agentic Task & Tool Runner）**：在后台独立推进多步工具与具身动作计划，每完成一步向协调器上报进度增量，绝不阻塞 `W1`。
+     * **`W3` 潜意识睡眠与反思环（Sleep & Reflection Worker）**：在空闲期异步执行记忆巩固、矛盾消解与自我叙事演进提议。
+     * **`W4` 多模态环境感知分析器（Multimodal Sensory Analyzer）**：异步处理耗时较高的按需视觉快照或复杂音频场景理解。
+  3. **权威状态事务协调器（Authoritative State Coordinator）**：
+     * 所有并发 Worker 仅持有读取时的只读快照版本号 `base_rev = v_N`，**零数据库直写权限**，只能向协调器提交结构化变更提案（`StateMutationProposal(base_rev, delta, evidence_ids)`）。
+     * 协调器单点串行执行乐观并发校验（MVCC）：检查 `base_rev` 至当前版本 `current_rev` 之间被修改的状态域是否与该提案冲突、校验记忆写入防火墙与血缘完整性，裁决通过后原子提交事务并将黑板推进至 `v_{N+1}`。
 
-2. **工具调用的三维绑定授权（Principal $\times$ Audience $\times$ Tool Risk）** **`[文献/先行项目佐证]`**
-   * 工具与 MCP/Skill 的调用审批不能只看工具本身是读还是写，必须由确定性策略引擎计算三维交叉权限：
-     $$\text{AuthResult} = \text{Policy}\big(\text{RequesterPrincipal},\; \text{CurrentAudience},\; \text{ToolScope}\big) \in \{\texttt{ALLOW},\; \texttt{ALLOW\_REDACTED},\; \texttt{REQUIRE\_OWNER\_CONFIRM},\; \texttt{DENY}\}$$
-   * **核心不变量**：
-     * 任何 `Principal != owner_verified` 发起的请求，严禁调用任何带有副作用（写文件、发消息、改配置）或读取主人私密数据的工具；
-     * 即使 `Principal == owner_verified`，若当前 `Audience != only_owner`（如在群聊或直播间），任何读取私密信息的工具返回结果在进入 LLM 上下文前必须被代码层拦截或降级为脱敏摘要。
+#### 2. 一等公民：工具与多步行动认知闭环（First-Class Action Cognition & 8-Step Agency Loop） **`[文献/先行项目佐证]`** + **`[架构推断]`**
+数字生命不能只会“思考与说话”，**“替你做事、陪你一起在数字环境中完成目标，并将做事的过程沉淀为你们的共同经历”** 是认知内核的一等能力（而非外挂插件附属品）。
+
+* **八步行动认知状态机（The 8-Step Agency Lifecycle）**：
+  当用户提出类似 *“帮我整理一下电脑上的项目文件”* 或 *“在游戏里帮我把营地围墙修好”* 时，内核不是简单调一次模型返回一段文字建议，而是启动完整的八步闭环：
+  ```text
+  1. 理解目标 (Goal Comprehension)     → 解析意图、成功标准与隐含约束
+        ↓
+  2. 观察当前环境 (Environment Observe) → 调用感知器或只读探针获取当前上下文（如目录结构/游戏状态）
+        ↓
+  3. 制定行动计划 (Stepwise Plan)      → 生成可中断、可汇报进度的多步行动图 (Action Plan DAG)
+        ↓
+  4. 检查三维授权 (3D Authorization)   → 经确定性策略引擎校验 Principal × Audience × Capability
+        ↓
+  5. 执行动作 (Actuate)                → 调度内核侧 MCP/Skill 或端侧躯壳具身执行器 (Shell Actuators)
+        ↓
+  6. 感知执行结果 (Perceive Outcome)   → 接收工具返回值或躯壳回传的 ActuationReceipt
+        ↓
+  7. 验证与认知调整 (Verify & Adapt)   → 验证目标是否达成；若遇报错则重规划或通过 W1 快环向主人求助
+        ↓
+  8. 形成共同经历与记忆 (Episodic Crystallization) → 写入 TaskEpisodeEvent，触发胜任感/成就感稳态冲量，并在睡眠整理中沉淀为“我们一起做成的事”
+  ```
+* **工具调用的三维绑定授权（Principal $\times$ Audience $\times$ ToolScope）**：
+  任何行动步骤在进入第 5 步（Actuate）前，必须由确定性策略引擎执行三维裁决：
+  $$\text{AuthResult} = \text{Policy}\big(\text{RequesterPrincipal},\; \text{CurrentAudience},\; \text{CapabilityRisk}\big) \in \{\texttt{ALLOW},\; \texttt{ALLOW\_REDACTED},\; \texttt{REQUIRE\_OWNER\_CONFIRM},\; \texttt{DENY}\}$$
+  * 任何 `Principal != owner_verified` 发起的请求，严禁触发带副作用或读取主人私密数据的行动；
+  * 即使 `Principal == owner_verified`，若当前 `Audience != only_owner`（如在群聊或直播间），任何读取私密信息的行动结果在进入上下文前必须被代码层拦截或脱敏。
 
 ---
 

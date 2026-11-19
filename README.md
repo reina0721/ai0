@@ -13,10 +13,10 @@
 
 `ai0` 只专注把最核心的三层与一套控制台做到极致：
 
-1. **感知层（Upstream Semantic Perception）**：接收外部躯壳采集的多模态与环境信号，封装为携带**主体（Principal）、场合（Venue）、在场受众（Audience）与插件凭据（Attestation）**的标准化语义事件，原生支持流式增量输入、防抖撤回、打断（Barge-in）与隐私前移。
-2. **大脑（The Invisible Cognitive Kernel）**：突破“聊天加向量数据库”的浅层拼接，将**三层人格可塑性与存在论契约、带认知溯源与血缘 DAG 的多层次记忆、情绪与内稳态动力学、关系与用户可打扰度模型、快慢双系统与零心跳懒求值时间流、单一意识流注意力仲裁、L0 安全与反操控不变量**咬合为一个有机的状态机。
-3. **内在表现层（Downstream Semantic Expression Intents）**：输出与具体渲染引擎无关的**语义化行为表达指令**（基于极小冻结核心协议 v0 + 命名空间渐进扩展），涵盖台词话轮、显式沉默决策、情绪韵律、目光与微表情意图，并通过**上行播放回执（Delivery Receipt）**闭环本体感觉。
-4. **WebUI 白盒观测与灵魂治理控制台（White-Box Console & Built-in WebChat）**：内置严格走标准外部协议（零后门）的 WebChat 参考躯壳；支持实时观测因果内心独白、情绪曲线、记忆读写血缘、时间拨快（Time-Warp）、模块消融（Ablation）与脚本化场景回归回放；提供涵盖灵魂配置、脑区模型路由与预算熔断、三层数据治理、插件行为编排与 Git 式灵魂存档的完整主权控制。
+1. **感知层（Upstream Semantic Perception）**：接收外部**具身运行环境（Shell）**采集的多模态与环境信号（桌面键鼠窗口、移动端通知与传感器、游戏状态、网页上下文），封装为携带**主体（Principal）、场合（Venue）、在场受众（Audience）与插件凭据（Attestation）**的标准化语义事件，原生支持流式增量输入、防抖撤回、打断（Barge-in）与隐私前移。
+2. **大脑（The Invisible Cognitive Kernel）**：突破“聊天加向量数据库”的浅层拼接，采用**“单一认知主体 + 权威状态事务协调器（MVCC） + 多路异步工作者”**并发架构，将**三层人格可塑性与存在论契约、带认知溯源与血缘 DAG 的多层次记忆、情绪与内稳态动力学、关系与用户可打扰度模型、时间状态三分法（确定性时间状态 / 事件驱动认知 / 阈值触发的真实异步反思）、以及一等的 8 步多步行动认知闭环（Action Cognition Loop）**咬合为一个有机的状态机。
+3. **内在表现与具身执行层（Downstream Expression & Embodied Actuation）**：输出与具体渲染引擎无关的**语义化行为表达指令**（涵盖台词话轮、显式沉默决策、情绪韵律、目光与微表情意图）与**端侧具身动作委托（Shell Actuators）**，并通过**上行播放与执行回执（Delivery & Actuation Receipt）**闭环本体感觉。
+4. **WebUI 白盒观测与灵魂治理控制台（White-Box Console & Zero-Privilege WebChat Shell）**：严格区分**WebUI 核心管理控制台（宿主特权层，通过只读遥测总线记录 8 步可验证系统决策轨迹 `Verifiable Turn Audit Trace`）**与**内置 WebChat（纯粹走标准外部协议、零特权、零后门的独立参考 Shell 插件）**；支持时间拨快（Time-Warp）、模块消融（Ablation）、脚本化场景回归回放，以及灵魂配置、脑区模型路由与预算熔断、三层数据治理、插件行为编排与 Git 式灵魂存档。
 
 ---
 
@@ -24,49 +24,51 @@
 
 ```mermaid
 flowchart TB
-    subgraph Shells["外部社区躯壳生态 (Community Shells)"]
-        S1["内置 WebChat 躯壳<br/>(官方参考模板 / 零后门)"]
-        S2["桌宠 / Live2D / 3D 躯壳"]
-        S3["IM 平台插件 (微信 / QQ / Discord)"]
-        S4["直播间 / 游戏联动躯壳"]
+    subgraph Shells["外部社区具身运行环境生态 (Embodied Shell Runtimes: Sensors + Realizers + Actuators)"]
+        S1["内置 WebChat Shell 插件<br/>(官方参考模板 / 零特权 / 零后门)"]
+        S2["桌面 / Live2D / 3D 具身 Shell<br/>(感知窗口键鼠 + 渲染形象 + 桌面操作)"]
+        S3["移动 / IM 平台 Shell<br/>(感知通知传感器 + 消息交互)"]
+        S4["游戏 / 浏览器 / 直播间 Shell<br/>(感知环境状态 + 执行端侧动作)"]
     end
 
     subgraph Protocol["标准双向语义协议网关 (Protocol v0 Minimal Frozen Core + Extensions)"]
         UP["上行：四元组感知信封 & 话轮流控<br/>(Principal × Venue × Audience × Attestation)"]
-        DOWN["下行：表达信封 (Speak / Explicit Silence)<br/>+ 上行执行回执 (Delivery Receipt & Interrupt Offset)"]
+        DOWN["下行：表达信封 (Speak / Explicit Silence) & 具身动作调用<br/>+ 上行执行回执 (Delivery & Actuation Receipt)"]
     end
 
-    subgraph Brain["ai0 认知内核 (Single Stream of Consciousness Kernel)"]
+    subgraph Brain["ai0 认知内核 (Unified Cognitive Subject + Authoritative Coordinator)"]
         Safety["Tier 0 安全不变量 & SB 243 危机硬拦截器"]
         Gate["丘脑显著性门控 & 习惯化过滤 & 输入聚合防抖"]
-        Blackboard["认知状态黑板 (Cognitive Blackboard)<br/>受控上下文预算 | 当前心境 | 用户状态与可打扰度 | 注意力焦点"]
-        Sys1["System 1 快思考反应环 (Hot Path)<br/>因果内心独白 + 评估提议 + 语言与行为意图"]
-        Sys2["System 2 潜意识慢思考环 (Cold Path)<br/>睡眠记忆巩固 | 血缘擦除 | 承诺追踪 | 自我叙事演进提议"]
-        Clock["可注入虚拟时钟 (VirtualClock) & 懒求值解析时间函数<br/>(零后台空转心跳 / O(1) 时间拨快 / 阈值定时唤醒)"]
-        Firewall["确定性代码裁决层 & 记忆写入防火墙 & 受众隐私硬过滤"]
-        Store["Local-First 灵魂存档底座 (.soul)<br/>不可变事件日志 | 血缘记忆投影 | 关系与用户模型 | 外部热插拔知识库"]
+        Coord["权威状态事务协调器 (Authoritative State Coordinator)<br/>基于 state_rev 的乐观并发控制 (MVCC) | 血缘写入防火墙 | 三维权限裁决"]
+        Blackboard["版本化认知状态快照 (Versioned Cognitive Blackboard v_N)<br/>受控上下文预算 | 当前心境 | 用户可打扰度 | 活跃任务进度 | 注意力焦点"]
+        Sys1["并发工作者 1：实时对话快环 (Fast Conversational Loop)<br/>毫秒/秒级响应 | 边干活边陪聊 | 模型自述推理 + 语言与行为意图"]
+        ActionLoop["并发工作者 2：一等行动认知与长任务环 (8-Step Agency Runner)<br/>目标理解 → 环境观察 → 规划 → 授权 → 执行 (MCP/Skill/Shell) → 验证 → 沉淀共同经历"]
+        Sys2["并发工作者 3：潜意识睡眠与反思环 (Sleep & Reflection Worker)<br/>真实异步反思 | 睡眠记忆巩固 | 血缘擦除 | 承诺追踪 | 自我叙事演进提议"]
+        Clock["可注入虚拟时钟 (VirtualClock) & 时间状态三分法引擎<br/>(确定性时间状态公式 S(t) / 事件驱动认知 / 阈值唤醒真实异步反思)"]
+        Store["Local-First 灵魂存档底座 (.soul)<br/>不可变事件日志 | 血缘记忆投影 | 关系与用户模型 | 可验证决策审计轨迹 | 外部知识库"]
     end
 
-    subgraph Console["WebUI 白盒观测与灵魂治理控制台"]
-        Stage["主舞台：沉浸陪伴 WebChat + 白盒遥测抽屉 + 剧透遮罩 + 时间拨快器"]
+    subgraph Console["WebUI 核心管理与白盒观测控制台 (Host Privileged Layer)"]
+        Stage["主舞台：挂载零后门 WebChat Shell + 8 步可验证决策轨迹抽屉 + 剧透遮罩 + 时间拨快器"]
         Studio["治理中心：三层人格配置 | 脑区模型路由与犯困降级 | 数据与血缘治理 | 插件规则 | Git 灵魂回档"]
         Eval["回归与消融实验室：模块消融开关 (Ablation) + 脚本化场景回放 (Scenario Replay)"]
     end
 
-    Shells <-->|"WebSocket JSON-RPC 2.0"| Protocol
+    Shells <-->|"WebSocket JSON-RPC 2.0 (标准 Shell 协议)"| Protocol
     UP --> Safety --> Gate
-    Gate -->|"唤醒主循环"| Sys1
-    Gate -->|"静默更新"| Blackboard
-    Blackboard <--> Sys1
-    Sys1 --> DOWN
-    DOWN -.->|"实际送达字数 / 打断回执 (Proprioception)"| Firewall
-    Clock -->|"解析时间函数 S(t) & 阈值跨越事件"| Blackboard
-    Clock -->|"休眠与睡眠整理触发"| Sys2
-    Sys1 -->|"LLM 定性提议"| Firewall
-    Sys2 -->|"MemoryMutationProposal"| Firewall
-    Firewall <-->|"事务读写 / WHERE 受众硬隔离"| Store
-    Sys1 <-->|"按受众过滤的混合检索"| Store
-    Console <-->|"只读遥测总线 & 治理 API"| Brain
+    Gate -->|"高显著性交互唤醒"| Sys1
+    Gate -->|"任务目标派发"| ActionLoop
+    Gate -->|"状态提案"| Coord
+    Blackboard -->|"只读快照 v_N"| Sys1 & ActionLoop & Sys2
+    Sys1 & ActionLoop --> DOWN
+    DOWN -.->|"实际送达字数 / 打断 / 端侧动作结果回执"| Coord
+    Clock -->|"确定性时间状态 & 阈值跨越唤醒"| Coord
+    Clock -->|"触发真实后台推理"| Sys2
+    Sys1 & ActionLoop & Sys2 -->|"提交带 base_rev 的变更提案"| Coord
+    Coord -->|"原子演进至 v_{N+1}"| Blackboard
+    Coord <-->|"事务读写 / WHERE 受众硬隔离 / 记录可验证决策轨迹"| Store
+    Sys1 & ActionLoop <-->|"按受众过滤的混合检索"| Store
+    Console <-->|"内核特权审计遥测总线 & 治理 API (非 Shell 协议)"| Brain
 ```
 
 ---
