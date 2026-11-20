@@ -113,20 +113,33 @@ CREATE TABLE memories (
     stability_half_life REAL NOT NULL DEFAULT 168.0,       -- 艾宾浩斯遗忘半衰期 (虚拟小时数，随每次召回巩固递增)
     recall_count        INTEGER NOT NULL DEFAULT 0,        -- 累计被召回次数
     
-    -- 时间与生命周期
-    created_virtual_ts  INTEGER NOT NULL,
-    last_recalled_ts    INTEGER NOT NULL,
-    expires_virtual_ts  INTEGER DEFAULT NULL,              -- inferred_hypothesis 强制设置过期时间
-    invalidated_at_ts   INTEGER DEFAULT NULL,              -- 若上游血缘被删除或重算，标记为失效
-    created_at_rev      INTEGER NOT NULL                   -- 写入时的协调器状态版本号
+    -- 时间、双时态演进与共同默契采纳生命周期
+    created_virtual_ts      INTEGER NOT NULL,
+    last_recalled_ts        INTEGER NOT NULL,
+    valid_from_virtual_ts   INTEGER NOT NULL,                  -- 双时态：该事实/偏好开始生效的虚拟时间戳
+    valid_until_virtual_ts  INTEGER DEFAULT NULL,              -- 双时态：若被新事实取代 (supersedes)，记录旧事实封口退居历史态的时间戳
+    expires_virtual_ts      INTEGER DEFAULT NULL,              -- inferred_hypothesis 强制设置过期时间
+    grounding_status        TEXT NOT NULL DEFAULT 'not_applicable' CHECK (grounding_status IN (
+                                'not_applicable',              -- 非 relational_tacit 记忆默认此值
+                                'proposed_presented',          -- 已单方面说出该内部梗/称呼，尚未获对方接梗确认
+                                'mutually_grounded',           -- 已观测到对方正向接梗/回用，正式成为双方共同默契
+                                'disputed_retired'             -- 对方冷场或明确拒绝，已弃用不再复读
+                            )),
+    invalidated_at_ts       INTEGER DEFAULT NULL,              -- 若上游血缘被真遗忘删除或重算，标记为失效
+    created_at_rev          INTEGER NOT NULL                   -- 写入时的协调器状态版本号
 );
 
--- 记忆血缘有向无环图边表 (Lineage DAG Edges)
--- 记录每条记忆源自哪些原始事件 (source_event) 或由哪些上级记忆衍生而来 (parent_memory)
+-- 记忆血缘与认知更替有向无环图边表 (Lineage & Epistemic Revision DAG Edges)
+-- 记录每条记忆源自哪些原始事件/父记忆 (derived_from)，或取代/反驳了哪条旧记忆 (supersedes / contradicts)
 CREATE TABLE memory_lineage_edges (
     child_memory_id     TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
     parent_type         TEXT NOT NULL CHECK (parent_type IN ('event', 'memory')),
     parent_id           TEXT NOT NULL,                     -- 指向 event_log.event_id 或 memories.memory_id
+    relation_type       TEXT NOT NULL DEFAULT 'derived_from' CHECK (relation_type IN (
+                            'derived_from',                -- 正向血缘派生 (用于真遗忘级联擦除与微重算)
+                            'supersedes',                  -- 双时态事实更替 (新偏好/纠错后的新事实取代旧事实)
+                            'contradicts'                  -- 待睡眠整理消解的证据冲突边
+                        )),
     PRIMARY KEY (child_memory_id, parent_type, parent_id)
 );
 
@@ -244,9 +257,9 @@ flowchart LR
 1. **执行 `Hard Forget(target_event_ids | target_memory_ids)` —— 全受管副本擦除与跨回档永久墓碑账本**：
    * **Step 1（溯源定位）**：若用户指定删除某条记忆 $M$，通过 `memory_lineage_edges` 反向向上遍历，找到其根源事件集合 $\{E_{\text{target}}\}$；
    * **Step 2（物理载荷擦除与墓碑追加）**：在单一事务中，将 `event_log` 中 $\{E_{\text{target}}\}$ 的 `summary_text` 覆写为 `'[REDACTED_BY_OWNER]'`、`payload_json` 覆写为 `'{}'`，并追加一条 `memory_redacted_tombstone` 事件；
-   * **Step 3（正向血缘级联失效与局部重算）**：从 $\{E_{\text{target}}\}$ 出发沿 `memory_lineage_edges` 正向 BFS 遍历所有下游衍生记忆节点 $\{M_{\text{tainted}}\}$：
-     * 若某衍生记忆 $M_k$ 的所有上游源事件均被擦除 $\rightarrow$ 直接从 `memories` 与 `memories_vec` 中**物理硬删除**；
-     * 若某衍生记忆 $M_k$ 还依赖同一场对话中的其他合法源事件（如上图中的 `evt_102`） $\rightarrow$ 将旧 $M_k$ 物理删除，并触发一次**仅以剩余未擦除源事件为输入的局部微重算（Targeted Micro-Reprojection）**，彻底解决“全量重放算力破产”与“衍生反思残留”两大难题！
+   * **Step 3（正向血缘级联失效与按 DAG 拓扑序自底向上局部微重算）**：从 $\{E_{\text{target}}\}$ 出发沿 `memory_lineage_edges (relation_type = 'derived_from')` 正向 BFS 遍历所有下游衍生记忆节点 $\{M_{\text{tainted}}\}$，并对受染子图按 **DAG 拓扑层级自底向上（Topological Level-Order Sort，确保父记忆节点永远先于依赖它的子记忆节点处理）** 依次执行：
+     * 若某衍生记忆 $M_k$ 的所有上游合法源事件/父记忆均被擦除 $\rightarrow$ 直接从 `memories` 与 `memories_vec` 中**物理硬删除**；
+     * 若某衍生记忆 $M_k$ 还依赖同一场对话中的其他合法未擦除源事件（如上图中的 `evt_102`）或未失效父记忆 $\rightarrow$ 将旧 $M_k$ 物理删除，并按拓扑层级顺序触发一次**仅以剩余未擦除源事件/已更新父记忆为输入的局部微重算（Topological Targeted Micro-Reprojection）**，彻底解决“全量重放算力破产”、“父子节点重算因果倒置”与“衍生反思残留”三大难题！
    * **Step 4（全受管副本同步脱敏擦除 —— 杜绝审计轨迹与检查点残留）**：
      在同一数据库事务中，同步清理除 `event_log` 与 `memories` 之外的所有受管副本：
      * **`turn_decision_traces`（决策轨迹表）**：将所有 `turn_event_id IN {E_target}` 或在 `step3_memory_recall_json` 中召回了 `{M_tainted}` 的轨迹记录中对应的输入摘要、召回正文与输出文本物理覆写为 `'[REDACTED_BY_FORGET]'`；

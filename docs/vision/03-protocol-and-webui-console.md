@@ -28,12 +28,12 @@
 * 在群聊、直播间、桌面陪伴甚至一对一私聊（如对方只是发了一句感叹或正在连续倾诉）中，**“经过思考后决定不说话（只安静倾听或只做一个微表情）”** 是生命感与社交分寸感的最高体现。
 * 因此，下行表达协议的 `action_type` 枚举中，**`explicit_silence` 与 `speak`、`invoke_actuator` 平起平坐**，并附带结构化的沉默原因 `silence_reason`（`listening_wait_for_more` / `not_addressed_in_group` / `respecting_user_focus` / `emotional_pause`）。
 
-### 1.3 握手能力协商、具身执行器声明与优雅降级 **`[文献/先行项目佐证]`** + **`[架构推断]`**
+### 1.3 握手能力协商、运行期动态执行器声明、动画关键帧序列与优雅降级 **`[文献/先行项目佐证]`** + **`[架构推断]`**
 
 作为具有能力边界的**具身运行环境（Embodied Runtime Environment）**，躯壳插件在建立 WebSocket 连接的第一步必须发送 `HandshakeManifest`，向内核暴露三大具身平面：
 * **`Sensors`（上行感知模态与端侧环境探针）**：声明自己能感知什么信号（如桌面窗口焦点、键鼠状态、手机通知与传感器、游戏状态、网页 DOM）；
-* **`Realizers`（下行表达渲染扩展）**：声明自己能理解并渲染的下行扩展命名空间（`supported_extensions`，如 `["ext.affect.v1", "ext.prosody.v1", "ext.embodied.v1"]`）；
-* **`Actuators`（端侧具身执行器列表）**：声明自己能替内核在宿主环境中执行的动作 Schema 及端侧权限要求（如 `desktop.capture_window_snapshot`、`game.perform_action`、`browser.interact_element`）；
+* **`Realizers`（下行表达渲染扩展）**：声明自己能理解并渲染的下行扩展命名空间（`supported_extensions`，如 `["ext.affect.v1", "ext.rhythm.v1", "ext.embodied.v1"]`），其中 `ext.embodied.v1` 原生支持遵循动画演出规律的**“开口前视线先行（`pre_speech`）$\rightarrow$ 词中微表情高潮（`on_substring`）$\rightarrow$ 句末余韵残留（`on_utterance_end`）”轻量关键帧序列**；
+* **`Actuators`（端侧具身执行器列表与运行期动态热增删）**：声明自己能替内核在宿主环境中执行的动作 Schema 及端侧权限要求（如 `desktop.capture_window_snapshot`、`game.perform_action`、`browser.interact_element`）。同时吸收 `neuro-sdk` 的动态动作可供性设计，允许躯壳在运行中途通过 `ControlSignal(signal_type="capabilities_updated")` 随场景切换（如游戏从主菜单进入战斗、或桌面切换焦点应用）动态注册或注销当前可用的具身执行器；
 * **社交场合、在场受众与流控参数**：`venue_type`, `current_audience`, `latency_budget_ms`。
 
 ---
@@ -80,8 +80,9 @@
 
 1. **架构定位：内建控制平面（Control Plane）**：
    系统的核心本体永远是无头（Headless）的**数字生命认知微内核**，而 `WebUI 控制台` 是系统标配的**内建控制平面**，与后台运行的认知个体松耦合分离。
-2. **远超普通静态 `Settings` 页面的四大工程职责**：
+2. **远超普通静态 `Settings` 页面的四大工程职责与双模态视觉体验**：
    由于认知中枢采用无头运行时、大脑状态随时间自发演化、且承载八大扩展生态，`WebUI 控制台` 除常规参数配置外，还同时承担以下四项核心工程职责：**无头内核的开箱互动沙盒与官方协议样板间（内置 WebChat）**、**活体记忆血缘与人格成长治理台**、**八大扩展生态的装配车间与插件 UI 宿主**、以及**跨时间尺度的认知时光机与回归实验室**。
+   在视觉体验与人因设计上，控制台严格遵循**《双模态视觉体验架构（Dual-Mode Visual Experience Architecture）》**：将日常陪伴入口（WebChat 舞台）打磨为具有**微时间排印、情绪微光晕与打断腹稿印记的感性呼吸舞台**，而将管理与实验入口（19 项面板）打磨为**高密度精密赛博观测天文台（32px 紧凑控件、等宽审计字体、`live` 主权绿 vs. `sandbox` 琥珀/紫罗兰警示围栏）**。
 
 ### 4.2 `WebUI 控制台` 的正式定义与“运行扩展 vs. 管理扩展”职责边界
 

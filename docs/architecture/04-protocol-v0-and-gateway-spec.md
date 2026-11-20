@@ -78,12 +78,13 @@ export interface PerceptionEnvelope {
   };
   /** 话轮生命周期：活动信号(防抖/闪避) | 流式增量草稿 | 正式提交 | 撤回(欲言又止) */
   lifecycle: "activity" | "interim" | "commit" | "retract";
-  modality: "text" | "audio_transcript" | "tactile" | "visual_semantic" | "environment_state";
+  /** 开放感知模态：统一复用 SensorModality (支持 WellKnownSensorModality 及 custom.* 社区自定义模态) */
+  modality: SensorModality;
   summary_text: string;                      // 任何极简核心均能理解的标准化语义文本描述
   confidence: number;                        // [0.0, 1.0] 边缘模型识别置信度 (文本输入恒为 1.0)
   sustained_ms?: number;                     // 持续时长 (用于过滤瞬时视觉抖动误报)
   persistence_hint: "permanent" | "ephemeral_blackboard"; // 连续生物特征默认仅进短期黑板，不落永久日志
-  extensions: Record<string, unknown>;       // 命名空间扩展字典
+  extensions: Record<string, unknown>;       // 命名空间扩展字典 (如 ext.perception.v1)
 }
 
 /**
@@ -126,12 +127,13 @@ export interface DeliveryReceipt {
 }
 
 /**
- * 原语 5：ControlSignal (Bidirectional 双向流控、注意力焦点与系统合规信号)
+ * 原语 5：ControlSignal (Bidirectional 双向流控、动态能力热更新、注意力焦点与系统合规信号)
  */
 export interface ControlSignal {
   signal_type:
     | "barge_in_cancel"                      // 通知对方立即中止当前流式输出或音频播放
     | "audience_changed"                     // Shell 动态上报在场受众变更 (如有人加入房间)
+    | "capabilities_updated"                 // Shell 运行期随场景变化动态热注册/注销 actuators 或 sensors (对齐并超越 neuro-sdk)
     | "focus_shifted"                        // Kernel 通知各 Shell 当前前台注意力焦点已切换至哪个 Shell
     | "sb243_break_reminder"                 // Kernel 下发连续交互满 3 小时休息提醒
     | "crisis_intervention_card";            // Kernel L0 危机拦截器下发的强制危机援助热线卡片
@@ -145,10 +147,27 @@ export interface ControlSignal {
 
 ## 二、官方标准扩展命名空间契约（Standard Extension Namespaces）
 
-所有高阶表现力均装载于 `ExpressionEnvelope.extensions` 中，躯壳按自身 `supported_extensions` 消费或优雅忽略：
+所有高阶感官覆盖与多模态表现力均装载于 `PerceptionEnvelope.extensions` 与 `ExpressionEnvelope.extensions` 中，内核与躯壳按 `supported_extensions` 消费或优雅忽略：
 
 ```typescript
 // packages/protocol/src/extensions/standard-v1.ts
+
+/** 0. 上行视神经感官覆盖桶与预测编码假设扩展 (ext.perception.v1) */
+export interface ExtPerceptionV1 {
+  /** 按 (shell_id, modality, source_key) 原地刷新的环境上下文桶标识 */
+  source_key: string;                        // 如 "camera.main" | "desktop.active_window" | "game.combat_hud"
+  /** 感官覆盖状态：中央凹聚焦 | 边缘背景感知 | 已过期陈旧 | 传感器已断开 */
+  coverage: "live_foveal" | "ambient_peripheral" | "stale" | "disconnected";
+  /** 观测时间跨度毫秒数 (静态单张图片恒为 0，物理禁止推断连续动作次数!) */
+  frame_span_ms: number;
+  /** 新鲜度 TTL：超过该毫秒数未收到新帧，黑板自动将该桶降级为 stale */
+  freshness_ttl_ms: number;
+  /** 预测编码：当边缘识别存在歧义时附带竞争感知假设，供后续特写/语境到来时触发微时间改口 */
+  competing_hypotheses?: Array<{
+    summary_text: string;
+    confidence: number;
+  }>;
+}
 
 /** 1. 情感与连续维度扩展 (ext.affect.v1) */
 export interface ExtAffectV1 {
@@ -172,8 +191,8 @@ export interface ExtRhythmV1 {
   };
 }
 
-/** 3. 具身微表情、眼神与动作意图扩展 (ext.embodied.v1 — 含相对语音同步锚点防声画失步!) */
-export interface ExtEmbodiedV1 {
+/** 3. 具身微表情、眼神与动画演出关键帧序列扩展 (ext.embodied.v1 — 含相对语音同步锚点与视线先行/余韵法则!) */
+export interface EmbodiedKeyframe {
   /** 解决 TTS 合成延迟导致声画失步的相对同步锚点 */
   sync_anchor: "pre_speech" | "on_utterance_start" | `on_substring:${string}` | "on_utterance_end";
   gaze?: {
@@ -190,6 +209,16 @@ export interface ExtEmbodiedV1 {
     intent: string;                          // 语义动作意图，如 "tilt_head_curious", "rub_against_hand"
     fallback_intent: string;                 // 通用保底动作，如 "nod_gentle", "idle_sway"
   };
+  /** 句末或动作结束后的微表情余韵保持毫秒数 (避免说完话瞬间立正归零的木偶恐怖谷) */
+  linger_ms?: number;
+}
+
+export interface ExtEmbodiedV1 extends EmbodiedKeyframe {
+  /**
+   * 动画演出多锚点关键帧序列（可选，最多 3 帧）：
+   * 遵循动画运动规律：pre_speech (开口前视线先行/吸气) -> on_substring (核心词微表情达峰) -> on_utterance_end (话音落下余韵残留)
+   */
+  keyframes?: EmbodiedKeyframe[];
 }
 ```
 

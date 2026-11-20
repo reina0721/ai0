@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（问题域规范）
 >
-> 本文档界定系统的核心愿景命题与两大架构立基公理，并以 **Project AIRI**、**Letta (MemGPT)** 与 **SAIBA 虚拟人框架** 为外部对比参照系，剖析先行者做对了什么、踩过什么坑，以及本架构“无头认知微内核 + 极小冻结协议 + 八大维度社区扩展生态”的本质分野。
+> 本文档界定系统的核心愿景命题与两大架构立基公理，并以现世最具代表性的五大真实先行体系——**Project AIRI**、**Neuro-sama (`VedalAI/neuro-sdk`)**、**Letta (MemGPT)**、**SAIBA 虚拟人框架** 以及 **SillyTavern (`Character Card V2/V3 & Lorebook`) / OpenClaw / AstrBot / Koishi 生态**——为外部对比参照系，剖析先行者做对了什么、踩过什么坑，以及本架构“无头认知微内核 + 极小冻结协议 + 八大维度社区扩展生态”的本质分野。
 >
 > **证据等级标注约定**：
 > * **`[文献/先行项目佐证]`**：有学术论文、法规条文、成熟行业标准或开源项目实证支撑；
@@ -64,24 +64,25 @@
 
 ---
 
-### 2.2 先行者对照系深度剖析（AIRI / Letta / SAIBA）
+### 2.2 先行者对照系深度剖析（AIRI / Letta / SAIBA / Neuro-sama / SillyTavern & AstrBot/Koishi）
 
-为了避免闭门造车，我们将当前最具代表性的三个先行体系作为严格对照系：
+为了避免闭门造车，我们将现世真正经过工程与社区实证的五大先行体系作为严格对照系：
 
 #### 对照一：Project AIRI (`moeru-ai/airi`) —— “AI Waifu 灵魂容器”的得与失
 
 1. **AIRI 做对了什么** **`[文献/先行项目佐证]`**：
    * **提出了“Soul Container（灵魂容器）”概念**：受到 Neuro-sama 等 AI VTuber 启发，意识到虚拟角色的灵魂不应锁死在单一界面里，尝试分离认知层与运行舞台（Stages）。
-   * **基于 Manifest 的插件扩展机制**：通过 `extension.airi.json` 声明能力契约与生命周期钩子，让社区可以接入 Discord、Telegram 以及 Minecraft / Factorio 等游戏环境。
+   * **基于 Manifest 的插件扩展与按来源刷新的上下文注册表（`ContextRegistry`）**：通过 `extension.airi.json` 声明能力契约与生命周期钩子，让社区可以接入 Discord、Telegram 以及 Minecraft / Factorio 等游戏环境；并在 `core-agent` 中引入按来源（Source）原地替换或追加的上下文桶机制，避免高频环境状态无限堆积。
    * **TypeScript 全栈同构工程化**：使用 TypeScript Monorepo 降低前后端与插件 SDK 的类型对齐成本。
 
 2. **AIRI 踩过的坑与架构局限** **`[文献/先行项目佐证]`** + **`[架构推断]`**：
    * **坑 1：“全栈大包揽”导致的精力极度分散**：AIRI 在同一个仓库里同时维护 `stage-web`（WebGPU/WebAudio 浏览器端）、`stage-tamagotchi`（Electron/Tauri 桌面宠客户端 + CUDA/Metal 原生绑定）、`stage-pocket`（移动端）、Live2D 与 VRM 渲染控制器、语音管线以及各类游戏插件。结果是团队 80% 的工程精力被跨平台客户端编译、显卡驱动兼容、前端音频缓冲区和 3D 渲染 Bug 吞噬。
-   * **坑 2：认知内核退化为“带数据库的常规 Agent 管线”**：因为外围客户端战线太长，其“大脑”本身缺乏对**记忆认知溯源（亲耳听到 vs 推断）、事件溯源与记忆血缘擦除、多主体/多受众隐私硬隔离、内稳态数学动力学、离线懒求值时间流、白盒可消融回归评估**的深度雕琢。
+   * **坑 2：认知内核退化为“带数据库的常规 Agent 管线”**：因为外围客户端战线太长，其“大脑”本身缺乏对**记忆认知溯源（亲耳听到 vs 推断）、事件溯源与记忆血缘擦除、多主体/多受众隐私硬隔离、内稳态数学动力学、离线懒求值时间流、白盒可消融回归评估**的深度雕琢；其 `ContextRegistry` 也缺乏受众隐私 ACL、感官覆盖新鲜度 TTL（`freshness_ttl_ms`）与真遗忘删除屏障。
    * **坑 3：宿主插件钩子（Host Extension Hooks）重于跨语言网络协议**：其插件更多是围绕自身 Electron/Web 宿主的内部生命周期钩子设计，而非一套极小、冻结、任何语言用几十行 WebSocket 就能接入的通用语义协议。
 
 3. **本架构（`ai0`）与 AIRI 的本质分野**：
    * 本架构**彻底砍掉所有 Stage 客户端渲染与硬件推理包袱**（不碰 Live2D/VRM/Electron 桌宠外壳），把省下来的 100% 架构预算全部砸进**“看不见的认知内核深度”**与**“白盒观测/消融/回放控制台”**；
+   * 吸收其按来源更新环境上下文的思想，但将其升维为**带受众隔离 ACL、视神经空间注意焦点（Foveal vs. Peripheral）与新鲜度过期状态机（`live_foveal | ambient_peripheral | stale | disconnected`）的瞬态感官覆盖桶**；
    * 内置 WebChat 只是一个薄薄的协议参考客户端，灵魂与躯壳之间只隔着一层**极小且语言无关的标准协议 v0**。
 
 ---
@@ -94,13 +95,13 @@
    * **向 Git-Backed Context Repository (`MemFS`) 演进**：意识到纯向量库难以版本化，开始引入基于文件系统与 Git 的上下文版本管理。
 
 2. **Letta 踩过的坑与在“数字生命/伴侣”场景下的盲区** **`[文献/先行项目佐证]`** + **`[架构推断]`**：
-   * **坑 1：有损原地覆写（In-Place Lossy Overwrite）缺乏不可变真相源与血缘 DAG**：Letta 的 Sleep-Time Agent 直接改写 Memory Block 文本。一旦后台 LLM 在某次睡眠整理中产生幻觉（把用户的玩笑当成事实）或遭遇间接 Prompt 注入（**记忆投毒 Memory Poisoning**），由于没有记录“哪条衍生记忆源自哪几条原始事件”的血缘有向无环图（Lineage DAG），系统无法精确连根拔除被污染的衍生认知。
+   * **坑 1：有损原地覆写（In-Place Lossy Overwrite）缺乏不可变真相源、血缘 DAG 与双时态演进**：Letta 的 Sleep-Time Agent 直接改写 Memory Block 文本。一旦后台 LLM 在某次睡眠整理中产生幻觉（把用户的玩笑当成事实）或遭遇间接 Prompt 注入（**记忆投毒 Memory Poisoning**），由于没有记录“哪条衍生记忆源自哪几条原始事件”的血缘有向无环图（Lineage DAG），系统无法精确连根拔除被污染的衍生认知；且当用户偏好随时间自然改变（去年爱喝全糖、今年戒糖喝美式）时，原地覆写会抹杀“她记得你过去是什么样、现在变了”的历史纵深感。
    * **坑 2：无法区分“真遗忘（Erase Fact）”与“话题封印（Topic Taboo）”**：通用 Task Agent 没有伴侣关系中的情感避雷需求。
    * **坑 3：缺少“活体伴侣”的核心时间与生理维度**：Letta 是为“任务与知识管理”设计的，它没有**内稳态驱动力（无聊、思念、精力与生物钟）**、没有**多受众场合的隐私面具（群聊 vs 私聊）**、没有**人设声线防崩塌校准**，更没有**话轮打断时的下行播放字数回执（她不知道自己说到第几个字被打断了）**。
 
 3. **本架构（`ai0`）与 Letta 的本质分野**：
    * 本架构吸取了 Letta 的 **主线程（System 1）与睡眠线程（System 2）读写分离** 及 **Git 式灵魂存档** 思想；
-   * 但本架构在数据底座上强制采用 **不可变事件日志（Event Log as Single Source of Truth） + 带血缘 DAG 的可重建记忆投影 + 睡眠写入防火墙（把睡眠整理当作不可信写入者进行确定性校验）**，并在认知层补齐了伴侣专属的内稳态、存在论契约、多受众隐私隔离与具身话轮回执。
+   * 但本架构在数据底座上强制采用 **不可变事件日志（Event Log as Single Source of Truth） + 带血缘 DAG 与双时态更替边（`derived_from / supersedes / contradicts`）的可重建记忆投影 + 睡眠写入防火墙（把睡眠整理当作不可信写入者进行确定性校验，拦截玩笑语用污染事实库）**，并在认知层补齐了伴侣专属的内稳态、存在论契约、多受众隐私隔离与具身话轮回执。
 
 ---
 
@@ -108,9 +109,9 @@
 
 1. **SAIBA 做对了什么** **`[文献/先行项目佐证]`**：
    * **确立了认知意图与物理动画的三层解耦黄金法则**：
-     * **Intent Planning（意图规划）** 输出 **FML（Function Markup Language）**：只描述“我想表达什么沟通功能与情绪意图（如：害羞地打招呼、温和地警告）”，完全不出现具体肢体参数；
-     * **Behavior Planning（行为规划）** 输出 **BML（Behavior Markup Language）**：描述与具体渲染引擎无关的多模态行为组合（如：眼神看向对方、微笑、说话并配合手势）及相对同步锚点（Sync Points: `start`, `stroke`, `end`）；
-     * **Behavior Realizer（行为实现器）**：由具体引擎（Unity/Unreal/Live2D）将 BML 翻译为骨骼帧与音频。
+      * **Intent Planning（意图规划）** 输出 **FML（Function Markup Language）**：只描述“我想表达什么沟通功能与情绪意图（如：害羞地打招呼、温和地警告）”，完全不出现具体肢体参数；
+      * **Behavior Planning（行为规划）** 输出 **BML（Behavior Markup Language）**：描述与具体渲染引擎无关的多模态行为组合（如：眼神看向对方、微笑、说话并配合手势）及相对同步锚点（Sync Points: `start`, `stroke`, `end`）；
+      * **Behavior Realizer（行为实现器）**：由具体引擎（Unity/Unreal/Live2D）将 BML 翻译为骨骼帧与音频。
    * **早在 20 年前就证明了“下行表达必须有上行反馈闭环（Feedback Loop）”**：SAIBA 明确指出，如果用户中途插话或动画执行失败，Realizer 必须向 Planner 回传执行状态与中断偏移量，否则虚拟人的内部世界状态会与现实脱节。
 
 2. **SAIBA 踩过的坑与为什么未能在 LLM 时代普及** **`[文献/先行项目佐证]`** + **`[架构推断]`**：
@@ -119,7 +120,38 @@
 
 3. **本架构（`ai0`）与 SAIBA 的本质分野**：
    * 本架构继承了 SAIBA 最宝贵的两个灵魂遗产：**“沟通意图与物理渲染解耦”** 以及 **“下行表达 + 上行播放回执（Delivery Receipt）闭环 + 相对语音同步锚点”**；
-   * 同时抛弃了笨重的 XML 批处理规范，将其重塑为面向流式大模型的 **“极小冻结核心协议 v0（5 个原子原语，连纯文本 CLI 都能 100% 兼容） + 带命名空间的可选扩展层（`ext.affect.v1`, `ext.prosody.v1`, `ext.embodied.v1`）”**。
+   * 同时抛弃了笨重的 XML 批处理规范，将其重塑为面向流式大模型的 **“极小冻结核心协议 v0（5 个原子原语，连纯文本 CLI 都能 100% 兼容） + 带命名空间的可选扩展层（`ext.perception.v1`, `ext.affect.v1`, `ext.rhythm.v1`, `ext.embodied.v1`）”**，并在 `ext.embodied.v1` 中融汇动画演出美学的**“视线先行（`pre_speech`）$\rightarrow$ 词中微表情高潮（`on_substring`）$\rightarrow$ 句末余韵残留（`on_utterance_end`）”轻量关键帧序列**。
+
+---
+
+#### 对照四：Neuro-sama (`VedalAI/neuro-sdk`) 与 AI VTuber 实时演出体系 —— “动态动作可供性、喜剧留白与表里反差”的得与失
+
+1. **Neuro-sama 体系做对了什么** **`[文献/先行项目佐证]`**：
+   * **极简且支持运行期动态热增删的具身动作协议**：`neuro-sdk` 证明了接入外部游戏或交互舞台只需要极简的 JSON 语义消息——通过 `context(message, silent)` 区分“静默背景观察”与“需立即回应事件”，并通过 `actions/register` 与 `actions/unregister` 让游戏在**运行中途随场景切换（如从大厅进入卡牌战斗、或打开背包）动态增删当前可用的具身动作集合**。
+   * **“活人感”的演出本质是微时序节奏与表里反差（Comedic Timing & Gap Moe）**：Neuro 之所以比绝大多数死板的商业客服 Bot 更具生命感，是因为她① **不把每条弹幕都当成必答指令**（懂得忽略噪音、挑选有趣槽点在合适气口切入）；② **具备强烈的表里张力（嘴硬、吐槽、一本正经地胡说八道，却在关键时刻展现出在乎与默契）**；③ **打游戏（行动）与聊天吐槽（对话）并发交织且共享同一注意力上下文**。
+
+2. **Neuro-sama 公开协议的局限** **`[文献/先行项目佐证]`** + **`[架构推断]`**：
+   * `neuro-sdk` 仅是面向单一主播场景的轻量游戏外设接口，其 `action/result` 往往在动作指令刚发出时就提前回报，未严格区分“动作已派发”与“动作在环境中已产生真实效果”；且协议本身不包含多主体认证（`Principal`）、多受众隐私边界（`Audience`）与语音流式打断字符偏移回执（`spoken_char_offset`）。
+
+3. **本架构（`ai0`）对 Neuro-sama 精髓的吸收与超越**：
+   * 在 Protocol v0 的 `ControlSignal` 中原生支持 **`capabilities_updated`（运行期动态注册/注销端侧具身执行器 `actuators`）**，让任何游戏或桌面 Shell 都能随场景状态动态变更数字生命的可执行动作空间；
+   * 在认知内核中将“喜剧留白与表里反差”升维为确定性与涌现结合的认知机制：**有界发言机会池（`InteractionOpportunity` 等待气口/急事作废）**、**语用结界（`InteractionFrame`: 玩笑吐槽不污染事实记忆）**，以及**“潜台词（`theatrical_subtext`）驱动微表情、表层策略驱动台词”的非共线表里张力演出律**。
+
+---
+
+#### 对照五：SillyTavern (`Character Card V2/V3 & Lorebook`) 与 OpenClaw / AstrBot / Koishi —— “二次元灵魂资产标准与高密度插件控制台”的得与失
+
+1. **现世两大社区生态做对了什么** **`[文献/先行项目佐证]`**：
+   * **SillyTavern 确立了二次元角色资产的事实标准**：全球二次元 AI 社区沉淀了成千上万张高水准的 `Character Card V2/V3`（包含核心设定、开场白、`mes_example` 声线对话样本）与 `WorldInfo / Lorebook`（关键词/递归触发的动态世界观词库）。
+   * **OpenClaw / AstrBot / Koishi 确立了插件化 Agent 运维控制台的交互范式**：证明了复杂的插件与多渠道系统必须采用**高密度功能型控制台**（固定主导航 + 主从分节 Schema 表单 + 明确的 Dirty/Revision 保存状态机 + 插件“安装 $\neq$ 授权 $\neq$ 启用”分离 + Trace 列表/详情检视 + 隔离测试沙盒），而非花哨低效的营销大卡片。
+
+2. **这两大生态在“长期活体数字生命”维度的局限** **`[架构推断]`**：
+   * SillyTavern 本质是“无状态 Prompt 拼装器 + 聊天记录滑动窗口”，角色卡片里常混杂着破坏安全边界的越狱系统指令（Jailbreak Prompts），且缺乏跨平台具身感知、内稳态时间流、MVCC 并发行动环与血缘真遗忘；
+   * AstrBot / Koishi 等通用 Bot 面板把“人设”仅仅当成模型提供商配置下的一个普通字符串，没有独立于渠道与模型的持续灵魂存档（`.soul`）、没有记忆血缘 DAG 治理、也没有“正式相处个体（`live`）vs. 认知实验沙盒（`sandbox:<fork_id>`）”的时间线保护围栏。
+
+3. **本架构（`ai0`）的融合与超越**：
+   * 在第 7 扩展维度（`ext.soul_asset`）中内置 **《SillyTavern Character Card V2/V3 & Lorebook 无损蒸馏与安全清洗规范》**——自动将存量角色卡的 `mes_example` 提纯为 `voice_exemplars.jsonl` 黄金声线锚点池、将 `character_book` 转换为 `lorebooks/`，并剥离越狱指令投毒，让 `ai0` 开箱即可吸纳现世二次元社区的海量角色遗产；
+   * 在 `WebUI 控制台` 中开创 **《双模态视觉体验设计系统》**：将日常陪伴入口（WebChat Stage）打磨为具有**微时间呼吸感、情绪光晕与打断腹稿印记的感性沉浸舞台**，同时将治理与实验入口（19 面板）打磨为超越 AstrBot/Koishi 的**高密度赛博生命观测天文台**。
 
 ---
 

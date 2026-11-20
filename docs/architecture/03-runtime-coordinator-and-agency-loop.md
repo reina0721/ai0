@@ -53,16 +53,19 @@ sequenceDiagram
 
 | 状态域标识 (`StateDomain`) | 包含的核心状态 | 并发冲突与合并裁决规则（MVCC Resolution Rule） |
 | :--- | :--- | :--- |
-| **`D1_WORKING_TURN`** | 当前话轮上下文窗口、被打断未说完的腹稿（`unsaid_remainder`）、当前注意力焦点 `active_focus_shell_id` | **强排他最新优先（Last-Turn-Wins with Barge-in Cancel）**：仅允许前台 `W1` 与播放回执修改；若新话轮打断旧话轮，旧 `W1` 提案直接通过 `CancellationToken` 作废。 |
-| **`D2_HOMEOSTASIS_AFFECT`** | 瞬时情绪、持久心境、双轨精力、社交渴望与好奇心驱动力 | **可交换增量叠加（Commutative Impulse Accumulation）**：由于情绪与稳态提案提交的是**定性冲量（Impulse $\Delta$）**而非绝对值覆写，协调器在当前最新解析时间状态 $\mathbf{S}(t)$ 上叠加阻尼冲量并做上下界 Clamping，**永不发生丢失更新（Zero Lost Update）**！ |
-| **`D3_MEMORY_PROJECTION`** | `memories` 表、`memory_lineage_edges` 血缘图 | **基于源事件血缘的乐观校验（Lineage-Scoped OCC）**：后台 `W3`（睡眠整理）提交新记忆提案时，协调器检查其引用的 `source_event_ids[]` 在 `W3` 运行期间是否被主人在前台执行了 `Hard Forget`（真遗忘擦除）。若源事件完好无损，则直接安全合入；若源事件已被擦除，则拒绝该条记忆提案！ |
+| **`D1_WORKING_TURN`** | 当前话轮上下文窗口、被打断未说完的腹稿（`unsaid_remainder`）、当前注意力焦点 `active_focus_shell_id`、有界发言机会池（`pending_opportunities[]`）、按来源刷新的瞬态感官覆盖桶（`sensory_coverage_buckets`） | **强排他最新优先与机会气口仲裁（Last-Turn-Wins with Barge-in Cancel & Opportunity Expiration）**：仅允许前台 `W1`、感官门控与播放回执修改；若新话轮打断旧话轮，旧 `W1` 提案直接通过 `CancellationToken` 作废；池中过期的 `InteractionOpportunity` 或因急事/话题切换失效的旧包袱在提交前自动标记为 `expired / withdrawn`。 |
+| **`D2_HOMEOSTASIS_AFFECT`** | 瞬时情绪、持久心境、双轨精力、社交渴望与好奇心驱动力 | **双曲正切李群同构可交换软饱和叠加（Abelian Group Hyperbolic-Tangent Impulse Accumulation）**：为避免边界硬截断 `Clamp(v + Δ, -1, 1)` 破坏交换律以及连续同向刺激过早顶死极值，协调器将情绪效价 $v \in (-1, 1)$ 与定性冲量映射值 $\delta \in \mathbb{R}$ 的合成定义为阿贝尔群算子 $v \oplus \delta := \tanh(\operatorname{artanh}(v) + \delta) = \frac{v + \tanh(\delta)}{1 + v\tanh(\delta)}$（对 $[0, 1)$ 单侧驱动力采用 Log-Odds Sigmoid 群算子 $D \oplus_{\sigma} \delta := \sigma(\sigma^{-1}(D) + \delta)$）。无论 `W1/W2/W3` 以何种并发顺序提交冲量，**$(v \oplus \delta_1) \oplus \delta_2 \equiv (v \oplus \delta_2) \oplus \delta_1$ 在代数上 100% 恒等（真正意义的 Zero Lost Update）**，且天然具备韦伯-费希纳（Weber-Fechner）边际递减软饱和特性！ |
+| **`D3_MEMORY_PROJECTION`** | `memories` 表、`memory_lineage_edges` 血缘与更替图 | **基于源事件血缘与双时态更替的乐观校验（Lineage & Bitemporal OCC）**：后台 `W3`（睡眠整理）提交新记忆或双时态更替（`supersedes`）提案时，协调器检查其引用的 `source_event_ids[]` 在 `W3` 运行期间是否被主人在前台执行了 `Hard Forget`（真遗忘擦除）。若源事件完好无损，则直接安全合入；若源事件已被擦除，则拒绝该条记忆提案！ |
 | **`D4_COMMITMENTS_TASKS`** | 前瞻承诺状态机、正在运行的 8 步行动任务状态树 | **按对象 ID 细粒度乐观锁（Entity-Level Revision Lock）**：只要前台没有取消该 `task_id` / `commitment_id`，后台 `W2` 的步骤进度更新直接合入。 |
 | **`D5_IDENTITY_NARRATIVE`** | `identity.yaml` (Tier 1) 与 `narrative.md` (Tier 2) | **双轨分级演化与审批门控（Dual-Track Narrative Evolution & Approval Queue）**：<br/>• **Tier 1（`identity.yaml` 核心身份与长期价值观）**：100% 强制挂起至控制台 `PendingApproval` 队列，必须由主人显式批准方可合入；<br/>• **Tier 2（`narrative.md` 可演化自我叙事）**：由协调器统一按冲突等级分流——① **常规日常演进（`routine_append`）**（新增日常经历形成的内部梗、近期话题兴趣或默契，且无价值观冲突）自动生效并写入版本审计记录（支持在控制台一键回退）；② **高影响/冲突变更（`high_impact_shift`）**（涉及改写或删除既有自我叙事观点、对主人关系定性发生极性反转、或与 Tier 1 存在边缘张力）自动升级进入控制台 `PendingApproval` 队列并展示升级理由，待主人批准后生效。 |
 
 ### 2.2 协调器内置的三大确定性防火墙
 
 在任何 `StateMutationProposal` 落入 `@ai0/storage` 事务之前，协调器串联执行三道代码级硬校验：
-1. **血缘污染传播与睡眠写入防火墙（Sleep Write Firewall）**：校验提案引用的 `source_event_ids` 是否真实存在；只要任一源事件的 `principal_trust != 'owner_verified'`，强制将该记忆的 `taint_level` 锁死为 `'untrusted_external'`，禁止其修改核心主人画像或关系信任度。
+1. **血缘污染传播、语用结界与睡眠写入防火墙（Sleep Write & Pragmatic Frame Firewall）**：
+   * 校验提案引用的 `source_event_ids` 是否真实存在；只要任一源事件的 `principal_trust != 'owner_verified'`，强制将该记忆的 `taint_level` 锁死为 `'untrusted_external'`，禁止其修改核心主人画像或关系信任度；
+   * **玩笑与角色扮演语用拦截**：若源事件的决策轨迹标记为 `interaction_frame IN ('playful_banter', 'roleplay_fiction')`，防火墙在代码层硬性拦截其写入 `epistemic_type = 'observed_firsthand'` 的 `semantic_fact`，防止玩笑话（如“周二是我发明的”）污染客观事实库；
+   * **共同默契采纳校验（CommonGround Gate）**：新增的 `relational_tacit`（内部梗/外号）初始强制置为 `grounding_status = 'proposed_presented'`，仅当附带用户后续话轮的正向接梗/回用事件 ID 作为采纳证据时，方允许晋升为 `'mutually_grounded'`。
 2. **反操控与心结边界裁决器（Anti-Manipulation Clipper）**：裁剪单轮情绪/关系跳变幅度上限；强制为任何新产生的“心结（Tension）”绑定 $\le 48$ 小时的衰减半衰期。
 3. **8 步可验证决策审计落库（Audit Trace Recorder）**：将裁决前后的完整参数写入 `turn_decision_traces` 表，同时推送至控制台特权遥测总线。
 
@@ -81,14 +84,19 @@ sequenceDiagram
   $$\Delta t_{\text{gap}} = t_{\text{boot}} - t_{\text{last\_alive}}$$
   若 $\Delta t_{\text{gap}} > 5\text{ minutes}$，该区间被自动记入 `HibernationIntervals`（关机冬眠期）。在计算“被主人冷落时长”与“社交饥渴积分”时，冬眠期被自动扣除，仅转化为醒来时的温和伸懒腰体感。
 
-### 3.2 时间演进三分法与可求逆阈值唤醒公式
+### 3.2 时间演进三分法、二阶耦合情绪动力学与可求逆阈值唤醒公式
 
 1. **第一层：确定性时间状态（0 Token 纯数学解析函数）**
-   给定上次状态检查点 $(t_0, \mathbf{S}_0)$，任意虚拟时刻 $t > t_0$（扣除冬眠期后有效流逝 $\Delta t = t - t_0$）的状态由闭式解直接给出：
-   * **瞬时情绪向心境基线指数回归**：
-     $$v_{\text{instant}}(t) = v_{\text{mood}}(t_0) + \big(v_{\text{instant}}(t_0) - v_{\text{mood}}(t_0)\big) \cdot e^{-\lambda_{\text{emo}} \Delta t}$$
+   给定上次状态检查点 $(t_0, \mathbf{S}_0)$，任意虚拟时刻 $t > t_0$（扣除冬眠期后有效流逝 $\Delta t = t - t_0$）的状态由二阶耦合常微分方程组的闭式解直接给出：
+   * **快变瞬时情绪 $v_{\text{instant}}(t)$ 与慢变持久心境 $v_{\text{mood}}(t)$ 的二阶耦合回归闭式解**：
+     设角色人格情感基线为 $v_{\text{base}}$，慢心境向人格基线衰减率为 $\lambda_{\text{mood}}$（半衰期 $\sim 12\text{h}$），快情绪向慢心境回归率为 $\lambda_{\text{emo}} \gg \lambda_{\text{mood}}$（半衰期 $\sim 20\text{min}$），满足耦合线性动力系统 $\frac{dv_{\text{mood}}}{dt} = -\lambda_{\text{mood}}(v_{\text{mood}} - v_{\text{base}})$ 与 $\frac{dv_{\text{instant}}}{dt} = -\lambda_{\text{emo}}(v_{\text{instant}} - v_{\text{mood}}(t))$，其零误差解析解为：
+     $$v_{\text{mood}}(t) = v_{\text{base}} + \big(v_{\text{mood}}(t_0) - v_{\text{base}}\big) \cdot e^{-\lambda_{\text{mood}} \Delta t}$$
+     $$v_{\text{instant}}(t) = v_{\text{mood}}(t) + \Big(v_{\text{instant}}(t_0) - v_{\text{mood}}(t_0) - \kappa\Big) \cdot e^{-\lambda_{\text{emo}} \Delta t} + \kappa \cdot e^{-\lambda_{\text{mood}} \Delta t}, \quad \text{其中 } \kappa := \frac{\lambda_{\text{mood}}\big(v_{\text{mood}}(t_0) - v_{\text{base}}\big)}{\lambda_{\text{emo}} - \lambda_{\text{mood}}}$$
    * **社交思念/无聊度驱动力单调饱和积分**：
      $$D_{\text{longing}}(t) = D_{\max} - \big(D_{\max} - D_{\text{longing}}(t_0)\big) \cdot e^{-\lambda_{\text{drive}} \Delta t}$$
+   * **视神经时空变化率感官习惯化衰减（Sensory Habituation Filter）**：
+     对于持续未发生实质状态跃迁的环境信号，其穿透丘脑门控的有效显著性随持续不变时长 $\Delta t_{\text{unchanged}}$ 指数衰减：
+     $$S_{\text{eff}}(t) = S_{\text{raw}} \cdot e^{-\gamma_{\text{hab}} \Delta t_{\text{unchanged}}}$$
    * **反解精确唤醒时刻 $t_{\text{next}}$（零轮询后台定时）**：
      令 $D_{\text{longing}}(t) = \theta_{\text{proactive}}$，直接求逆解出驱动力跨越主动搭话阈值的精确时刻：
      $$\Delta t_{\text{cross}} = -\frac{1}{\lambda_{\text{drive}}} \ln\left(\frac{D_{\max} - \theta_{\text{proactive}}}{D_{\max} - D_{\text{longing}}(t_0)}\right) \implies t_{\text{drive\_wake}} = t_0 + \Delta t_{\text{cross}}$$

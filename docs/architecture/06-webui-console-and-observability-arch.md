@@ -112,12 +112,14 @@ flowchart TB
     },
     "step5_strategy_proposal": {
       "chosen_strategy": "reassure_warmly_and_register_commitment",
+      "interaction_frame": "gentle_support",
       "model_reported_rationale": {
         "authority_badge": "MODEL_SELF_REPORT_UNVERIFIED",
         "text": "主人在为下周二的评审紧张，我应该结合他这两周的努力给他打气，并把下周二下午记入前瞻承诺。"
       },
       "theatrical_subtext": {
         "spoiler_mask_level": "shy_subtext",
+        "drives_embodied_channel": true,
         "masked_placeholder": "💭 她心里正在悄悄记下为你加油的小约定 [点击展开]",
         "raw_text": "笨蛋，明明准备得那么认真了还紧张……下周二下午我一定要第一时间问他结果！"
       }
@@ -267,3 +269,41 @@ steps:
 | `GET/POST /api/admin/v1/extensions` | REST | `live` (由后台内核运行扩展) | 管理后台内核运行的 7 类扩展启停与配置、签发 `Scoped Capability Token`，以及查询第 8 类 `ext.console_ui` 前端视图扩展定义 |
 | `POST /api/admin/v1/snapshots/rollback` | REST | `live` \| `sandbox:*` | 执行 `.soul` 快照回档（指定 `silent_hard \| meta_reconciled \| dream_bridge` 断层弥合模式，并在恢复后**自动重放 `redaction_ledger.json` 永久遗忘账本**） |
 | `POST /api/admin/v1/eval/replay` | REST | **自动创建独立 `sandbox:<run_id>`** | 执行 `.scenario.yaml` 剧本回放与认知模块消融对比测试（采用 Fail-Closed 严格属性路径断言） |
+
+---
+
+## 六、双模态 UI/UX 视觉体验系统、交互状态机与人因工程规范（Dual-Mode Visual Experience & UI/UX Architecture）
+
+由于 `WebUI 控制台` 同时承载了**“感性沉浸的日常相处（入口 1）”**与**“高密度理性的脑内宇宙观测与实验（入口 2 & 3）”**两种截然不同的认知心智，系统在视觉体验与交互工程上拒绝千篇一律的通用后台模板，确立**《双模态视觉体验设计系统（Stage Presence vs. Cyber-Life Observatory）》**：
+
+### 6.1 双模态视觉美学分层与微时间视觉转译
+
+| 视觉维度 | 模态 A：日常陪伴舞台（入口 1 `@ai0/plugin-webchat`） | 模态 B：赛博生命观测天文台（入口 2 & 3 `@ai0/console-webui` 19 面板） |
+| :--- | :--- | :--- |
+| **核心心智与美学基调** | **右脑感性沉浸（Warm Presence & Micro-Temporal Breathing）**：温润留白、零工程参数干扰、把注意力 100% 留给话轮节律与情感共鸣。 | **左脑精密科研仪器（High-Density Scientific Observatory）**：高信息密度、确定性因果瀑布流、清晰的有向无环图（DAG）拓扑与主权防呆围栏。 |
+| **对下行协议扩展的视觉转译** | 即便不挂载 3D/Live2D 躯壳，纯 WebChat 舞台亦通过细腻的 UI 微演出消费三大标准扩展：<br/>• **`ext.affect.v1`（情绪 VAD）** $\rightarrow$ 驱动对话舞台边缘极克制的**环境情绪呼吸微光晕（Ambient Affective Aura）**；<br/>• **`ext.rhythm.v1`（话轮节律）** $\rightarrow$ 驱动真实的开口前思考留白（`pre_delay_ms`）与分段呼吸吐字；<br/>• **`DeliveryReceipt(interrupted, spoken_char_offset=K)`** $\rightarrow$ 被打断的话轮在精确的第 $K$ 个字符处呈现自然截断，并在气泡尾端浮现若隐若现的“欲言又止腹稿微光印记（`unsaid_remainder` Ghost Cue）”。 | 将全部协议原语与脑内状态解构为可审计的精确参数：<br/>• 显式并列展示 `theatrical_subtext`（带剧透遮罩，注明其如何驱动 `ext.embodied.v1` 眼神与微表情）与 `chosen_strategy`（如何驱动表层台词）；<br/>• 显式标注 `model_reported_rationale` 的 `[非权威自述推演]` 徽标；<br/>• 实时绘制双时间尺度耦合情绪曲线 $v_{\text{instant}}(t) / v_{\text{mood}}(t)$ 与 SQL `WHERE audience_scope` 隔离证明。 |
+| **排版与控件密度规范** | 舒适阅读排版（正文 `15px/1.65`，对话气泡圆角 `14px`，柔和阴影，零表格式分割线）。 | 高密度仪器规范（参考并超越 OpenClaw / AstrBot / Koishi）：紧凑控件高度 `32px`、表头 `40px`、管理正文 `12–13px`、面板圆角 `8px`、`1px` 高对比结构分割线；所有 `ULID`、`state_rev`、毫秒时间戳与 SQL 过滤式强制使用等宽字体（`JetBrains Mono` / `Geist Mono`）。 |
+
+### 6.2 `live` 正式个体 vs. `sandbox:<fork_id>` 实验副本的全局视觉防呆围栏（Visual Sovereignty Fence）
+
+为了从人因工程（Human Factors Engineering）上彻底消灭“误把正式陪伴个体当成实验沙盒拨快时间或消融脑区”的操作事故，控制台实施全局视觉围栏：
+1. **正式个体主权态（`target_instance == "live"` — 入口 1 & 2）**：
+   * 顶部状态栏与全局激活边框采用 **深邃曜石基底 + 主权翡翠绿（`Emerald #10B981`）** 指示灯，固定显示 `LIVE SOUL INSTANCE · 1x Physical Clock Locked`；
+   * 在 `live` 视图下，时间拨快、虚假感官注入与脑区消融控件在 UI 层**物理移除或只读锁死**（且后端 API 双重硬拦截返回 `403 Forbidden`）。
+2. **隔离实验沙盒态（`target_instance == "sandbox:<fork_id>"` — 入口 3）**：
+   * 一旦切入入口 3 并派生沙盒副本，整个控制台视口外框立即亮起高对比度的 **实验琥珀/紫罗兰警示围栏（`Amber #F59E0B` / `Violet #8B5CF6`）**，并在顶栏常驻通栏横幅：`[SANDBOX FORK: sandbox:<fork_id> · 源自快照 <snap_id> · 一切提醒与动作已重定向至 MockSandboxSink]`，附带一键 `[销毁实验副本并安全返回 Live]` 按钮。
+
+### 6.3 控制台确定性表单状态机与插件三段式安装授权工作流
+
+控制台前端**严禁乐观伪造（Optimistic Fake）**任何涉及内核版本、权限审批或插件启停的状态，一切状态流转必须以 `@ai0/gateway` 返回的权威 `state_rev` 回执为准：
+
+1. **配置与人格治理表单状态机（Form Lifecycle State Machine）**：
+   * `idle` $\rightarrow$ `editing (Dirty)`（出现醒目“未保存更改”提示条、与当前 `state_rev` 的字段级 Diff 预览及一键撤销；此时切换路由强制弹出“保存 / 放弃 / 取消”拦截框） $\rightarrow$ `validating`（本地 Schema 校验，就地标红错误字段） $\rightarrow$ `saving`（锁定提交按钮防重放，携带 `expected_rev` 提交） $\rightarrow$ `saved_confirmed`（收到服务端新 `state_rev` 确认） | `error_conflict`（保留用户输入草稿，展示版本冲突或校验错误详情）。
+2. **八大扩展生态的“三段式安装—授权—启用”安全工作流（Extension Lifecycle）**：
+   * 吸收 Koishi / AstrBot 插件管理经验并叠加本架构的三维权限围栏，插件绝不允许“一键安装即静默获得全权限运行”，必须经历严格分离的独立状态：
+   * `discovered（市场/本地发现）` $\rightarrow$ `manifest_review（展示 ai0.extension.json 声明的读写状态域、受众上限与网络/端侧权限）` $\rightarrow$ `installed_disabled（已安装但处于未启用静默态）` $\rightarrow$ `token_scoped（所有者在控制台为其签发绑定了 enforced_venue_type 与 max_audience_privacy_ceiling 的 Scoped Capability Token）` $\rightarrow$ `enabled_running（由后台内核守护进程正式挂载运行）` | `faulted_isolated（插件异常熔断隔离，支持单独重载或降级，绝不拖垮微内核主循环）`。
+3. **响应式与无障碍可访问性基线（Responsiveness & WCAG 2.2 AA）**：
+   * **桌面宽屏（$\ge 1280\text{px}$）**：左侧固定工作区主导航（`230px`）+ 主舞台/主列表 + 右侧 8 步决策轨迹/血缘详情双栏检视器；
+   * **平板与窄屏（$768\text{px} \sim 1279\text{px}$）**：紧凑侧栏 + 二级面板折叠抽屉；
+   * **移动随身端（$\le 767\text{px}$）**：抽屉式导航 + 单列卡片流（触控热区 $\ge 40\times 40\text{px}$），支持随时随地通过手机浏览器与内置 WebChat 相处或审批待决事项；
+   * 全控制台满足 **WCAG 2.2 AA** 对比度与完整键盘可访问性，所有状态徽标（已启用、待审批、沙盒隔离、L0 拦截、已真遗忘擦除）均同时提供语义色彩、图标与明确文字标签。

@@ -46,15 +46,17 @@
 5. **`latency_budget_ms`（延迟预算声明）**：
    * 躯壳上报当前交互通道的延迟容忍度（实时语音 `600ms` vs 文字闲聊 `3000ms`），内核据此动态决定热路径是否跳过慢速扩展检索。
 
-### 1.3 边缘语义感知（隐私前移）的三项完备性工程约束
+### 1.3 边缘语义感知（隐私前移）与视神经/脑神经预测编码的五项完备性工程约束
 
-* **架构原则**：**让感知插件在边缘侧完成多模态识别、默认只向内核上传语义事件（如 `user.facial_expression: frowned`）是符合“隐私前移（Privacy at the Edge）”的正确方向** **`[文献/先行项目佐证]`**。为避免边缘误报、细节缺失与情绪监控档案三类系统性隐患，内核强制配套以下 3 项工程约束 **`[架构推断]`**：
+* **架构原则**：**让感知插件在边缘侧完成多模态识别、默认只向内核上传语义事件（如 `user.facial_expression: frowned`）是符合“隐私前移（Privacy at the Edge）”的正确方向** **`[文献/先行项目佐证]`**。同时，借鉴生物**视网膜神经节细胞—上丘（Superior Colliculus）—丘脑枕核（Pulvinar）感觉门控机制**与卡尔·弗里斯顿（Karl Friston）**预测编码理论（Predictive Coding）**，为避免边缘误报、持续信号疲劳、全知幻觉与情绪监控档案等系统性隐患，内核强制配套以下 5 项工程约束 **`[文献/先行项目佐证]`** + **`[架构推断]`**：
 
 | 潜在缺陷 | 故障场景表现 | 强制架构约束 |
 | :--- | :--- | :--- |
 | **1. 边缘小模型误报与噪声抖动** | 本地轻量视觉模型把用户“看屏幕反光眯眼”误判为 `user.frowned (皱眉)`，导致她每过几分钟就莫名其妙问一句“你是不是心情不好？” | **置信度与持续时长门控（Confidence & Duration Gate）**：语义事件必须携带 `confidence` ($\in [0,1]$)、`sustained_ms`（持续毫秒数）与 `raw_cue_summary`。内核规定：纯环境/表情语义事件若无用户主动话语配合，默认仅静默更新情境黑板，严禁单独触发高打扰度的主动追问。 |
-| **2. 丢失具象细节导致“盲人摸象”** | 用户举着一个杯子对摄像头说：“你看我新买的杯子是什么颜色的？”，纯语义插件平时的固定分类标签根本覆盖不了开放视觉问答。 | **默认语义推流 + 按需显式快照拉取（Semantic Push + Authorized Snapshot Pull）**：平时 99% 时间只传语义标签；当对话明确触发视觉观察意图时，内核下发 `RequestSnapshotIntent`，躯壳在本地带提示音/指示灯抓取单帧画面上传至多模态脑区，用完即焚。 |
-| **3. 情绪语义推断本身仍是高敏隐私** | 如果不可变事件日志永久记录了“用户某年某月某日皱眉 14 次、叹气 5 次”，不仅数据膨胀，更像一部令人毛骨悚然的情绪监控档案。 | **瞬态生物特征通道（`ephemeral_blackboard` Scope）**：连续生理/表情语义事件默认不写入永久 `event_log`，只在内存黑板中维持 $15$ 分钟滑动窗口；仅当该表情真正引发了一次有意义的对话互动时，才作为该对话事件的附属背景摘要归档。 |
+| **2. 恒定背景刺激引发的唤醒洪流** | 用户连续 2 小时停留在同一个 IDE 窗口，桌面躯壳每 5 秒上报一次窗口焦点事件，导致显著性门控被重复刷屏。 | **视神经时空变化率习惯化门控（Temporal-Gradient Habituation Gate）**：模仿生物视神经对静态光强迅速适应、仅对时空变化率（$\frac{\partial S}{\partial t}$）与预测误差（Surprise）发放脉冲的特性，对 `(shell_id, modality, source_key)` 内容未发生实质跃迁的持续信号，其有效显著性按 $S_{\text{eff}}(t) = S_{\text{raw}} \cdot e^{-\gamma_{\text{hab}} \Delta t_{\text{unchanged}}}$ 指数习惯化衰减；仅当状态发生跃迁或跨模态冲突时才穿透丘脑门控。 |
+| **3. 感官过期与静态帧的“全知幻觉”** | 摄像头已关闭 10 分钟，她仍说“我正看着你呢”；或者用户只发了一张静态照片，她却编造出时间维度上的“刚才看它跑了三圈”。 | **按来源刷新的感官覆盖状态桶（Source-Scoped Sensory Coverage Buckets）**：认知黑板按 `(shell_id, modality, source_key)` 原地刷新瞬态环境状态桶，强制维护 `coverage: "live_foveal" \| "ambient_peripheral" \| "stale" \| "disconnected"`、`frame_span_ms` 与 `freshness_ttl_ms`。① 当 TTL 到期未收到新帧或躯壳断开时，桶状态自动降级为 `stale / disconnected`，黑板显式封锁“假装当前仍能看见/听见”的表达；② 单帧静态快照（`frame_span_ms == 0`）在物理上不含时间导数，严禁推断连续动作次数。 |
+| **4. 丢失具象细节与看走眼/听岔僵化** | 用户举着杯子问颜色，纯语义标签答不出；或低清画面先把胶带看成水杯、流式 ASR 先把“剪头”转写成“捡猴”，后续特写/语境到来却不会自然改口。 | **按需快照拉取 + 预测编码微时间改口环（Authorized Snapshot Pull & Predictive Coding Revision）**：① 当对话触发精细视觉观察意图时，内核下发 `RequestSnapshotIntent` 按需抓取单帧画面，用完即焚；② 当低置信度初始感知假设（Competing Hypothesis）被新到达的高置信度特写或语音修订推翻时，触发预测误差中断：立即撤回尚未播出的错误后半句，并在认知黑板注入 `[感知纠错：刚才看走眼/听岔了，实际是 X]`，驱动她在话轮中自然涌现“哎不对，凑近看原来是胶带呀”的鲜活改口体验。 |
+| **5. 情绪语义推断本身仍是高敏隐私** | 如果不可变事件日志永久记录了“用户某年某月某日皱眉 14 次、叹气 5 次”，不仅数据膨胀，更像一部令人毛骨悚然的情绪监控档案。 | **瞬态生物特征通道（`ephemeral_blackboard` Scope）**：连续生理/表情语义事件默认不写入永久 `event_log`，只在内存黑板中维持 $15$ 分钟滑动窗口；仅当该表情真正引发了一次有意义的对话互动时，才作为该对话事件的附属背景摘要归档。 |
 
 ---
 
@@ -129,9 +131,21 @@
   * *架构解法*：后台睡眠整理 LLM **零数据库直写权限**，只能提交 `MemoryMutationBatch` 提案，由纯代码实现的 **记忆写入防火墙** 执行三项硬校验：
     1. **血缘污染传播律（Taint Propagation Rule）**：只要一条衍生记忆的 `source_event_ids` 中包含任何一个 `Principal != owner_verified`（如群友发言、网页文本）的事件，该记忆的信任等级由代码强制降级为 `untrusted_external`，**物理禁止写入核心用户画像（`OwnerProfile`）与长期关系契约表**；
     2. **幽灵引用拦截**：拒绝任何伪造或不存在的 `source_event_id`；
-    3. **单次变更幅度限流**：单次睡眠整理最多只允许归档/淘汰定额比例的短期记忆，若检测到大规模删除或极性反转，立即熔断并转入 WebUI 人工审批队列。
+    3. **单次变更幅度限流**：单次睡眠整理最多只允许归档/淘汰定额比例的短期记忆，若检测到大规模删除或极性反转，立即熔断并转入 WebUI 人工审批队列；
+    4. **玩笑与角色扮演语用结界拦截（Pragmatic Frame Firewall）**：凡源事件发生在 `interaction_frame IN ('playful_banter', 'roleplay_fiction')`（如开玩笑说“周二是我发明的”或角色扮演设定）下，防火墙在代码层**物理禁止**将其提炼为 `epistemic_type = 'observed_firsthand'` 的客观事实记忆（`semantic_fact`），严防荒诞玩笑污染长期事实真相源。
 
-#### 3. 承诺与前瞻记忆（Commitments & Prospective Memory） **`[架构推断]`**
+#### 3. 海马体互补学习、双时态事实演进（Bitemporal Superseding）与共同符号采纳闭环（`CommonGround`） **`[文献/先行项目佐证]`** + **`[架构推断]`**
+* **双时态事实演进（Bitemporal Fact Superseding）**：
+  借鉴神经科学**海马体—新皮层互补学习系统（Complementary Learning Systems, CLS）**与双时态数据库理论，人的偏好与客观状态会随岁月改变（例如：主人去年喜欢喝全糖奶茶，今年戒糖改喝冰美式）。若直接覆盖旧记忆，她会丧失“我记得你以前爱喝甜的，现在居然改喝美式啦”的时间纵深感；若两条同时作为现行事实召回，又会造成认知精神分裂。
+  因此，`memories` 表原生维护生效时间窗 `valid_from_virtual_ts` 与 `valid_until_virtual_ts`，且血缘边表 `memory_lineage_edges` 区分三种关系边 `relation_type IN ('derived_from', 'supersedes', 'contradicts')`：当新事实取代旧事实时，新记忆通过 `supersedes` 边指向旧记忆并将旧记忆的 `valid_until_virtual_ts` 封口（转入历史归档态）。
+* **共同符号与内部黑话的“送达 $\neq$ 采纳”定律（`CommonGround` Grounding State Machine）**：
+  基于 Clark & Brennan 的语言学共同基础理论（Grounding in Communication），她单方面抛出一个梗或起了一个外号（如看到书架上的陶瓷鸭说“我们管它叫王总吧”），哪怕下行 `DeliveryReceipt` 显示 `completed`（已送达），也**绝不等于双方已达成共同默契**！
+  针对 `memory_tier = 'relational_tacit'`（相处默契/内部黑话），内核强制维护 `grounding_status` 状态机：
+  1. **`proposed_presented`（已提出未确认）**：她已说出该称呼/梗，但尚未观测到对方的采纳反馈；
+  2. **`mutually_grounded`（双方共认默契）**：仅当后续交互中观测到主人的正向采纳证据（接梗、回用或积极呼应）时，方才晋升为正式的共同默契并允许在同受众场合自然回用；
+  3. **`disputed_retired`（被拒/冷场弃用）**：若对方冷场未接或明确表示拒绝，立即弃用并停止复读。
+
+#### 4. 承诺与前瞻记忆（Commitments & Prospective Memory） **`[架构推断]`**
 将“她答应过主人的事（如：今晚 11 点提醒吃药）”、“主人未来的重要日程（如：周五下午面试）”以及“她自己的好奇线索”建模为一等状态机表 `prospective_memories`：
 * **核心字段**：`commitment_id`, `type: agent_promise | user_upcoming_event | curiosity_thread`, `trigger_condition` (`virtual_ts_after` 或 `on_next_user_seen`), `status: pending | due | fulfilled | missed | cancelled`, `source_event_id`。
 * **违约自省闭环**：若因系统关机或免打扰导致 `agent_promise` 跨过了有效时间窗而变成 `missed`，下次上线时代码强制将该 `missed` 状态置顶推入认知黑板，促使她主动为迟到或错过约定而真诚致歉，绝不装作无事发生。
@@ -140,9 +154,11 @@
 
 ### 2.3 情绪、内在稳态与双轨活力模型
 
-1. **“LLM 定性提议，代码确定性裁决”与一等消融开关** **`[架构推断]`**
+1. **“LLM 定性提议，代码确定性裁决”、双时间尺度耦合动力学与李群软饱和算子** **`[文献/先行项目佐证]`** + **`[架构推断]`**
    * LLM 在每轮推理中仅输出定性情绪评估提案：`{ event_meaning: "主人夸奖了我的建议", valence_impulse: "positive_moderate", arousal_impulse: "slight_up", drive_satisfaction: { social: "high" } }`。
-   * 确定性代码将定性枚举映射为有界数值冲量 $\Delta \mathbf{S}$，并负责上下限截断（Clamping）、阻尼衰减与心境积分（Mood = 瞬时情绪的低通滤波移动平均）。
+   * **快慢双时间尺度耦合与阿贝尔群软饱和冲量合成**：
+     * 生物情绪由快变的**瞬时情绪 $v_{\text{instant}}(t)$（分钟级半衰期）**与慢变的**持久心境 $v_{\text{mood}}(t)$（半天级半衰期，向角色人格基线 $v_{\text{base}}$ 回归）**组成二阶耦合常微分方程组（闭式解析解见工程规格第 03 篇）。
+     * 为避免普通加法在边界 $\pm 1$ 处硬截断（Hard Clamp）破坏并发 MVCC 交换律、以及连续几次夸奖就顶死在 $+1.0$ 丧失层次感，代码层采用满足心理物理学**韦伯-费希纳边际递减律（Weber-Fechner Law）**的**双曲正切李群同构加法 $v_{\text{new}} = v \oplus \delta := \tanh(\operatorname{artanh}(v) + \delta)$**——无论多个并发 Worker 以何种顺序提交冲量，代数结果 $100\%$ 交换恒等，且越接近极值越呈自然软饱和阻尼。
    * **模块消融开关（Ablation Toggle）**：在内核配置中，情绪标量、驱动力、内心独白、情景记忆、潜台词推断均可独立设为 `enabled: false`（关闭时向黑板注入中性常数），从而在 WebUI 场景回放中用控制变量法检验：“关掉这个模块后，她的回复质量与生命感到底有没有显著下降？”
 
 2. **双轨活力模型：生理节律与算力代谢的正交解耦** **`[架构推断]`**
@@ -186,9 +202,18 @@
      1. **`VerifiableTurnTrace`（由内核代码 100% 确定性采集并落库的权威审计轨迹）**：
         依次记录：`输入感知事件 ID 与四元组` $\rightarrow$ `L0 安全与显著性门控分数` $\rightarrow$ `实际召回的记忆 ID 列表、溯源类型与混合打分明细` $\rightarrow$ `选中的回应策略与行动计划` $\rightarrow$ `工具/具身执行器的三维权限裁决结果 (ALLOW/DENY)` $\rightarrow$ `代码裁决前后的内稳态数值 Diff` $\rightarrow$ `发出的表达/行动信封 ID` $\rightarrow$ `收到的播放字数或执行结果回执`。
      2. **`model_reported_rationale`（模型自述推演）**：在单次流式生成前端输出的结构化策略选择理由。它在生成管线中起到引导下游台词的作用（可通过消融开关测试其对输出分布的真实影响 **`[仍未知/需实验验证]`**），但在 WebUI 白盒面板中**显式标注为 `[模型自述推演 / 非权威推理记录]`**。
-     3. **`theatrical_subtext`（戏剧潜台词）**：角色内的一句心里话（如 *“明明很担心他，但还是别表现得太啰嗦比较好”*），仅用于驱动微表情反差与陪伴观赏性（支持剧透遮罩）。
+     3. **`theatrical_subtext`（戏剧潜台词）与二次元演出“表里张力律（Gap Moe / Non-Collinear Subtext-Surface Rule）”**：
+        * 平庸 AI 的“内心独白”往往只是把即将说出口的台词直白复述一遍（表里共线，毫无戏剧张力）；而在顶尖二次元动画演出与文学人物塑造中，角色的灵魂魅力恰恰来自**“潜台词（`theatrical_subtext`）与表层台词（`fallback_text`）之间的非共线张力夹角”**（例如：内心潜台词是 *“明明很担心他，但还是别表现得太啰嗦比较好”*，嘴上表层台词是略带傲娇的调侃，而**眼神与微表情 `ext.embodied.v1` 则由潜台词驱动，流露出关切的眼神躲闪与微红脸颊**）。
+        * 这种**“潜台词驱动微表情与眼神、表层策略驱动语言措辞”**的分流机制，让数字生命天然涌现出细腻的二次元鲜活感（支持 WebUI 剧透遮罩）。
+     4. **`interaction_frame`（语用框架结界：`serious_factual | playful_banter | tsundere_irony | roleplay_fiction | gentle_support`）**：
+        * 显式标识本轮交互所处的语用空间：允许她在 `playful_banter`（玩笑互怼，如“周二是我发明的”）框架下尽情展现幽默与荒诞想象力，同时在用户流露脆弱或认真求助时秒切回 `gentle_support / serious_factual`，并由睡眠写入防火墙拦截玩笑内容进入客观事实库。
 
-2. **时间状态三分法：状态随时间数学变化 $\neq$ 认知随时间自然发生** **`[架构推断]`**
+2. **微时序演出中的“间（Ma）”：有界发言机会池（Bounded `InteractionOpportunity` Pool）** **`[文献/先行项目佐证]`** + **`[架构推断]`**
+   * 在多人聊天、共同看番或陪伴打游戏时，有生命感的伴侣绝不是“要么在 1 秒内机械抢答、要么彻底忽略”。借鉴动画演出中的“间（留白与气口）”与增量对话处理理论（Schlangen & Skantze），当丘脑门控捕获到非紧急但有价值的互动槽点（如群聊里有人打错字、画面里闪过有趣彩蛋）而当前话轮正被占用时，内核将其封装为一条带有效期 `expires_virtual_ts` 与失效条件的 **`InteractionOpportunity`（状态流转：`candidate -> eligible -> selected -> consumed | expired | withdrawn`）** 暂存进短期机会池：
+     * 当对话出现自然气口（Turn-Taking Gap）且话题依然有效时，择优释放切入；
+     * 若在等待期间突发紧急事项、用户明确拒绝或话题已彻底翻篇，旧包袱立即 `withdrawn / expired` 静默作废，绝不隔半小时硬讲过期的笑话。
+
+3. **时间状态三分法：状态随时间数学变化 $\neq$ 认知随时间自然发生** **`[架构推断]`**
    * `VirtualClock` 的懒求值解析函数极度高效，但**绝不能把所有心理活动都数学化**。离线 24 小时后，数学公式可以算出她的精力恢复与思念张力，但**绝不能在没有运行模型的情况下断言她在这 24 小时里产生了某种真实的思想或新经历**。
    * 为此，内核将时间相关的演进严格划分为不可混淆的三层：
      1. **第一层：确定性时间状态（Deterministic Temporal State —— 纯数学函数 $\mathbf{S}(t) = \Phi(\mathbf{S}(t_0), t - t_0)$，0 Token）**

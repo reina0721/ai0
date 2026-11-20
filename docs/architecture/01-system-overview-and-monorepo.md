@@ -164,3 +164,17 @@ flowchart TB
    * `@ai0/kernel` 严禁依赖任何前端 UI 框架（React/DOM）或特定外部平台 SDK（如 Discord.js / Live2D Cubism SDK），确保认知微内核在任何服务器、桌面或嵌入式容器中均可独立无头运行。
 4. **`@ai0/storage` 唯一写入口铁律**：
    * 在 `@ai0/kernel` 内部，除 `AuthoritativeStateCoordinator`（权威状态事务协调器）之外，任何并发 Worker（`W1`~`W4`）或认知器官插件均只持有 `ReadOnlyStorageView` 接口引用，在类型系统层面彻底封死绕过协调器直写数据库的可能性。
+
+---
+
+## 五、Vibecoding 与 AI Coding Agent 施工防跑偏铁律（Code-First SSOT & Anti-Drift Guardrails）
+
+为防止在代码实施阶段（或使用 AI Coding Agent 辅助开发时）陷入“双轨真相源分裂（Split-Brain SSOT）”或“形式主义静态检查内耗（Goodhart's Law Compliance Theater）”，本仓库强制确立以下三条工程施工铁律：
+
+1. **单一机器契约真相源铁律（`@ai0/protocol` Zod-in-Code as Exclusive Machine SSOT）**：
+   * 进入编码阶段后，`packages/protocol/src/**/*.ts` 中基于 `zod` 定义的 Schema 是全仓**唯一**的机器可读协议与契约真相源（既在编译期通过 `z.infer<typeof ...>` 导出 TypeScript 强类型，又在运行时提供网关校验，并在构建期通过 `zod-to-json-schema` 单向导出给非 TypeScript 社区插件）。
+   * **严禁**在仓库根目录或 `packages/protocol` 之外手工维护平行的静态 `.schema.json` 文件集、静态符号 CSV/JSON 登记表或脱离运行时的 PowerShell/Regex 文本检查脚本，从根源杜绝“改了代码却与静态 Schema 文件脱节”的双轨内耗。
+2. **反静态假原型污染铁律（Real Dual-Plane Component Architecture over Static DOM Prototypes）**：
+   * `@ai0/console-webui` 与 `@ai0/plugin-webchat` 的开发必须直接基于双平面通信契约（公开 Shell WebSocket vs. 特权 Admin Telemetry Bus）构建模块化组件，严禁在仓库中堆砌命令式拼接 DOM 的巨型单文件静态 HTML 假原型，防止前端 Agent 照抄静态假状态而破坏数据面与控制面的物理隔离。
+3. **真实闭环优先与零阉割铁律（Real Runtime Loop & Zero Regression on Axioms）**：
+   * 推进 **Vertical Slice v0** 时，必须严格按 `P0 -> P6` 派生顺序在真实 SQLite (WAL) 与 `AuthoritativeStateCoordinator` 上跑通端到端数据流；严禁用 Prompt 叮嘱代替 SQL `WHERE audience_scope` 硬隔离，严禁用 `Clamp(v + Δ)` 硬截断代替 $\tanh$ 阿贝尔群可交换冲量合成，严禁为了省事阉割五原语回执或血缘 DAG 拓扑重算。

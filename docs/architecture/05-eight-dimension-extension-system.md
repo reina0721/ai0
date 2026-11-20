@@ -117,7 +117,13 @@
 * **职责**：让社区能够像分享游戏 Mod 一样，安全地分享与装载“灵魂基因与测试基准”：
   1. **纯净灵魂模板包（`.soul-template.yaml`）**：打包 Tier 1 核心人格 DNA、存在论契约、作息参数与初始黄金声线样本（**物理剥离一切个人聊天流水与私密记忆**，确保分享零隐私风险）；
   2. **世界观词条库（`Lorebook / WorldInfo`）**：当对话出现特定关键词或语义聚类时，动态滑入认知黑板的背景设定词条；
-  3. **回归评测剧本包（`.scenario.yaml`）**：社区共建的“人设抗崩塌测试集”、“SB 243 危机干预合规测试集”、“跨场合隐私防套话测试集”。
+  3. **回归评测剧本包（`.scenario.yaml`）**：社区共建的“人设抗崩塌测试集”、“SB 243 危机干预合规测试集”、“跨场合隐私防套话测试集”；
+  4. **现世二次元社区存量资产零摩擦吸纳（SillyTavern `Character Card V2/V3 & WorldInfo` 官方蒸馏与安全清洗转换器）**：
+     为使 `ai0` 开箱即可继承现世二次元 AI 社区沉淀的海量精品角色资产，`@ai0/storage` 与 `@ai0/sdk` 内置确定性的 Tavern Card 导入蒸馏管线：
+     * **`data.description` & `data.personality`** $\rightarrow$ 结构化提取并映射至 `identity.yaml`（Tier 1 角色背景基线与核心性格特征）；
+     * **`data.mes_example` & `data.first_mes` / `data.alternate_greetings`** $\rightarrow$ 自动按 `<START>` 切分对话对，提纯写入 `voice_exemplars.jsonl`（黄金声线锚点池），供换模型或预算降级时的动态 Few-Shot 声线校准使用；
+     * **`data.character_book`（WorldInfo）** $\rightarrow$ 无损转换至 `lorebooks/imported_world.yaml`（保留 `keys`、`secondary_keys`、激活优先级与受控 Token 预算）；
+     * **安全清洗防火墙（Prompt-Injection & Jailbreak Sanitizer）**：在导入阶段由代码强制剥离传统角色卡 `data.system_prompt` 与 `data.post_history_instructions` 中常见的越狱指令、覆盖系统安全底线的伪造 System 标签以及情感 PUA 留存脚本，确保导入后的 `.soul-template` 100% 遵守本架构的 Tier 0 安全不变量与双层存在论契约。
 
 ### 维度 8：控制台 UI 视图与观测卡片扩展 (`ext.console_ui`)
 * **职责**：让第三方插件不再是“后台黑盒”，允许任何插件向 `WebUI 控制台` 的指定插槽（Slots）动态注入配置表单与实时状态监控卡片（详见第 06 篇）。

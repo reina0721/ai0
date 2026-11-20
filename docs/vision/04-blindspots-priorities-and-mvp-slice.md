@@ -107,6 +107,9 @@
 
 ### 3.1 Vertical Slice v0 必须包含的最小完备集（What Must Be in Slice v0）
 
+> **Vibecoding 与 Coding Agent 施工防跑偏准则（Code-First SSOT Principle）**：
+> 在启动 Vertical Slice v0 代码实现前及实现过程中，**严禁在仓库中落地脱离 TypeScript 代码的平行静态 `.schema.json` 文件集、静态符号表、静态单文件 HTML 原型或仅用于凑形式化绿灯的静态检查脚本**。必须直接以 `@ai0/protocol` 包中的 **TypeScript + Zod Schema 代码**作为全仓唯一的机器契约真相源（JSON Schema 仅作为 `@ai0/protocol` 的构建产物单向导出），确保每一分开发算力都直接浇筑在真实的 SQLite WAL 存储、MVCC 协调器与 WebSocket 双平面协议闭环上。
+
 1. **标准协议 v0 网关与零特权/零后门内置 WebChat Shell 插件**：
    * 完整实现协议 v0 的 **5 个核心原语**（WebSocket JSON-RPC 2.0，包含 `Sensors / Realizers / Actuators` 握手声明）；
    * 内置 WebChat 作为零特权独立插件通过 WebSocket 接入，支持：① 发送文本对话；② 发送模拟感官事件（如 `[戳一戳脑袋]`、`[检测到皱眉]`）；③ 在她说话流式输出中途点击 **`[打断她]`**，并精确上报 `DeliveryReceipt(status="interrupted", spoken_char_offset=N)`；④ 暴露 1 个基础端侧具身执行器示例（如 `webchat.inspect_environment_state`）以验证一等行动闭环。

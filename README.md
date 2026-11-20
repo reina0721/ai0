@@ -94,17 +94,17 @@ flowchart TB
 
 ### 3.1 愿景研究与认知法则 (`docs/vision/` — Why & What)
 定义我们想要创造什么样的数字生命、她的认知与伦理边界在哪里、以及如何判断代码与大模型的职责分野：
-1. **[01-vision-and-predecessors.md](./docs/vision/01-vision-and-predecessors.md)** — 核心愿景、存档独立与具身感知公理、有边界的伙伴关系本体、具身运行环境定义，以及与 **Project AIRI**、**Letta (MemGPT)**、**SAIBA (FML/BML)** 的深度对照参照。
-2. **[02-cognitive-kernel-and-boundaries.md](./docs/vision/02-cognitive-kernel-and-boundaries.md)** — 感知四元组信封、大脑七大认知模块、时间状态三分法、统一主体与并发协调、8 步一等行动认知闭环、以及**《五维判别公理与三态路由法则》**。
-3. **[03-protocol-and-webui-console.md](./docs/vision/03-protocol-and-webui-console.md)** — 下行表达意图与播放回执闭环、协议 v0 最小核心原则、八大扩展维度总览、以及 `WebUI 控制台` 的系统定位、三大入口（正式相处 vs 隔离实验）与四大工作区映射。
-4. **[04-blindspots-priorities-and-mvp-slice.md](./docs/vision/04-blindspots-priorities-and-mvp-slice.md)** — 12 项核心设计张力与长程失效防护矩阵、P0~P6 架构依赖派生拓扑，以及 **最小纵切片（Vertical Slice v0）** 必含规格。
+1. **[01-vision-and-predecessors.md](./docs/vision/01-vision-and-predecessors.md)** — 核心愿景、存档独立与具身感知公理、有边界的伙伴关系本体、具身运行环境定义，以及与 **Project AIRI**、**Neuro-sama (`neuro-sdk`)**、**Letta (MemGPT)**、**SAIBA (FML/BML)**、**SillyTavern (`Character Card V2/V3 & Lorebook`) / OpenClaw / AstrBot / Koishi** 五大现世先行体系的深度对照参照。
+2. **[02-cognitive-kernel-and-boundaries.md](./docs/vision/02-cognitive-kernel-and-boundaries.md)** — 感知四元组信封、视神经时空梯度习惯化与感官覆盖桶、预测编码微时间改口、大脑七大认知模块（含双时态记忆更替、共同默契 `CommonGround` 采纳闭环、二次元“表里张力 Gap Moe”演出、有界发言机会池 `InteractionOpportunity` 与语用结界 `InteractionFrame`）、时间状态三分法、统一主体与并发协调、8 步一等行动认知闭环、以及**《五维判别公理与三态路由法则》**。
+3. **[03-protocol-and-webui-console.md](./docs/vision/03-protocol-and-webui-console.md)** — 下行表达意图与播放回执闭环、运行期动态执行器热增删、动画“视线先行+余韵”关键帧序列、协议 v0 最小核心原则、八大扩展维度总览、以及 `WebUI 控制台` 的系统定位、双模态视觉体验、三大入口（正式相处 vs 隔离实验）与四大工作区映射。
+4. **[04-blindspots-priorities-and-mvp-slice.md](./docs/vision/04-blindspots-priorities-and-mvp-slice.md)** — 12 项核心设计张力与长程失效防护矩阵、P0~P6 架构依赖派生拓扑、Vibecoding 单一代码契约真相源防跑偏准则，以及 **最小纵切片（Vertical Slice v0）** 必含规格。
 5. **[05-ethics-safety-and-sb243-compliance.md](./docs/vision/05-ethics-safety-and-sb243-compliance.md)** — 加州 **SB 243 (Companion Chatbot Law)** 法律责任边界参照、四大内置确定性合规组件与反情感操控五项宪章。
 
 ### 3.2 全量系统工程架构设计 (`docs/architecture/` — How)
 由愿景直接派生出的工程施工蓝图，涵盖微内核目标包拓扑、数据库 DDL、并发状态机、协议契约、八大插件总线与控制台架构：
-1. **[01-system-overview-and-monorepo.md](./docs/architecture/01-system-overview-and-monorepo.md)** — 微内核总体架构、数据面 vs 控制面隔离、TypeScript Monorepo 目标工程包拓扑与编译期依赖约束规则。
-2. **[02-storage-and-soul-archive-schema.md](./docs/architecture/02-storage-and-soul-archive-schema.md)** — `.soul` 灵魂存档目录规范、SQLite + `sqlite-vec` 完整建表 DDL、事件溯源与血缘 DAG 级联真遗忘（含跨快照墓碑账本重放）算法。
-3. **[03-runtime-coordinator-and-agency-loop.md](./docs/architecture/03-runtime-coordinator-and-agency-loop.md)** — `AuthoritativeStateCoordinator` 乐观并发事务裁决（MVCC）、Tier 2 自我叙事双轨演进规则、四路并发 Worker、`VirtualClock` 可求逆时间引擎与 8 步行动认知状态机。
-4. **[04-protocol-v0-and-gateway-spec.md](./docs/architecture/04-protocol-v0-and-gateway-spec.md)** — Protocol v0 五原语完整 Schema 契约（开放能力扩展与双向连接拓扑）、Scoped Capability Token 验签、输入防抖聚合器与流式分块打断回执状态机。
-5. **[05-eight-dimension-extension-system.md](./docs/architecture/05-eight-dimension-extension-system.md)** — **八大扩展维度微内核插件架构**、各维度生命周期 Hook 接口契约、安全沙箱隔离与跨插件联动规则引擎。
-6. **[06-webui-console-and-observability-arch.md](./docs/architecture/06-webui-console-and-observability-arch.md)** — `WebUI 控制台` 三大入口（`live` 正式实例 vs `sandbox` 实验副本隔离）、四大工作区与 19 个功能面板规范、宿主特权遥测总线、8 步可验证决策轨迹、插件动态 UI 扩展槽与 `.scenario.yaml` 回归评测引擎。
+1. **[01-system-overview-and-monorepo.md](./docs/architecture/01-system-overview-and-monorepo.md)** — 微内核总体架构、数据面 vs 控制面隔离、TypeScript Monorepo 目标工程包拓扑、编译期反后门依赖约束，以及 **Vibecoding 与 Coding Agent 施工防跑偏铁律（`@ai0/protocol` Zod 代码唯一契约真相源）**。
+2. **[02-storage-and-soul-archive-schema.md](./docs/architecture/02-storage-and-soul-archive-schema.md)** — `.soul` 灵魂存档目录规范、SQLite + `sqlite-vec` 完整建表 DDL（含双时态记忆有效期、共同默契 `grounding_status` 与血缘/更替边 `relation_type`）、事件溯源与按血缘 DAG 拓扑序自底向上级联真遗忘（含跨快照墓碑账本重放）算法。
+3. **[03-runtime-coordinator-and-agency-loop.md](./docs/architecture/03-runtime-coordinator-and-agency-loop.md)** — `AuthoritativeStateCoordinator` 五域乐观并发事务裁决（MVCC）、$\tanh/\operatorname{artanh}$ 阿贝尔群可交换软饱和冲量算子、快慢情绪二阶耦合常微分方程闭式解、玩笑语用防火墙、四路并发 Worker、`VirtualClock` 可求逆时间引擎与 8 步行动认知状态机。
+4. **[04-protocol-v0-and-gateway-spec.md](./docs/architecture/04-protocol-v0-and-gateway-spec.md)** — Protocol v0 五原语完整 Schema 契约（开放 `SensorModality`、运行期 `capabilities_updated` 动态动作热更新、上行 `ext.perception.v1` 感官覆盖桶、下行 `ext.embodied.v1` 动画多锚点关键帧序列与双向连接拓扑）、Scoped Capability Token 验签、输入防抖聚合器与流式分块打断回执状态机。
+5. **[05-eight-dimension-extension-system.md](./docs/architecture/05-eight-dimension-extension-system.md)** — **八大扩展维度微内核插件架构**、各维度生命周期 Hook 接口契约、**SillyTavern (`Character Card V2/V3 & Lorebook`) 无损蒸馏与安全清洗导入规范**、安全沙箱隔离与跨插件联动规则引擎。
+6. **[06-webui-console-and-observability-arch.md](./docs/architecture/06-webui-console-and-observability-arch.md)** — `WebUI 控制台` 三大入口（`live` 正式实例 vs `sandbox` 实验副本隔离）、四大工作区与 19 个功能面板规范、宿主特权遥测总线、8 步可验证决策轨迹（含表里张力潜台词与语用框架）、插件动态 UI 扩展槽、`.scenario.yaml` 回归评测引擎，以及**《双模态 UI/UX 视觉体验系统、交互状态机与人因工程规范》**。
