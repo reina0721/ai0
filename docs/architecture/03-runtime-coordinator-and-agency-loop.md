@@ -1,12 +1,14 @@
 # 03. 运行时并发协调器、时间三分法引擎与一等行动认知状态机架构
 
+> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
+>
 > 本文档定义 `@ai0/kernel` 的核心运行时状态机。它解决了**“如何既保持单一认知主体的人格与记忆一致性，又不让长耗时工具任务或睡眠整理阻塞实时对话、且彻底消灭并发状态脏覆盖（Write Skew / Lost Update）”**的核心工程挑战。
 
 ---
 
 ## 一、并发协调架构：一主体、一协调器、四路并发工作者
 
-`ai0` 摒弃了“单线程串行死锁”与“多实例无共享分身”两种极端模式，采用 **单一认知主体（Unified Subject） + 权威状态事务协调器（Authoritative State Coordinator with Domain-Scoped MVCC） + 四路异步并发工作者（4 Concurrent Workers）** 架构。
+本架构摒弃了“单线程串行死锁”与“多实例无共享分身”两种极端模式，采用 **单一认知主体（Unified Subject） + 权威状态事务协调器（Authoritative State Coordinator with Domain-Scoped MVCC） + 四路异步并发工作者（4 Concurrent Workers）** 架构。
 
 ```mermaid
 sequenceDiagram

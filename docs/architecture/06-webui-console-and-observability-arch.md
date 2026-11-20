@@ -1,6 +1,8 @@
 # 06. `WebUI 控制台` 完整信息架构、特权遥测总线与回归评测引擎规范
 
-> 本文档定义 `@ai0/console-webui` 的工程架构。它将 `WebUI 控制台` 作为 `ai0` 认知微内核的**内建控制平面（Control Plane）、主权治理中心、八大扩展宿主与交互仿真沙盒**，给出四大工作区与 19 项功能面板的完整设计、特权遥测 API、第三方插件动态 UI 扩展槽（`ext.console_ui`）渲染架构，以及 `.scenario.yaml` 脚本化场景回放与消融评测引擎规范。
+> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
+>
+> 本文档定义 `@ai0/console-webui` 的工程架构。它将 `WebUI 控制台` 作为认知微内核的**内建控制平面（Control Plane）、主权治理中心、八大扩展宿主与交互仿真沙盒**，给出四大工作区与 19 项功能面板的完整设计、特权遥测 API、第三方插件动态 UI 扩展槽（`ext.console_ui`）渲染架构，以及 `.scenario.yaml` 脚本化场景回放与消融评测引擎规范。
 
 ---
 
@@ -98,7 +100,7 @@ flowchart TB
           "visibility_scope": "only_owner",
           "taint_level": "trusted_owner",
           "score": 0.89,
-          "content_text": "主人过去两周一直在全力打磨 ai0 数字生命项目的架构设计",
+          "content_text": "主人过去两周一直在全力准备下周二的核心系统架构评审",
           "source_event_ids": ["evt_01J8A01", "evt_01J8A05"]
         }
       ]
@@ -133,7 +135,7 @@ flowchart TB
     "step7_emitted_intent": {
       "intent_id": "int_01J9Z02",
       "action_type": "speak",
-      "fallback_text": "别紧张呀！这两周你连每个架构盲区都抠得那么细，周二下午肯定能惊艳全场的！等评审结束我第一时间来听你好消息~",
+      "fallback_text": "别紧张呀！这两周你把每个架构细节都推演得那么扎实，周二下午肯定能惊艳全场的！等评审结束我第一时间来听你好消息~",
       "chunks_count": 2,
       "extensions_attached": ["ext.affect.v1", "ext.rhythm.v1", "ext.embodied.v1"]
     },

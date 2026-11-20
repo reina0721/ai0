@@ -1,15 +1,17 @@
 # 02. `.soul` 灵魂存档规范、SQLite 数据库 Schema 与血缘 DAG 算法架构
 
-> 本文档定义 `ai0` 的持久化存储底座（`@ai0/storage`）。遵循**“灵魂存档彻底独立于任何躯壳”、“事件日志为唯一真相源，记忆为带血缘的可重建投影”**以及**“检索层代码按受众硬性隔离隐私”**三大公理，给出 `.soul` 单目录嵌入式存储结构、完整 SQLite DDL 表设计，以及局部血缘失效重算与真遗忘擦除算法。
+> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
+>
+> 本文档定义系统的持久化存储底座（`@ai0/storage`）。遵循**“灵魂存档彻底独立于任何躯壳”、“事件日志为唯一真相源，记忆为带血缘的可重建投影”**以及**“检索层代码按受众硬性隔离隐私”**三大公理，给出 `.soul` 单目录嵌入式存储结构、完整 SQLite DDL 表设计，以及局部血缘失效重算与真遗忘擦除算法。
 
 ---
 
 ## 一、Local-First `.soul` 灵魂存档目录规范
 
-在 `ai0` 中，每一个数字生命实例在磁盘上都表现为一个完全自包含、零外部数据库服务依赖的独立文件夹（后缀为 `.soul`）。这种设计使“像 Git 一样随时快照回档”与“整包打包迁移到任何机器”变得极其简单可靠：
+在本存储架构中，每一个数字生命实例在磁盘上都表现为一个完全自包含、零外部数据库服务依赖的独立文件夹（后缀为 `.soul`）。这种设计使“像 Git 一样随时快照回档”与“整包打包迁移到任何机器”变得极其简单可靠：
 
 ```text
-souls/reina.soul/
+souls/example.soul/
 ├── manifest.json                  # 存档元数据：schema_version, soul_id, created_at, active_model_profile
 ├── identity.yaml                  # 【Tier 1 不可变人格核心 DNA】
 │                                  #   - core_values (核心价值观与角色内拒绝姿态)
@@ -224,7 +226,7 @@ CREATE TABLE turn_decision_traces (
    对于通过第一阶段硬过滤的候选记忆 $m_i$，其在当前虚拟时间 $t$ 的综合召回得分 $R(m_i, t)$ 为：
    $$R(m_i, t) = \Big(w_{\text{sem}} \cdot \text{CosSim}(\mathbf{q}, \mathbf{v}_i) + w_{\text{imp}} \cdot I_{\text{base}}(m_i) \cdot (1 + \alpha \cdot |V_{\text{emo}}(m_i)|)\Big) \cdot 2^{-\frac{t - t_{\text{last}}(m_i)}{H(m_i)}} \cdot C_{\text{cooldown}}(m_i)$$
    * 其中 $H(m_i) = H_0 \cdot (1 + \beta \cdot \ln(1 + \text{recall\_count}_i))$ 为随每次成功回忆而延长的艾宾浩斯记忆稳定半衰期；
-   * $C_{\text{cooldown}}(m_i) \in (0, 1]$ 为近期复用惩罚因子（防止她在同一场对话里像祥林嫂一样反复提同一条记忆）。
+   * $C_{\text{cooldown}}(m_i) \in (0, 1]$ 为近期复用惩罚因子（防止在同一场对话中机械重复提及同一条记忆）。
 
 ### 3.2 “真遗忘（Hard Forget）” vs. “话题封印（Topic Seal）”的血缘 DAG 算法
 

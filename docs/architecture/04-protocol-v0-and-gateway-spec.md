@@ -1,5 +1,7 @@
 # 04. Protocol v0 最小冻结核心与双向网关架构规范
 
+> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
+>
 > 本文档定义 `@ai0/protocol` 与 `@ai0/gateway` 的工程契约。它给出了 **5 年不破兼容的 Protocol v0 五原语完整 TypeScript / Zod Schema 规范**、官方标准扩展命名空间契约、`Scoped Capability Token` 防伪验签机制，以及上行输入防抖聚合与下行流式打断回执状态机。
 
 ---
@@ -212,7 +214,7 @@ export interface ExtEmbodiedV1 {
 
 ## 四、网关层安全验签与话轮流控状态机（`@ai0/gateway`）
 
-### 3.1 `Scoped Capability Token` 防伪造验签机制
+### 4.1 `Scoped Capability Token` 防伪造验签机制
 
 为了防止恶意或存在漏洞的第三方 Shell 插件伪造主人身份或谎报私密场合，`@ai0/gateway` 在握手时强制校验由控制台签发的 HMAC-SHA256 / Ed25519 令牌载荷：
 ```json
@@ -227,7 +229,7 @@ export interface ExtEmbodiedV1 {
 ```
 * **网关强制降级铁律**：若上述直播间令牌连接的插件企图在 `HandshakeManifest` 中声称 `venue_type: "private_1on1"` 或将某条弹幕标为主人私密指令，网关层直接按令牌的 `max_audience_privacy_ceiling` **强制覆写为 `public_all`**，从物理入口封死插件伪造特权通道的可能。
 
-### 3.2 上行输入防抖聚合与下行打断回执状态机
+### 4.2 上行输入防抖聚合与下行打断回执状态机
 
 ```mermaid
 stateDiagram-v2

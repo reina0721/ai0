@@ -1,6 +1,8 @@
 # 05. 八大扩展维度微内核插件架构与跨插件编排引擎规范
 
-> 本文档定义 `ai0` 得以实现“由社区生态自由生长的通用数字生命中枢”的核心引擎——**《微内核八大扩展总线（The 8-Dimension Pluggable Microkernel Bus）》**。它彻底打破了普通 Agent 只有 `MCP/Skill` 工具扩展的局限，为躯壳、多模态音视频管线、大脑内部认知器官、外部工具、记忆与知识连接器、模型推理后端、灵魂模板与世界观资产包、以及控制台自定义 UI 视图提供了统一的 Manifest 与 TypeScript 接口契约。
+> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
+>
+> 本文档定义支撑“由社区生态自由生长的通用数字生命中枢”的核心引擎——**《微内核八大扩展总线（The 8-Dimension Pluggable Microkernel Bus）》**。它彻底打破了普通 Agent 只有 `MCP/Skill` 工具扩展的局限，为躯壳、多模态音视频管线、大脑内部认知器官、外部工具、记忆与知识连接器、模型推理后端、灵魂模板与世界观资产包、以及控制台自定义 UI 视图提供了统一的 Manifest 与 TypeScript 接口契约。
 
 ---
 
@@ -23,7 +25,7 @@
   "extension_id": "community.organ.dream-journal",
   "display_name": "睡眠期梦境与悄悄话日记器官",
   "version": "0.2.1",
-  "author": "reina-community",
+  "author": "example-community",
   "dimension": "ext.cognitive_organ",
   "entry": "./dist/index.js",
   "permissions": {

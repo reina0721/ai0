@@ -3,6 +3,10 @@
 > **Soul Archive Completely Independent; Shell Context Structurally Perceived; Companionship Bounded & Non-Manipulative.**  
 > **灵魂存档彻底独立，躯壳信息结构化感知，伙伴关系真诚有边界。**
 
+> **项目状态定义：`架构研究与工程规格设计阶段`（Architecture Research & Engineering Specification Phase）**
+> * **当前交付物**：问题域认知理论与伦理边界研究（`docs/vision/`）、解法域全量系统工程架构规格（`docs/architecture/`）。
+> * **当前阶段边界**：本仓库当前专注于架构公理推演、数据模型 DDL、并发状态机、协议 Schema 与控制台规格的严谨定义（尚不包含运行代码实现）；下一工程里程碑为依据本规格启动 **最小纵切片（Vertical Slice v0）** 原型实现与实测标定。
+
 ---
 
 ## 一、项目定位
@@ -11,7 +15,7 @@
 
 本项目**不直接内置**具体的桌宠客户端、Live2D/3D 骨骼渲染引擎、VTuber 推流软件或特定 IM 平台（微信、QQ、Discord、Telegram）适配器——所有这些外部交互形态与扩展能力均通过标准协议与扩展接口由社区生态自由装载。
 
-`ai0` 专注打磨好最核心的**三层认知与交互主干**、**八大微内核扩展机制**，以及作为系统标配控制平面的 **`WebUI 控制台`**：
+本系统架构专注打磨最核心的**三层认知与交互主干**、**八大微内核扩展机制**，以及作为系统标配控制平面的 **`WebUI 控制台`**：
 
 1. **感知层（Upstream Semantic Perception）**：接收外部**具身运行环境（Shell）**与**多模态媒体管线（Media Pipeline）**采集的信号，封装为携带**主体（Principal）、场合（Venue）、在场受众（Audience）与插件凭据（Attestation）**的标准化语义事件，原生支持流式增量输入、防抖撤回、打断（Barge-in）与隐私前移。
 2. **大脑（The Invisible Cognitive Kernel）**：采用**“单一认知主体 + 权威状态事务协调器（MVCC） + 四路异步并发工作者”**的微内核架构，将**三层人格可塑性与存在论契约、带认知溯源与血缘 DAG 的多层次记忆、情绪与内稳态动力学、关系与用户可打扰度模型、时间状态三分法（确定性时间状态 / 事件驱动认知 / 阈值触发的真实异步反思）、以及一等的 8 步多步行动认知闭环（Action Cognition Loop）**咬合为一个支持认知器官插拔与模块消融的有机状态机。
@@ -37,7 +41,7 @@ flowchart TB
         DOWN["下行：表达信封 (Speak / Explicit Silence / Invoke Actuator)<br/>+ 上行执行回执 (Delivery & Actuation Receipt)"]
     end
 
-    subgraph Microkernel["ai0 认知微内核 (Unified Cognitive Subject + Authoritative MVCC Coordinator)"]
+    subgraph Microkernel["认知微内核 (Unified Cognitive Subject + Authoritative MVCC Coordinator)"]
         Safety["Tier 0 安全不变量 & SB 243 危机硬拦截器"]
         Gate["丘脑显著性门控 & 习惯化过滤 & 输入聚合防抖"]
         Coord["权威状态事务协调器 (Authoritative State Coordinator)<br/>基于 state_rev 的乐观并发控制 (MVCC) | 记忆写入防火墙 | 三维权限裁决"]
@@ -90,15 +94,15 @@ flowchart TB
 
 ### 3.1 愿景研究与认知法则 (`docs/vision/` — Why & What)
 定义我们想要创造什么样的数字生命、她的认知与伦理边界在哪里、以及如何判断代码与大模型的职责分野：
-1. **[01-vision-and-predecessors.md](./docs/vision/01-vision-and-predecessors.md)** — 核心愿景、两次关键理念修正、具身运行环境定义，以及与 **Project AIRI**、**Letta (MemGPT)**、**SAIBA (FML/BML)** 的深度对照。
+1. **[01-vision-and-predecessors.md](./docs/vision/01-vision-and-predecessors.md)** — 核心愿景、存档独立与具身感知公理、有边界的伙伴关系本体、具身运行环境定义，以及与 **Project AIRI**、**Letta (MemGPT)**、**SAIBA (FML/BML)** 的深度对照参照。
 2. **[02-cognitive-kernel-and-boundaries.md](./docs/vision/02-cognitive-kernel-and-boundaries.md)** — 感知四元组信封、大脑七大认知模块、时间状态三分法、统一主体与并发协调、8 步一等行动认知闭环、以及**《五维判别公理与三态路由法则》**。
-3. **[03-protocol-and-webui-console.md](./docs/vision/03-protocol-and-webui-console.md)** — 下行表达意图与播放回执闭环、协议 v0 最小核心原则、八大扩展维度总览、以及 `WebUI 控制台` 的概念定义、三大入口（正式相处 vs 隔离实验）与四大工作区映射。
-4. **[04-blindspots-priorities-and-mvp-slice.md](./docs/vision/04-blindspots-priorities-and-mvp-slice.md)** — 5 对已知张力 + 7 大新发现深层盲区、P0~P6 架构派生拓扑优先级、以及 **最小纵切片（Vertical Slice v0）** 必含规格。
-5. **[05-ethics-safety-and-sb243-compliance.md](./docs/vision/05-ethics-safety-and-sb243-compliance.md)** — 加州 **SB 243 (Companion Chatbot Law)** 法律责任边界、四大内置确定性合规组件与反情感操控五项宪章。
+3. **[03-protocol-and-webui-console.md](./docs/vision/03-protocol-and-webui-console.md)** — 下行表达意图与播放回执闭环、协议 v0 最小核心原则、八大扩展维度总览、以及 `WebUI 控制台` 的系统定位、三大入口（正式相处 vs 隔离实验）与四大工作区映射。
+4. **[04-blindspots-priorities-and-mvp-slice.md](./docs/vision/04-blindspots-priorities-and-mvp-slice.md)** — 12 项核心设计张力与长程失效防护矩阵、P0~P6 架构依赖派生拓扑，以及 **最小纵切片（Vertical Slice v0）** 必含规格。
+5. **[05-ethics-safety-and-sb243-compliance.md](./docs/vision/05-ethics-safety-and-sb243-compliance.md)** — 加州 **SB 243 (Companion Chatbot Law)** 法律责任边界参照、四大内置确定性合规组件与反情感操控五项宪章。
 
 ### 3.2 全量系统工程架构设计 (`docs/architecture/` — How)
-由愿景直接派生出的工程施工蓝图，涵盖微内核包拓扑、数据库 DDL、并发状态机、协议契约、八大插件总线与控制台架构：
-1. **[01-system-overview-and-monorepo.md](./docs/architecture/01-system-overview-and-monorepo.md)** — 微内核总体架构、数据面 vs 控制面隔离、TypeScript Monorepo 包拓扑与依赖约束规则。
+由愿景直接派生出的工程施工蓝图，涵盖微内核目标包拓扑、数据库 DDL、并发状态机、协议契约、八大插件总线与控制台架构：
+1. **[01-system-overview-and-monorepo.md](./docs/architecture/01-system-overview-and-monorepo.md)** — 微内核总体架构、数据面 vs 控制面隔离、TypeScript Monorepo 目标工程包拓扑与编译期依赖约束规则。
 2. **[02-storage-and-soul-archive-schema.md](./docs/architecture/02-storage-and-soul-archive-schema.md)** — `.soul` 灵魂存档目录规范、SQLite + `sqlite-vec` 完整建表 DDL、事件溯源与血缘 DAG 级联真遗忘（含跨快照墓碑账本重放）算法。
 3. **[03-runtime-coordinator-and-agency-loop.md](./docs/architecture/03-runtime-coordinator-and-agency-loop.md)** — `AuthoritativeStateCoordinator` 乐观并发事务裁决（MVCC）、Tier 2 自我叙事双轨演进规则、四路并发 Worker、`VirtualClock` 可求逆时间引擎与 8 步行动认知状态机。
 4. **[04-protocol-v0-and-gateway-spec.md](./docs/architecture/04-protocol-v0-and-gateway-spec.md)** — Protocol v0 五原语完整 Schema 契约（开放能力扩展与双向连接拓扑）、Scoped Capability Token 验签、输入防抖聚合器与流式分块打断回执状态机。

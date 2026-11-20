@@ -1,12 +1,14 @@
-# 01. 系统总体架构与 Monorepo 工程拓扑规范
+# 01. 系统总体架构与 Monorepo 目标工程拓扑规范
 
-> 本文档是 `ai0` 从“愿景研究（`docs/vision/`）”派生出的第一篇系统工程架构规范。它定义了 `ai0` 的微内核分层架构、数据面（Data/Cognitive Plane）与控制面（Control/Telemetry Plane）的物理隔离原则、TypeScript 全栈 Monorepo 包结构，以及防止“内置插件走内部后门”的编译期依赖反转约束。
+> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
+>
+> 本文档是从“愿景研究（`docs/vision/`）”派生出的第一篇系统工程架构规范。它定义了微内核分层架构、数据面（Data/Cognitive Plane）与控制面（Control/Telemetry Plane）的物理隔离原则、TypeScript 全栈 Monorepo 目标包拓扑规格，以及防止“内置插件走内部后门”的编译期依赖反转约束。
 
 ---
 
 ## 一、系统总体架构哲学：确定性微内核 + 八大扩展总线
 
-`ai0` 采用 **微内核（Microkernel）架构**。微内核本身只固化那些**“错了不可逆、离线也要成立、涉及安全与隐私底线、以及负责并发事务裁决”**的确定性逻辑；而把一切与外在形态、多模态信号加工、认知脑区扩展、外部工具、知识源及控制台视图相关的能力，全部抽象为**八大标准化扩展总线（The 8 Extension Buses）**。
+本系统采用 **微内核（Microkernel）架构**。微内核本身只固化那些**“错了不可逆、离线也要成立、涉及安全与隐私底线、以及负责并发事务裁决”**的确定性逻辑；而把一切与外在形态、多模态信号加工、认知脑区扩展、外部工具、知识源及控制台视图相关的能力，全部抽象为**八大标准化扩展总线（The 8 Extension Buses）**。
 
 ```mermaid
 flowchart TB
@@ -80,12 +82,12 @@ flowchart TB
 
 ---
 
-## 三、TypeScript 全栈 Monorepo 目录与包拓扑结构
+## 三、TypeScript 全栈 Monorepo 目标目录与包拓扑规格
 
-`ai0` 采用 `pnpm workspaces` + `Turborepo` 构建单仓多包（Monorepo）架构，确保协议 Schema、内核、存储引擎、内置参考插件与 WebUI 控制台之间的高内聚与强类型共享：
+面向编码实现阶段，目标工程采用 `pnpm workspaces` + `Turborepo` 构建单仓多包（Monorepo）架构，确保协议 Schema、内核、存储引擎、内置参考插件与 WebUI 控制台之间的高内聚与强类型共享（当前仓库处于规格设计阶段，以下为目标实现拓扑规格）：
 
 ```text
-c:\rin\coder\reina0721\ai0\
+<repo-root>/
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── turbo.json
