@@ -126,9 +126,13 @@
    * **层 1：工作记忆（Working Memory）**——最近话轮窗口（精确反映被打断后的实际送达字数、未说出口的腹稿以及当前活跃的行动任务状态）；
    * **层 2：长期记忆表（Long-Term Memories，含 `episodic` 共同经历、`semantic` 客观事实与 `prospective` 承诺）**——每条强制记录 `epistemic_type` 与 `source_event_ids[]` 血缘数组，检索时结合艾宾浩斯时间衰减与 `WHERE audience_scope` 硬过滤；
    * **睡眠整理与真遗忘**：当虚拟时间拨快 $\ge 30$ 分钟且有未整理脏事件（含对话与共同完成的行动事件）时，唤醒睡眠整理提议写入长期记忆（过代码防火墙校验）；支持用户在聊天中说“忘掉刚才那件事”直接触发墓碑事件与血缘级联擦除。
-6. **WebUI 控制台主舞台（嵌入零后门 WebChat + 特权白盒决策轨迹抽屉 + 消融开关 + 1 个回归剧本）**：
-   * 左侧嵌入纯净 WebChat Shell（支持一键全屏沉浸模式）；
-   * 右侧为属于 WebUI 控制台特权层的白盒观测抽屉：实时展示 **8 步可验证系统决策轨迹（`VerifiableTurnTrace`）**（将模型自述 `model_reported_rationale` 明确标注为非权威节点，并与召回记忆 ID、三维权限裁决、状态 Diff、实际送达字数回执并列呈现）、情绪与驱动力曲线、模块消融开关、虚拟时间拨快控制器，以及一键运行内置回归验证剧本。
+6. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）+ 多级嵌套路由与五大视图结构母版核心切片（防首屏大杂烩与防简陋双栏页铁律）**：
+   * **一步到位的常驻多态外壳（`app-shell`）、嵌套路由树（`router`）与 KIRAKIRA-MD3 紧凑基础组件基座（`design-system`）**：严禁将 Slice v0 控制台写成“把所有功能做成小悬浮卡片全塞在首屏单页”或“仅左聊右看的简陋双栏页”；必须一步到位落地 **视口主权防呆围栏（`🟢 LIVE` 翡翠绿 vs. `🧪 SANDBOX` 琥珀/紫） + 常驻混合顶栏（`48px`，含 `.soul` 实例切换、`LIVE 正式运行实例 ⇄ SANDBOX:<fork_id> 隔离实验副本` 二元环境切换胶囊与生命脉搏微环） + 左侧三态可折叠路由导航栏（`56px` 迷你图标栏 $\leftrightarrow$ `220px` 8 大域路由树展开栏 $\leftrightarrow$ `56px+190px` 一二级双轨） + 中央包裹 `<RouterOutlet />` 的唯一 `<main>` 一体式大圆角悬浮卡片容器盒子（`MainRoundedCardOutlet`，`radius: 16px`） + 右侧可折叠多态上下文检视副栏（`48px` 迷你工具栏 $\leftrightarrow$ `400px` 检视抽屉）**，并实装 `32px` 紧凑高度的 KIRAKIRA-MD3 波纹按钮、胶囊滑块、Chip 标签池、毛玻璃剧透遮罩与底部 `FloatingDirtyDiffBar` 基础组件；
+   * **在 `<main>` 一体式圆角卡片路由视口盒子内按独立子路由点亮五大视图结构母版的核心纵切片**：
+     1. **全景态势首屏与黑板积木路由（`/dashboard` & `/dashboard/blackboard` — 母版 II & III）**：默认根首屏 `/dashboard` 展示核心生命体征与在线 `Shells` 摘要；`/dashboard/blackboard` 实时透视 `<2500 Token` 认知黑板槽位预算与公私场合 70% 社交面具阻尼对比；
+     2. **具身躯壳（`Shells`）一等架构域与已挂载插件舞台路由（`/shells/topology`、`/shells/simulator` & `/shells/stage/builtin.webchat` — 母版 II & I）**：在 `/shells/topology` 展示在线 `Shell` 三平面握手状态与视神经感官覆盖桶；将零特权 `@ai0/plugin-webchat` 作为普通挂载插件页面承载于 `/shells/stage/builtin.webchat`（支持流式打断与 `unsaid_remainder` 腹稿印记，联动右侧检视副栏实时展示 **8 步可验证系统决策轨迹 `VerifiableTurnTrace`**、非权威模型自述警示章与 `KiraSpoilerMask` 毛玻璃潜台词剧透遮罩）；
+     3. **灵魂蒸馏、生物钟曲线与五脑区算力配置路由（`/soul/persona`、`/soul/distiller`、`/soul/homeostasis` & `/models/routing` — 母版 III & V）**：支持导入 SillyTavern V2/V3 角色卡或 `.soul-template` 执行四步分馏预览、拖拽调节 24h 作息生物钟与情绪衰减曲线（`BioRhythmAffectCurveCanvas`）、配置大模型提供商连通性测速与认知器官消融开关；
+     4. **记忆血缘手术台、五阶多态扩展配置与四轨终端/沙盒实验室路由（`/memory/lineage`、`/extensions/marketplace`、`/extensions/configurator`、`/extensions/skills-mcp`、`/runtime/terminal` & `/sandbox/lab` — 母版 IV, V & II）**：可视化查看两层记忆血缘 `source_event_ids[]` 并触发 `Hard Forget`（含 `redaction_ledger.json` 墓碑写入）、解析插件 `config_schema` 动态配置表单与在线 `SKILL.md` 技能手册测试、查看四轨融合遥测终端；当顶栏切换至 `🧪 SANDBOX:<fork_id>` 时，在 `/sandbox/lab` 解锁虚拟时间拨快（`+30m/+6h/+24h/+7d`）、模拟四元组感官注入与一键运行 `.scenario.yaml` 回归验证剧本。
 
 ---
 

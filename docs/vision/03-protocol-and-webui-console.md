@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（问题域规范）
 >
-> 本文档定义系统的第三层（下行表达意图与上行回执闭环）、**协议 v0 最小稳定核心的裁剪准则**、**微内核八大标准化扩展维度**，以及 **`WebUI 控制台`** 的系统定位、实例隔离入口与四大工作区全景映射。
+> 本文档定义系统的第三层（下行表达意图与上行回执闭环）、**协议 v0 最小稳定核心的裁剪准则**、**微内核“八大功能扩展总线 × 五阶多态异构扩展载体”生态架构**，以及 **`WebUI 控制台`** 的系统定位、`Shell` 一等架构层正本清源（剥离 `plugin-webchat` 越位层级）、顶栏 `LIVE / SANDBOX` 二元实例环境隔离、常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`<RouterOutlet />`）与 8 大域 30 条专职路由全景。
 
 ---
 
@@ -57,57 +57,68 @@
 
 ---
 
-## 三、微内核八大标准化扩展维度（为何通用 Agent 的 Tool/MCP 扩展不足以支撑数字生命）
+## 三、微内核“八大功能扩展总线 × 五阶多态扩展载体”（为何单一 Tool/MCP 或单一编译型插件不足以支撑数字生命生态）
 
-若仅提供 `Shell`（收发消息的躯壳）与 `MCP / Skill`（普通 Agent 调用的外部工具），数字生命的“大脑内核、媒体信号加工、记忆引擎、灵魂资产分享与控制台视图”将仍处于封闭黑盒状态，社区无法围绕数字生命的共同养成与演化自由生长。
+若仅提供 `Shell`（收发消息的躯壳）与 `MCP / Skill`（普通 Agent 调用的外部工具），或者强制要求所有扩展都必须写 TypeScript 编译 `dist/index.js` 代码包，90% 的社区创作者（二次元角色写手、自然语言技能创作者、跨语言协议开发者、工作流调教玩家）将被挡在生态门外。
 
-为此，本架构将系统扩展总线设计为 **《微内核 + 八大标准化扩展维度（The 8-Dimension Pluggable Ecosystem）》**（详细接口规范见 `docs/architecture/05-eight-dimension-extension-system.md`）：
+为此，本架构将系统扩展体系设计为 **《八大功能扩展总线（Where it hooks） × 五阶多态异构扩展载体（How it's built & played）》**（详细接口规范见 `docs/architecture/05-eight-dimension-extension-system.md`）：
 
-1. **`ext.shell`（具身运行环境扩展）**：决定“她在哪里存在、拥有什么感官与端侧身体动作”（WebChat、桌宠、Live2D/3D、微信/QQ/Discord、Minecraft 等游戏、硬件音箱）。
-2. **`ext.media_pipeline`（多模态音视频与感官管线扩展）**：位于躯壳与大脑之间的信号加工厂——如流式 ASR 语音识别、情感 TTS 语音合成（GPT-SoVITS / FishAudio / ElevenLabs）、声线滤镜、摄像头微表情语义提取器。
-3. **`ext.cognitive_organ`（大脑认知器官与生命周期钩子扩展）**：允许社区研究者插拔或新增大脑内部的认知子系统——如自定义情绪动力学算法、睡眠期写日记/做梦灵感插件、好奇心自主冲浪探索器、自定义显著性门控。
-4. **`ext.action_mcp_skill`（外部行动工具与技能包扩展）**：决定“她能调用什么外部软件工作流协助或陪伴使用者完成任务”（标准 MCP Servers 与复合 `SKILL.md` 行动剧本）。
-5. **`ext.memory_knowledge`（记忆存储后端与活体知识连接器扩展）**：支持扩展图谱/向量混合检索引擎，以及热插拔连接 Obsidian 笔记库、Notion、本地代码库、游戏/番剧设定 Wiki。
-6. **`ext.model_provider`（模型与推理后端提供商扩展）**：接入各类云端 API、本地推理引擎（Ollama / vLLM / llama.cpp）、本地安全危机分类器以及角色专属 **LoRA 权重热切换器**。
-7. **`ext.soul_asset`（灵魂模板、世界观词库与评测剧本包扩展）**：支持社区安全分享不含私人记忆的“纯净角色基因包（`.soul-template`）”、关键词触发的世界观设定集（`Lorebook`）与标准化回归测试剧本（`.scenario.yaml`）。
-8. **`ext.console_ui`（控制台自定义 UI 视图与观测卡片扩展）**：允许任何第三方插件在 WebUI 控制台中动态注册自己的**专属配置面板、实时状态监控卡片和调试视图**。
+### 3.1 八大功能扩展总线（The 8 Functional Buses）
+1. **`ext.shell`（具身运行环境总线 — 系统核心一等交互架构层）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers` 含动态表现力词典 `expression_vocabulary`）与什么端侧身体动作（`Actuators`）”（桌宠、Live2D/3D、微信/QQ/Discord、Minecraft 等游戏、以及挂载在控制台内的 Web 交互舞台插件如 `@ai0/plugin-webchat`）。
+2. **`ext.media_pipeline`（多模态音视频与感官管线总线）**：位于躯壳与大脑之间的信号加工厂——如流式 ASR 语音识别、情感 TTS 语音合成（GPT-SoVITS / FishAudio / ElevenLabs）、声线滤镜、摄像头微表情语义提取器。
+3. **`ext.cognitive_organ`（大脑认知器官与生命周期钩子总线）**：允许社区研究者插拔或新增大脑内部的认知子系统（三大钩子：`contributeToBlackboard` / `onTurnCompleted` / `onSleepCycleWakeup`）——如自定义情绪动力学算法、睡眠期梦境日记器官、塔罗心境器官。
+4. **`ext.action_mcp_skill`（外部行动工具与复合技能包总线）**：决定“她能调用什么外部软件工作流协助或陪伴使用者完成任务”（标准 MCP Servers、HTTP Webhook/OpenAPI 桥接器与包含角色内执行姿态的复合 `SKILL.md` 行动技能手册）。
+5. **`ext.memory_knowledge`（内建混合 RAG 知识库与外部活体知识连接器总线）**：在内核**开箱即用内建混合 RAG 引擎（PDF/MD/代码分块 + `sqlite-vec` 稠密向量 + FTS5 BM25 稀疏检索 + Reranker）**基础上，支持热插拔连接 Obsidian 笔记库、Notion、本地代码库、游戏/番剧设定 Wiki，并在卸载时自动浓缩生成 `<150` 字 `CrystallizedGistCard` 常识卡。
+6. **`ext.model_provider`（模型推理后端与角色 LoRA 总线）**：接入各类云端 API、本地推理引擎（Ollama / vLLM / llama.cpp）、Embedding/Reranker、本地安全危机分类器以及角色专属 **LoRA 权重热切换器**。
+7. **`ext.soul_asset`（灵魂模板、世界观词库、关系里程碑与评测剧本总线）**：支持社区零代码安全分享不含私人记忆的“纯净角色基因包（`.soul-template`）”、SillyTavern 角色卡（V2/V3）、动态世界观词库（`Lorebook`）、关系羁绊里程碑与纪念日正向剧情触发包（`milestones_and_rituals.yaml`）及回归测试剧本（`.scenario.yaml`）。
+8. **`ext.console_ui`（控制台动态 UI 视图、专属配置页与 Web 躯壳挂载槽总线）**：允许任何扩展在 WebUI 控制台中动态注册自己的专属配置面板、实时状态监控卡片、独立路由页面（`/extensions/custom/:pluginId`）或挂载 Web 具身躯壳互动舞台（`/shells/stage/:shellPluginId`）。
+
+### 3.2 五阶多态异构扩展载体（The 5 Polymorphic Extension Carriers）
+* **载体 I（零代码声明式资产包 `.yaml / .json / .png`）**：角色卡、`.soul-template`、`Lorebook`、`milestones_and_rituals.yaml`、`.scenario.yaml`，网页拖拽即食；
+* **载体 II（Agent `SKILL.md` 自然语言技能手册与沙盒脚本）**：在控制台直接用 Markdown 编写任务指南与角色内执行姿态，免编译即写即用；
+* **载体 III（免代码标准协议与跨进程连接器 `MCP / Protocol v0 WebSocket / Webhook / OpenAPI`）**：填 URL 或启动命令即可跨语言热挂载；
+* **载体 IV（可视化认知管线、好奇心子代理与跨插件 ECA 联动蓝图 `.flow.yaml`）**：在控制台通过可视化积木编排跨插件协同与 `blackboard_policy.yaml` 黑板槽位预设；
+* **载体 V（微内核原生代码插件与动态 UI 视图包 `ai0.extension.json + ESM/WASM + ext.console_ui`）**：深度介入内核钩子与自定义控制台页面。
 
 ---
 
-## 四、`WebUI 控制台` 的系统定位、职责边界与四大工作区全景
+## 四、`WebUI 控制台` 的系统定位、`Shell` 架构正本清源、`<main>` 一体式圆角卡片路由视口与五大视图母版
 
-### 4.1 系统定位与四大核心工程职责
+### 4.1 系统定位、正本清源 `Shell` 一等架构层与“后端 100% 零阉割 + 前端渐进式降维视觉”铁律
 
-1. **架构定位：内建控制平面（Control Plane）**：
-   系统的核心本体永远是无头（Headless）的**数字生命认知微内核**，而 `WebUI 控制台` 是系统标配的**内建控制平面**，与后台运行的认知个体松耦合分离。
-2. **远超普通静态 `Settings` 页面的四大工程职责与双模态视觉体验**：
-   由于认知中枢采用无头运行时、大脑状态随时间自发演化、且承载八大扩展生态，`WebUI 控制台` 除常规参数配置外，还同时承担以下四项核心工程职责：**无头内核的开箱互动沙盒与官方协议样板间（内置 WebChat）**、**活体记忆血缘与人格成长治理台**、**八大扩展生态的装配车间与插件 UI 宿主**、以及**跨时间尺度的认知时光机与回归实验室**。
-   在视觉体验与人因设计上，控制台严格遵循**《双模态视觉体验架构（Dual-Mode Visual Experience Architecture）》**：将日常陪伴入口（WebChat 舞台）打磨为具有**微时间排印、情绪微光晕与打断腹稿印记的感性呼吸舞台**，而将管理与实验入口（19 项面板）打磨为**高密度精密赛博观测天文台（32px 紧凑控件、等宽审计字体、`live` 主权绿 vs. `sandbox` 琥珀/紫罗兰警示围栏）**。
+1. **架构定位：无头认知微内核的唯一官方实体控制平面（Control Plane）**：
+   系统的核心本体永远是无头（Headless）的**数字生命认知微内核**，而 `WebUI 控制台（@ai0/console-webui）` 是系统标配的**内建实体控制平面**，默认根路由首屏为 **`/dashboard`（数字生命全景态势、活跃 `Shells` 星图与系统总览大盘）**。
+2. **正本清源 `Shell（具身运行环境）` 的一等架构地位，剥离 `@ai0/plugin-webchat` 的越位层级**：
+   * 系统真正的顶层交互架构层是 **`Shell（具身运行环境，ext.shell）`**（作为控制台第 2 大核心一级导航域 `/shells/*`，统领所有桌宠、Live2D/3D、IM、游戏与 Web 躯壳的双向连接、三平面能力、注意力焦点仲裁、丘脑门控与媒体管线）。
+   * **`@ai0/plugin-webchat` 绝不是控制台的一个顶层架构层面或顶栏模式**——它仅仅是遵循 `Shell` 架构与 `Protocol v0` 的一个默认预装插件，启用后通过 `ext.console_ui` 在 `/shells/stage/builtin.webchat` 下动态挂载一个普通子路由页面（与社区开发的 Web Live2D/3D 舞台插件 100% 平权，可随时替换或禁用，绝不绑架控制台本身架构）。
+3. **后端全量设计 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形层 -> Tier-V2 紧凑表单层 -> Tier-V3 权威源码层`）**：
+   * 借鉴 **`AstrBot / NapCat / Koishi`** 的成熟面板操作体验，融合 **`kirakira.moe (KIRAKIRA-Cerasus)`** 对 Material Design 3 的二次元个性化组件封装（紧凑 `32px` 控件、细腻水波纹 Ripple、弹簧物理缓动、动态灵魂色调），将后端全量认知机制、五阶多态扩展配置与系统基建 100% 零阉割投射至前端 **8 大一级导航域 × 30 条专职子路由**。
 
 ### 4.2 `WebUI 控制台` 的正式定义与“运行扩展 vs. 管理扩展”职责边界
 
-> **`WebUI 控制台（WebUI Console）` 是官方随项目提供的浏览器管理、观测与实验界面。使用者通过它与内置标准协议 WebChat 日常相处、配置灵魂实例、管理扩展与权限、查证数字个体的行为轨迹、治理其记忆血缘与存档，并在隔离的实验副本上执行感官模拟、时间拨快、模块消融与回归回放。**
+> **`WebUI 控制台（WebUI Console）` 是官方随项目提供的浏览器管理、配置、创作、观测与实验操作系统界面。使用者通过它监控与编排所有具身 `Shells`、通过可食用角色蒸馏工坊与可视化曲线调教灵魂实例、编排 `<2500 Token` 认知黑板积木、管理五脑区算力代谢与五阶多态扩展配置、通过四轨终端与 8 步决策轨迹查证数字个体的行为、治理其记忆血缘与内建混合 RAG 知识库，并在隔离的实验副本上执行感官模拟、时间拨快、模块消融与回归回放。**
 
 * **关键工程边界：“运行扩展”在后台内核，“管理扩展”在网页控制台**：
-  * **前 7 大扩展维度（`ext.shell` 至 `ext.soul_asset`）由后台无头守护进程 `@ai0/kernel` & `@ai0/daemon` 宿主运行**。使用者在网页里启用一个睡眠记忆插件或 IM 躯壳插件后，即使彻底关闭浏览器，后台内核依然继续运行该插件、接收消息并整理记忆；
-  * **只有第 8 维度 `ext.console_ui`（插件贡献的配置表单或可视化监控卡片）才在浏览器打开控制台时由网页按需加载渲染**。此外，所有的管理 API 均同样支持通过本地 CLI 调用，数字个体的存活绝不依赖浏览器进程。
+  * **前 7 大功能总线（`ext.shell` 至 `ext.soul_asset`）由后台无头守护进程 `@ai0/kernel` & `@ai0/daemon` 宿主运行**；关闭浏览器丝毫不影响数字生命与后台扩展持续运转；
+  * **只有第 8 总线 `ext.console_ui`（插件贡献的配置表单、监控卡片或挂载在 `/shells/stage/:id` 的 Web 躯壳页面）才在打开控制台对应路由时按需渲染**。
 
-### 4.3 核心安全边界与“三大清晰入口（日常相处 vs. 实例管理 vs. 隔离实验）”
+### 4.3 常驻多态应用外壳、`LIVE / SANDBOX` 二元实例环境隔离与 `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet`）
 
-1. **WebUI 控制台（特权管理层） vs. 内置 WebChat（零特权标准 Shell 插件）**：
-   * **`@ai0/plugin-webchat`**：**100% 纯粹走标准协议 v0 的零特权 Shell 插件**（既可独立打开，也可嵌入控制台），标准 Shell 协议绝不向下传输脑内私密记忆 ID、权限裁决明细或未说出口的思考。
-   * **`@ai0/console-webui`**：通过仅供所有者访问的 `Kernel Admin & Audit Telemetry Bus` 提供管理与只读决策轨迹查证。
-2. **把“日常正式相处（`live`）”与“破坏性时间/消融实验（`sandbox:<fork_id>`）”物理分开**：
-   对于一个要陪伴用户数年的数字个体，“观察她刚才为什么这么回答”与“把她经历的时间拨快 7 天或关掉她的情绪脑区”是后果完全不同的两件事（在正式个体上直接拨快 7 天会导致真实的周二约定立刻变成过期违约！）。因此控制台提供**三个入口**并绑定严格的**实例目标隔离**：
-   * **入口 A：日常陪伴入口（Companion Entry — 作用于 `live` 正式实例）**：直接打开普通 WebChat 继续此前的话题；虚拟时钟严格锁定为 `1x` 物理时钟，**在 `live` 实例上硬性禁用时间拨快、虚假感官注入与脑区消融**。
-   * **入口 B：实例管理与事后查证入口（Manage & Audit Entry — 作用于 `live` 正式实例）**：查看当前在线躯壳、待批准的行动/人格变更与最近故障；需要解释某次行为时，展开该轮对话的**只读 8 步可验证决策轨迹（`VerifiableTurnTrace`）**，观察而不篡改她的时间线。
-   * **入口 C：认知实验入口（Cognitive Lab Entry — 强制要求先从指定快照派生 `sandbox:<fork_id>` 实验副本）**：一切**感官模拟注入、虚拟时间拨快（Time-Warp）、认知模块消融（Ablation）与 `.scenario.yaml` 剧本回放**均在秒级克隆出的实验副本上执行，实验产生的提醒和工具调用全部由沙盒模拟端（`MockSandboxSink`）接收，实验完毕一键销毁，对正式相处的个体**零污染**。
+1. **常驻外围多态壳层（Persistent Polymorphic App Shell）**：
+   * 外围由 **混合顶栏（`48px`）+ 左侧三态可折叠路由导航栏/迷你栏（`56px ↔ 220px ↔ 56px+190px 双轨`）+ 右侧三态可折叠上下文检视副栏/迷你工具栏（`48px ↔ 400px ↔ 540px`）** 构成常驻布局框架，在路由切换时稳固不闪烁。
+2. **顶栏纯粹的“二元实例运行环境隔离（`🟢 LIVE` vs. `🧪 SANDBOX:<fork_id>`）”**：
+   * **`🟢 LIVE 正式运行实例（target_instance: "live"）`**：主权翡翠绿防呆围栏，虚拟时钟锁定 `1x` 物理时钟，硬性禁用时间拨快、虚假感官注入与核心脑区消融；
+   * **`🧪 SANDBOX 隔离实验沙盒副本（target_instance: "sandbox:<fork_id>"）`**：实验琥珀/紫罗兰防呆警示围栏，从指定快照秒级派生隔离副本，解锁虚拟时间拨快、感官模拟注入、脑区消融与 `.scenario.yaml` 回放，一切提醒与动作重定向至 `MockSandboxSink`。
+3. **中央 `<main>` 一体式圆角卡片路由视口容器盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）**：
+   * 被外围多态栏紧密环绕（`6px~8px` 紧密间距）的中央 **`<main>` 主内容区本身，被整体包裹为一张完整、统一的大圆角悬浮卡片盒子（`border-radius: 16px`）作为 `<RouterOutlet />` 路由视口**；
+   * **单路由单页面、拒绝首屏大杂烩与碎卡片套娃**：任意时刻 `<main>` 圆角卡片大盒子内部**仅专职渲染当前 URL 匹配的那 1 个路由页面**（内部采用高内聚平铺分栏与分节展开五大视图结构母版，严禁把所有功能塞进首屏，也严禁把 `<main>` 拆成满屏零散漂浮的小卡片）。
 
-### 4.4 结合项目架构的控制台四大工作区与 19 项功能面板全景（详细架构见 `docs/architecture/06-webui-console-and-observability-arch.md`）
+### 4.4 `<main>` 圆角卡片盒子内部的五大视图结构母版与 8 大导航域全景（详细 30 条路由与 45 项组件库见 `docs/architecture/06-webui-console-and-observability-arch.md`）
 
-| 工作区划分 | 包含的核心功能面板（共 19 项） | 对应的内核与扩展架构层 |
-| :--- | :--- | :--- |
-| **工作区 I：日常陪伴与只读轨迹查证**<br/>*(Live Stage & Read-Only Trace Inspector)* | **1. 内置标准协议 WebChat 舞台**（连接 `live` 正式个体，支持独立打开或一键全屏沉浸陪伴）<br/>**2. 本轮 8 步可验证决策轨迹只读抽屉**（事后或实时查证：`step1_perception` $\rightarrow$ `step2_gate_safety` $\rightarrow$ `step3_memory_recall` $\rightarrow$ `step4_homeostasis` $\rightarrow$ `step5_strategy_proposal` [含剧透遮罩] $\rightarrow$ `step6_tool_auth` $\rightarrow$ `step7_emitted_intent` $\rightarrow$ `step8_delivery_receipt`）<br/>**3. 当前个体状态总览卡**（在线躯壳媒介、待审批行动提醒、最近运行故障告警） | 协议 v0 网关 + 权威状态协调器 + 只读审计轨迹表 |
-| **工作区 II：灵魂、记忆血缘与关系治理**<br/>*(Soul, Memory & Relationship)* | **4. 灵魂实例与三层人格配置台**（Tier 0 底线预览 / Tier 1 核心 DNA 审批 / **Tier 2 自我叙事：日常自动演进日志回退 & 高冲突变更审批** / `.soul-template` 与 `Lorebook` 装载）<br/>**5. 内稳态动力学、作息生物钟与主动搭话策略面板**（情绪/心境/双轨精力曲线、主动配额上限与免打扰）<br/>**6. 原始对话与事件流水审计台**（多维检索、审计、导出微调数据）<br/>**7. 主观记忆血缘树（Lineage DAG）与前瞻承诺治理台**（溯源分类 `亲历|传闻|揣测` 查看、**全副本连根真遗忘 `Hard Forget` [含跨回档永久墓碑账本]**、**痛点话题封印 `Topic Seal`**、承诺状态机管理）<br/>**8. 客观外部知识库热插拔挂载台**（Obsidian/Notion/Wiki 挂载与卸载常识摘要卡 Gist Cards 管理）<br/>**9. 关系羁绊、用户模型与跨平台身份显式绑定台**（信任/亲密/默契、**心结成因查看与一键释怀**、可打扰度模型、跨平台账号显式合并绑定） | 大脑七大认知模块 + 睡眠写入防火墙 + `.soul` 存储底座 |
-| **工作区 III：八大扩展管理、媒体管线与行动编排**<br/>*(8-Dimension Extension Management & Agency)* | **10. 八大扩展管理中心**（管理由后台内核运行的 7 类扩展启停与配置，签发 Scoped Capability Tokens）<br/>**11. 多模态语音、情感 TTS 与感官媒体管线调音台**（配置 `ext.media_pipeline`：TTS 声线情绪试听、流式 ASR 与 VAD 打断阈值、视觉语义置信度门控）<br/>**12. 一等行动能力（MCP / Skills / Shell Actuators）与运行中长任务监控台**（监控后台 8 步行动任务进度，支持随时暂停或中止）<br/>**13. 多端注意力焦点与跨插件联动规则编排器**（配置多 Shell 同时在线时的响应优先级与触发规则）<br/>**14. 第三方插件动态 UI 视图容器（`ext.console_ui` Slots）**（在浏览器端按需加载插件贡献的配置表单与实时监控卡片） | 八大扩展总线 + 注意力仲裁器 + 8 步一等行动认知环 |
-| **工作区 IV：算力路由、安全主权与隔离实验沙盒**<br/>*(Compute, Sovereignty & Sandbox Lab)* | **15. 大模型接入、五脑区分层路由与 Token 预算“犯困降级”中心**（快对话/慢反思/睡眠整理/行动规划/多模态各配最优模型 + 预算熔断）<br/>**16. 安全围栏、三维权限审批矩阵与 SB 243 合规中心**（`主体×受众×工具风险` 矩阵、公私隐私隔离墙、全局急停开关 Kill Switch、危机热线与 3 小时休息提醒）<br/>**17. Git 式灵魂快照时间线、回档断层弥合与整包迁移中心**（快照分支、三种回档弥合模式、**恢复旧快照时自动重放永久遗忘墓碑账本**、`.soul` 整包导入导出）<br/>**18. 隔离实验沙盒（`Sandbox Fork`：感官模拟注入 + 虚拟时间拨快 + 模块消融开关 + `.scenario.yaml` 剧本回放）**（显式绑定测试副本 ID，由模拟端接收提醒与工具调用）<br/>**19. 并发协调器监控与声线语料精炼工作台**（监控 MVCC `state_rev` 与四路 Worker 队列、提炼黄金声线样本与 LoRA 训练集） | 模型路由器 + Tier 0 安全层 + MVCC 协调器 + 沙盒 Fork 与回归评估引擎 |
+| 视图结构母版 (View Archetype) | 在 `<main>` 圆角卡片大盒子内部的结构与交互特征 | 承载的 8 大一级导航域与核心专职子路由 | 对应的内核与扩展架构层 |
+| :--- | :--- | :--- | :--- |
+| **母版 I：插件挂载互动舞台与伴生白盒检视态**<br/>*(Mounted Shell Stage & Companion Inspector)* | `<main>` 圆角卡片盒子内渲染已挂载的 Web `Shell` 舞台或虚拟躯壳模拟器；点击右上角或话轮联动展开右侧 `400px` **8 步可验证决策轨迹**与 `KiraSpoilerMask` 毛玻璃潜台词剧透副栏 | • `/shells/stage/:shellPluginId`（如挂载零特权 `builtin.webchat` 或社区 Web Live2D/3D 舞台插件）<br/>• `/shells/simulator`（内置免客户端虚拟躯壳与多模态感官调试模拟器） | `ext.shell` + `Protocol v0` 网关 + 只读审计轨迹表 |
+| **母版 II：高密度态势指标带与多轨实时流监控态**<br/>*(Telemetry Strip, Topology & Multi-Stream Terminal)*<br/>`[借鉴 NapCat 并升维]` | `<main>` 圆角卡片盒子内上方为紧凑水平态势指标带或连接拓扑星图，下方通过 `1px` 分割线无缝衔接高对比暗色等宽四轨融合终端或状态机看板 | • **域 1 首页** `/dashboard`（数字生命全景态势总览默认根首屏）<br/>• **域 2 躯壳** `/shells/topology`（双向具身网关与在线 `Shell` 三平面星图：`Sensors` 视神经感官覆盖桶 `live_foveal/stale` TTL、`Realizers` 动态表现力词典、`Actuators` 动态热更新）<br/>• **域 7 运行时** `/runtime/coordinator-agency`（MVCC 五域水位、机会池 `InteractionOpportunity` 与 `W2` 8步行动看板）& `/runtime/terminal`（四轨融合遥测终端） | `@ai0/gateway` + MVCC 协调器 + 四路 Worker + 8 步行动认知环 |
+| **母版 III：主从分节 Schema 配置器、降维曲线与版本 Diff 审批态**<br/>*(Master-Detail Configurator, Visual Curve & Diff Approval)*<br/>`[借鉴 AstrBot 并升维]` | `<main>` 圆角卡片盒子内左侧为二级锚点栏，右侧为 `Tier-V1` 拖拽曲线/积木矩阵 + `Tier-V2` 紧凑 `32px` 表单 + `Tier-V3` 源码切换，底部内嵌粘性 `FloatingDirtyDiffBar` 与双栏 Diff 审批器 | • **域 1 黑板** `/dashboard/blackboard`（`<2500 Token` 认知黑板槽位积木编排器与公私场合 70% 社交面具模拟器）<br/>• **域 2 感官与媒体** `/shells/attention-arbitration` & `/shells/thalamic-gate` & `/shells/media-pipeline`（三锚点关键帧排练台）<br/>• **域 3 灵魂** `/soul/persona`（三层人格与演化双栏 Diff 审批）& `/soul/lorebooks`（激活模拟器）& `/soul/homeostasis`（24h 生物钟与二阶情绪拖拽画布）<br/>• **域 4 检索** `/memory/retrieval-sleep`（混合检索公式沙盒、睡眠防反刍与 `W3` 好奇心外部冲浪源）<br/>• **域 5 算力** `/models/providers` & `/models/routing`（五脑区路由、算力代谢犯困降级环与声线漂移雷达图）<br/>• **域 6 扩展配置** `/extensions/configurator`（动态 `config_schema` 热重载与 `D1~D5` 黑板域权限矩阵）& `/extensions/cognitive-organs`（大脑器官三钩子工作台）<br/>• **域 8 系统底座** `/system/safety-sb243` & `/system/settings-security`（认证、Secrets Vault 密钥保险箱与网络代理） | 黑板编译器 + 五脑区路由器 + 内稳态与 `VirtualClock` + `ext.media_pipeline` + Tier 0 安全层 |
+| **母版 IV：交互式全幅拓扑画布与时间线资产治理态**<br/>*(Interactive Graph Canvas & Timeline Governance)* | `<main>` 圆角卡片盒子内上方为多维溯源过滤栏，中央为全幅可缩放 DAG 拓扑画布/时间轴/规则连线画布，右侧内嵌节点手术台抽屉 | • **域 4 记忆与关系** `/memory/lineage`（四级溯源血缘 DAG、双时态 `supersedes` 折叠链、`CommonGround` 默契三态、`Hard Forget` 五表擦除与 `redaction_ledger` 墓碑手术台）& `/memory/relationship`（关系雷达、心结48h一键释怀、共同经历里程碑画廊 `milestones_and_rituals.yaml` 与跨平台身份绑定图谱）<br/>• **域 6 流程编排** `/extensions/flows-eca`（跨插件 `When->If->Then` ECA 联动积木与 `.flow.yaml` 蓝图编排器）<br/>• **域 8 实例与快照** `/system/instances-storage`（多 `.soul` 实例、Git 快照回档弥合与 SQLite WAL/vec/FTS5 健康中心） | `.soul` 存储底座 + 血缘 DAG 引擎 + 关系里程碑引擎 + 跨插件编排引擎 |
+| **母版 V：多态扩展市场网格、四步料理流水线与沙盒消融实验室态**<br/>*(Polymorphic Registry Grid, Distiller Wizard & Sandbox Lab)*<br/>`[借鉴 AstrBot/Koishi 并升维]` | `<main>` 圆角卡片盒子内上方为五阶载体/八大总线分类栏或沙盒控制条，主区为紧凑平铺网格、四步分馏向导、在线技能创作台或 A/B 双轨消融对比矩阵 | • **域 3 角色蒸馏** `/soul/distiller`（可食用蒸馏角色四步料理工坊与一键脱敏打包台）<br/>• **域 4 知识与资产** `/memory/knowledge-rag`（内建混合 RAG 文档分块与卸载前百字常识卡 `CrystallizedGistCard` 提炼向导）& `/memory/events-media`<br/>• **域 6 五阶扩展工作坊** `/extensions/marketplace`（五阶多态扩展市场与 Creator Asset Bundler 脱敏打包器）& `/extensions/skills-mcp`（在线 `SKILL.md` 自然语言技能创作工坊与 MCP 调试沙盒）& `/extensions/custom/:pluginId`<br/>• **域 7 沙盒实验室** `/sandbox/lab`（`sandbox:<fork_id>` 时间拨快、感官注入、脑区消融对比与 `.scenario.yaml` Fail-Closed 回放实验室） | 五阶多态扩展总线 + 内建混合 RAG + 角色蒸馏管线 + `Sandbox Fork` 评测引擎 |

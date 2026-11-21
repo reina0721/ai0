@@ -42,15 +42,16 @@ flowchart TB
     end
 
     subgraph StoragePlane["持久化灵魂存档底座 (@ai0/storage — Local-First .soul Directory)"]
-        SQLite["SQLite (WAL) + sqlite-vec<br/>event_log | memories | lineage_edges | commitments | traces"]
-        SoulFiles["结构化人设与基因文件<br/>identity.yaml (Tier 1) | narrative.md (Tier 2) | lorebooks/"]
-        GitSnap["Git / COW 快照回档与整包迁移引擎"]
+        SQLite["SQLite (WAL) + sqlite-vec + FTS5<br/>event_log | memories | lineage_edges | commitments | traces | knowledge_chunks"]
+        SoulFiles["结构化人设、策略与多态资产文件<br/>identity.yaml | narrative.md | blackboard_policy.yaml | milestones.yaml | lorebooks/ | skills/ | flows/"]
+        GitSnap["Git / COW 快照回档 (含永久遗忘墓碑重放) 与脱敏打包引擎"]
     end
 
-    subgraph ControlPlane["宿主控制与可观测平面 (@ai0/console-webui)"]
-        AdminAPI["Kernel Admin & Audit Telemetry Bus (特权管理与只读遥测总线)"]
-        Workspaces["WebUI 四大工作区 & 19 项核心治理面板"]
-        UISlots["第三方插件动态 UI 扩展槽容器 (ext.console_ui)"]
+    subgraph ControlPlane["宿主控制与可观测平面 (@ai0/console-webui — 常驻多态外壳 + <main> 一体式圆角卡片路由视口)"]
+        AdminAPI["Kernel Admin & Audit Telemetry Bus (特权管理与四轨遥测总线)"]
+        AppShell["常驻多态外壳 (混合顶栏 LIVE/SANDBOX 环境切换 + 左可折叠路由栏 + 右可折叠检视副栏)"]
+        RouterOutlet["<main> 一体式圆角卡片路由视口盒子 (MainRoundedCardOutlet = <RouterOutlet />)<br/>按需渲染 8 大一级域 × 30 条专职路由页面 | 内部承载五大 UI/UX 视图母版 & 4层45项 KIRAKIRA-MD3 组件"]
+        UISlots["动态 UI 扩展槽 & Web Shell 舞台挂载点 (ext.console_ui -> /shells/stage/:shellId)"]
     end
 
     ShellExt & WebChatShell <--> MediaPipe <-->|"Protocol v0 (公开标准协议)"| WSGateway
@@ -64,7 +65,7 @@ flowchart TB
     Coord <-->|"原子事务读写 / WHERE 受众隔离"| SQLite & SoulFiles
     GitSnap <--> SQLite & SoulFiles
     ControlPlane <-->|"特权总线 (非 Shell 协议)"| AdminAPI <--> Coord & ExtHost & GitSnap
-    ControlPlane -.->|"前端容器嵌入"| WebChatShell
+    UISlots -.->|"仅作为插件页按需挂载于 /shells/stage/builtin.webchat"| WebChatShell
 ```
 
 ---
@@ -130,20 +131,24 @@ flowchart TB
 │   │   │   ├── shell-ws-server.ts       # 公开 Protocol v0 WebSocket 服务端 (面向所有 Shell)
 │   │   │   └── admin-api-server.ts      # 宿主特权 REST + Telemetry WebSocket 服务端 (面向 WebUI 控制台)
 │   │
-│   ├── plugin-webchat/                  # [@ai0/plugin-webchat] 内置零特权标准 WebChat Shell 插件
+│   ├── plugin-webchat/                  # [@ai0/plugin-webchat] 默认预装的零特权标准 WebChat Shell 参考插件
 │   │   ├── src/
 │   │   │   ├── client/                  # 纯标准协议 WebSocket 客户端 (发送感知 / 接收表达 / 上报打断字数回执)
-│   │   │   └── ui/                      # 可独立运行或嵌入控制台的 WebChat React 视图组件
+│   │   │   └── ui/                      # 仅作为普通插件挂载于控制台 /shells/stage/builtin.webchat (或独立打开) 的视图组件
 │   │
-│   └── sdk/                             # [@ai0/sdk] 面向社区开发者的插件开发套件
-│       └── src/                         # 快速编写 Shell / MediaPipeline / CognitiveOrgan / ConsoleUI 插件的基类
+│   └── sdk/                             # [@ai0/sdk] 面向社区开发者的五阶多态扩展开发套件
+│       └── src/                         # 快速编写 Shell / MediaPipeline / CognitiveOrgan / Skill / ConsoleUI 插件的基类与打包器
 │
 ├── apps/
 │   ├── daemon/                          # [@ai0/daemon] 内核与网关启动守护进程 / CLI 入口
-│   └── console/                         # [@ai0/console-webui] 现代化 WebUI 控制台前端 (React / Next.js)
+│   └── console/                         # [@ai0/console-webui] 现代化多态 WebUI 控制台操作系统 (React / Next.js)
 │       └── src/
-│           ├── workspaces/              # 四大工作区与 19 个核心功能面板
-│           └── extension-slots/         # 第三方插件动态 UI 扩展槽渲染器
+│           ├── app-shell/               # 常驻多态外壳 (混合顶栏 LIVE/SANDBOX 环境切换 / 左三态可折叠路由轨 / 右三态检视副栏 / 主权围栏)
+│           ├── router/                  # 8 大一级导航域 × 30 条专职二级子路由嵌套路由树、懒加载与 DirtyRouteGuard 守卫
+│           ├── design-system/           # 四层 45 项 KIRAKIRA-MD3 二次个性风格封装组件库 (含 MainRoundedCardOutlet 一体式圆角卡片路由视口盒子)
+│           ├── archetypes/              # <main> 圆角卡片盒子内部的五大 UI/UX 视图结构母版 (挂载舞台 / 态势终端 / 主从配置 / 拓扑画布 / 多态工作坊)
+│           ├── domains/                 # 1:1 零阉割投射后端全量机制的 10 大业务域模块 (具身 Shells 中枢 / 五阶扩展工作坊 / 可食用角色蒸馏炉 / 黑板积木编排器等)
+│           └── extension-slots/         # 第三方插件动态 UI 扩展槽与 Web Shell 舞台挂载宿主 (ext.console_ui Schema & 无凭据沙盒 Iframe)
 │
 └── souls/                               # 默认本地灵魂存档挂载目录 (.soul 实例集)
     └── default.soul/

@@ -21,10 +21,19 @@ souls/example.soul/
 │                                  #   - proactivity_policy (每日主动搭话上限、冷却退避系数、最低可打扰度阈值)
 ├── narrative.md                   # 【Tier 2 可演化自我叙事】(带 visibility_scope 标记的 Markdown 段落)
 ├── voice_exemplars.jsonl          # 【黄金声线锚点池】用于换模型或降级时的动态 Few-Shot 声线校准
-├── lorebooks/                     # 【可热插拔世界观词条库】(按关键词/语义激活的背景设定集)
+├── blackboard_policy.yaml         # 【声明式认知黑板槽位编排与语境预设】各认知槽位 Token 预算配比、显著性门槛与场景预设
+├── milestones_and_rituals.yaml    # 【关系羁绊里程碑、纪念日仪式与正向剧情触发规则】(零暗黑惩罚，仅限正向成长解锁)
+├── lorebooks/                     # 【可热插拔动态世界观词条库】(载体形态 I：按关键词/语义递归激活的背景设定集)
 │   └── default_world.yaml
+├── skills/                        # 【自然语言与脚本混合技能包】(载体形态 II：包含 SKILL.md 手册与沙盒脚本)
+│   └── daily-companion-review/
+│       └── SKILL.md
+├── flows/                         # 【可视化认知流与跨插件 ECA 联动蓝图】(载体形态 IV：.flow.yaml & orchestration_rules.yaml)
+│   └── default_orchestration.flow.yaml
+├── knowledge/                     # 【内建混合 RAG 知识库文档源与卸载常识提炼池】
+│   └── documents/
 ├── state/
-│   ├── soul_core.sqlite           # 【核心状态与事件溯源数据库】(SQLite 3 + WAL 模式 + sqlite-vec 向量扩展)
+│   ├── soul_core.sqlite           # 【核心状态、事件溯源与内建混合 RAG 数据库】(SQLite 3 + WAL + sqlite-vec + FTS5)
 │   └── redaction_ledger.json      # 【跨快照永久遗忘墓碑账本】记录已生效的真遗忘目标 ID，恢复旧快照时强制重放擦除!
 ├── attachments/                   # 经授权保存的共同经历多媒体快照 (按内容哈希寻址)
 └── .git/                          # 内置轻量 Git 版本库，记录每次人格审批、睡眠整理检查点与显式快照
@@ -219,6 +228,33 @@ CREATE TABLE turn_decision_traces (
     step6_tool_auth_json    TEXT NOT NULL,                 -- 选择的 MCP/Skill/Shell Actuator 及三维权限引擎裁决结果
     step7_emitted_intent_json TEXT NOT NULL,               -- 下发的 ExpressionEnvelope / 行动指令
     step8_delivery_receipt_json TEXT DEFAULT NULL          -- 异步回填的 DeliveryReceipt (completed/interrupted, spoken_char_offset)
+);
+```
+
+### 2.6 表 6：内建开箱即用混合 RAG 知识库切片与 FTS5 稀疏索引表 (`knowledge_chunks`)
+
+为了在内核底座原生提供对齐并超越 `AstrBot` 的混合 RAG 知识库能力（同时与外部 `ext.memory_knowledge` 连接器无缝协同），`soul_core.sqlite` 内建文档切片表、向量虚拟表与 `FTS5` 稀疏全文检索表，并**在表结构级强制锁死 `taint_level = 'untrusted_external'` 防间接 Prompt 注入投毒**，同时记录被真实对话引用的次数 `citation_count`（供卸载知识集时自动触发 `extractGistCardsBeforeUnmount` 浓缩生成 `<150` 字的 `kb_crystallized_gist` 常识卡）：
+
+```sql
+CREATE TABLE knowledge_chunks (
+    chunk_id            TEXT PRIMARY KEY,                  -- ULID
+    collection_id       TEXT NOT NULL,                     -- 所属知识集 ID (如 'kb.local.project_docs' 或 'kb.anime.lore')
+    document_name       TEXT NOT NULL,                     -- 原始文档名 (PDF / Markdown / DOCX / 代码文件)
+    chunk_index         INTEGER NOT NULL,
+    content_text        TEXT NOT NULL,
+    metadata_json       TEXT NOT NULL DEFAULT '{}',        -- 页码、章节标题或代码符号路径
+    taint_level         TEXT NOT NULL DEFAULT 'untrusted_external' CHECK (taint_level = 'untrusted_external'),
+    citation_count      INTEGER NOT NULL DEFAULT 0,        -- 在真实对话中被高权重引用的累计次数 (卸载时用于筛选提炼 Gist 常识卡)
+    last_cited_ts_ms    INTEGER DEFAULT NULL,
+    created_at_ts_ms    INTEGER NOT NULL
+);
+
+-- SQLite FTS5 BM25 稀疏检索虚拟表 (与 sqlite-vec 稠密向量检索共同构成 Hybrid RAG + Reranker 管线)
+CREATE VIRTUAL TABLE knowledge_chunks_fts USING fts5(
+    chunk_id UNINDEXED,
+    collection_id UNINDEXED,
+    content_text,
+    tokenize = 'unicode61'
 );
 ```
 

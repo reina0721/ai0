@@ -53,9 +53,19 @@ export interface HandshakeManifest {
   capabilities: {
     /** 平面 1：端侧可采集并上报的感知模态 (支持 WellKnownSensorModality 及 custom.* 开放扩展) */
     sensors: SensorModality[];
-    /** 平面 2：支持解析渲染的下行扩展命名空间 */
+    /** 平面 2：支持解析渲染的下行扩展命名空间与动态具身表现力词典 */
     supported_extensions: string[];          // 如 ["ext.affect.v1", "ext.rhythm.v1", "ext.embodied.v1"]
-    /** 平面 3：端侧暴露的具身执行器契约 (供大脑 8 步行动认知环调用) */
+    /**
+     * 可选：动态具身表现力词典协商 (Dynamic Embodied Expression Vocabulary)
+     * 允许 Live2D/VRM/桌宠 Shell 或关联的情感 TTS 管线在握手及 capabilities_updated 时动态注册当前可用表情、动作意图与声线情绪标签，
+     * 由认知黑板按情境注入 System 1，既保持核心协议极简，又彻底释放高阶躯壳的演出可玩性。
+     */
+    expression_vocabulary?: {
+      facial_expressions?: string[];         // 如 ["soft_smile", "pout_blush", "half_closed_eyes", "starry_excited"]
+      gesture_intents?: string[];            // 如 ["tilt_head_curious", "rub_against_hand", "eat_strawberry", "play_guitar"]
+      voice_emotion_tags?: string[];         // 如 ["shy_whisper", "tsundere_retort", "sleepy_yawn", "warm_comfort"]
+    };
+    /** 平面 3：端侧暴露的具身执行器契约 (供大脑 8 步行动认知环调用，支持运行期通过 capabilities_updated 动态热增删) */
     actuators: Array<{
       actuator_id: string;                   // 如 "desktop.take_authorized_snapshot" | "game.move_to"
       description: string;

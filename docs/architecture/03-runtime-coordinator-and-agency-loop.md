@@ -69,6 +69,22 @@ sequenceDiagram
 2. **反操控与心结边界裁决器（Anti-Manipulation Clipper）**：裁剪单轮情绪/关系跳变幅度上限；强制为任何新产生的“心结（Tension）”绑定 $\le 48$ 小时的衰减半衰期。
 3. **8 步可验证决策审计落库（Audit Trace Recorder）**：将裁决前后的完整参数写入 `turn_decision_traces` 表，同时推送至控制台特权遥测总线。
 
+### 2.3 声明式可插拔认知黑板槽位积木编译器（Declarative Slot-Based Blackboard Compiler — `blackboard_policy.yaml`）
+
+为彻底打破硬编码上下文拼装的黑盒局限、赋予研究者与高阶玩家调配注意力结构的自由，`@ai0/kernel/blackboard` 采用声明式槽位积木架构：
+1. **标准黑板槽位（Standard & Custom Blackboard Slots）**：
+   * `slot.tier0_safety_invariants`（**强制置顶锁死，物理不可关闭或缩减**）；
+   * `slot.tier1_core_dna`（核心性格、存在论契约、声线签名与 Few-Shot 黄金样本锚点）；
+   * `slot.tier2_narrative_self`（按当前 `Audience` 硬过滤后的自我叙事段落）；
+   * `slot.embodiment_and_sensory_buckets`（当前附身 `Shell` 的三平面能力、动态注册的 `expression_vocabulary` 表现力词典、以及 `live_foveal / ambient_peripheral` 视神经感官覆盖桶）；
+   * `slot.homeostasis_and_vitality`（显著偏离基线的情绪/心境体感与双轨精力状态；当 `Audience != only_owner` 时自动启动 **`Social Mask Damper` 社交面具阻尼器**，剥离私密心境成因并将情绪波动幅值衰减 $70\%$）；
+   * `slot.recalled_memories_and_rag`（显著性竞争上岗的 Top-$K$ 长期记忆与内建混合 RAG 切片）；
+   * `slot.prospective_commitments_and_tasks`（到期承诺、活跃 `W2` 8 步行动任务 100 字进度、被打断未说完的腹稿 `unsaid_remainder` 与候选发言机会 `InteractionOpportunity`）；
+   * `slot.lorebook_triggered`（按关键词/递归激活的动态世界观词条）；
+   * `slot.custom_organs.*`（由第三方 `ext.cognitive_organ` 插件通过 `contributeToBlackboard` 注入的自定义认知槽位）。
+2. **多场景语境预设（Context Presets）**：
+   支持在 `blackboard_policy.yaml` 与控制台 `/dashboard/blackboard` 页面中动态切换或自定义不同场景的槽位预算配比（如 `日常陪伴标准预设 ≤2200 Tokens`、`深度灵魂长谈预设 ≤3600 Tokens`、`游戏并肩作战超低延迟预设 ≤1200 Tokens`）。
+
 ---
 
 ## 三、`VirtualClock` 与时间状态三分法引擎架构
@@ -102,7 +118,15 @@ sequenceDiagram
      $$\Delta t_{\text{cross}} = -\frac{1}{\lambda_{\text{drive}}} \ln\left(\frac{D_{\max} - \theta_{\text{proactive}}}{D_{\max} - D_{\text{longing}}(t_0)}\right) \implies t_{\text{drive\_wake}} = t_0 + \Delta t_{\text{cross}}$$
      取 $t_{\text{next}} = \min(t_{\text{drive\_wake}},\; t_{\text{sleep\_dirty\_window}},\; t_{\text{next\_commitment\_due}})$，向 `VirtualClock` 注册唯一一个单次唤醒定时器。
 2. **第二层：事件驱动认知（新事件实时触发 `W1` / `W2`）**。
-3. **第三层：阈值触发的真实异步主动反思（定时器在 $t_{\text{next}}$ 唤醒 `W3` 真实执行后台推理并落库 `sleep_consolidation_run` / `curiosity_exploration_run` 事件）**。
+3. **第三层：阈值触发的真实异步主动反思（定时器在 $t_{\text{next}}$ 唤醒 `W3` 真实执行后台推理并落库 `sleep_consolidation_run` / `curiosity_exploration_run` 事件）**：
+   * **子环 A：睡眠期记忆巩固、双时态更替与 Level-0 防反刍整理（Sleep Memory Consolidation）**：仅从 `Level-0` 未归档原始对话/行动事件提炼情景与语义记忆（禁止超过 2 代递归总结防语义坍缩复读机），处理 `supersedes` 双时态偏好更替与 `CommonGround` 共同默契晋升。
+   * **子环 B：受控好奇心外部世界冲浪与日常谈资采集子代理（Bounded Curiosity Explorer & Topic Feeder）**：
+     * 为了让数字生命拥有鲜活的“日常发现与自主探索感”而非只会反刍旧聊天记录，当好奇心驱动力 $D_{\text{curiosity}}(t) \ge \theta_{\text{curiosity}}$ 唤醒 `W3` 时，内核在受控每日配额内调度好奇心冲浪子代理；
+     * 子代理从用户在控制台授权的**安全兴趣源（RSS 资讯订阅、内建混合 RAG 知识库未读文档、或只读白名单 MCP 资讯工具）**中拉取 1~2 篇内容（输入源强制标记 `taint_level = 'untrusted_external'` 过写入防火墙）；
+     * 以角色自身性格与兴趣视角生成一条**“今日小发现 / 读书随笔”**记忆，并在 `prospective_commitments` 表注册一条 `commitment_kind = 'curiosity_agenda'`（触发条件 `on_next_interaction_after_ts`），使她在主人下次上线时能自然聊起：“对了，你不在的时候我顺着昨天的线索看了一篇很有意思的文章……”
+   * **子环 C：关系羁绊里程碑、纪念日时间仪式与正向剧情事件检定（Milestone & Temporal Ritual Evaluator）**：
+     * `W3` 在每次睡眠周期或跨日唤醒时，扫描 `.soul/milestones_and_rituals.yaml` 定义的正向里程碑规则（如：相伴满 30/100/365 天、主人或角色生日、关系信任度首次突破 $0.8$、共同完成第 $N$ 个 `W2` 行动任务）；
+     * 一旦达成，自动向协调器 `D5_IDENTITY_NARRATIVE` 提交正向成长提案（如解锁更亲密的专属称呼、生成纪念日专属问候约定或解锁新声线样本；**代码层强制拦截任何“未上线惩罚/错过纪念日冷暴力”等暗黑留存规则**）。
    * **叙事诚实性代码守卫**：认知黑板编译器查询 $[t_{\text{last\_user\_interaction}}, t_{\text{now}}]$ 区间内的 `event_log`，仅将**真实落库的第三层后台事件**编译进“离线期间你做过的事”槽位；若该集合为空，则显式注入 `[离线期间：未执行后台思考，仅静默休息]`。
 
 ---

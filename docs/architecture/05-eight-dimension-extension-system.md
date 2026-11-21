@@ -1,31 +1,58 @@
-# 05. 八大扩展维度微内核插件架构与跨插件编排引擎规范
+# 05. 八大功能扩展总线、五阶多态异构扩展载体与跨插件编排引擎规范
 
 > **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
 >
-> 本文档定义支撑“由社区生态自由生长的通用数字生命中枢”的核心引擎——**《微内核八大扩展总线（The 8-Dimension Pluggable Microkernel Bus）》**。它彻底打破了普通 Agent 只有 `MCP/Skill` 工具扩展的局限，为躯壳、多模态音视频管线、大脑内部认知器官、外部工具、记忆与知识连接器、模型推理后端、灵魂模板与世界观资产包、以及控制台自定义 UI 视图提供了统一的 Manifest 与 TypeScript 接口契约。
+> 本文档定义支撑“由社区生态自由生长、高可玩性的通用数字生命中枢”的核心引擎——**《八大功能扩展总线 × 五阶多态异构扩展载体架构（The 8-Bus × 5-Carrier Polymorphic Extension Ecosystem）》**。
+> 它从根本上打破了传统系统“要么只有单一的 Tool/MCP 扩展、要么强制所有扩展都必须写 TypeScript 编译 `dist/index.js` 代码包”的双重局限：将**“扩展挂载在系统的哪个认知/交互层（八大功能总线 Where it hooks）”**与**“创作者用什么门槛和形态制作扩展（五阶多态载体 How it's built & played）”**正交解耦，让零代码角色写手、自然语言 `SKILL.md` 创作者、跨语言协议开发者、可视化工作流调教玩家与硬核微内核黑客都能在首版生态中无缝创作、热挂载与打包分享。
 
 ---
 
-## 一、为什么数字生命中枢必须拥有八大扩展维度？
+## 一、为什么数字生命生态必须采用“八大功能总线 × 五阶多态扩展载体”正交架构？
 
-普通干活型 Agent（如 Coding Agent）只需要扩展“手脚（`MCP / Skill`）”。
-但一个真正的**数字生命中枢**是一个完整的赛博有机体：社区开发者和用户不仅希望给她装上不同的“手脚”，更渴望为她装上不同的**身体容器（桌宠/Live2D/游戏）、嗓音与耳朵（GPT-SoVITS 情感 TTS / 流式 ASR）、新的大脑认知脑区（做梦器 / 细腻情绪模型）、外部活体记忆源（Obsidian/Notion）、本地或微调模型声线（LoRA）、可分享的灵魂人设与世界观资产包（Soul Templates / Lorebooks），并在控制台里看到自己插件的专属监控面板**。
+### 1.1 八大功能扩展总线（The 8 Functional Extension Buses —— 决定“扩展作用于哪一层”）
 
-为此，`@ai0/kernel` 与 `@ai0/sdk` 提供统一的插件包规范（`ai0.extension.json`）与八大强类型扩展点（Extension Points）。
+普通干活型 Agent 只需要扩展“手脚（工具）”。但一个完整的**数字生命认知中枢**是一个活体赛博有机体，社区开发者和玩家需要沿着 **8 条标准化功能总线** 全方位改造她：
+
+1. **`ext.shell`（具身运行环境总线）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers`）与什么端侧身体动作（`Actuators`）”（如桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord IM、Minecraft 等游戏 Mod、以及挂载在浏览器里的 Web 交互舞台插件如 `@ai0/plugin-webchat`）。
+2. **`ext.media_pipeline`（多模态音视频与感官管线总线）**：位于躯壳与大脑之间的流式媒体信号加工厂（流式 ASR 语音转写、GPT-SoVITS / FishAudio 情感 TTS 合成与口型同步 `Visemes`、摄像头微表情语义提取器）。
+3. **`ext.cognitive_organ`（大脑认知器官与生命周期钩子总线）**：允许向大脑内部插入新的认知脑区或替换默认算法（如睡眠期梦境日记器、塔罗占卜心境器官、自定义情绪动力学模型、自定义显著性门控），天然享受内核的一键消融开关与 MVCC 事务保护。
+4. **`ext.action_mcp_skill`（外部行动工具与复合技能总线）**：为大脑的 **8 步一等行动认知环（`W2`）** 与 **潜意识好奇心冲浪环（`W3`）** 提供外部世界操作工作流（标准 MCP Servers、HTTP Webhook/OpenAPI 桥接器、以及包含任务手册与脚本的复合 `SKILL.md` 技能包）。
+5. **`ext.memory_knowledge`（内建混合 RAG 知识库与外部活体知识连接器总线）**：在内核**开箱即用内建混合 RAG 引擎（文档解析分块 + `sqlite-vec` 稠密向量 + FTS5 BM25 稀疏检索 + Reranker）**的基础上，支持热插拔挂载 Obsidian 笔记库、Notion、本地代码库、番剧/游戏设定 Wiki，并在卸载时自动浓缩沉淀百字常识卡（`CrystallizedGistCard`）。
+6. **`ext.model_provider`（模型推理后端与角色 LoRA 总线）**：接入云端 API、本地推理引擎（Ollama / vLLM / llama.cpp）、Embedding / Reranker、L0 本地安全危机分类器以及角色专属 **LoRA 权重热切换器**。
+7. **`ext.soul_asset`（灵魂模板、动态世界观词库、关系里程碑与评测剧本总线）**：支持社区零代码分享与混搭“纯净角色基因包（`.soul-template`）”、SillyTavern 角色卡（V2/V3）、动态世界观设定集（`Lorebook / WorldInfo`）、关系里程碑与纪念日正向剧情触发包（`milestones_and_rituals.yaml`）以及回归评测剧本（`.scenario.yaml`）。
+8. **`ext.console_ui`（控制台动态 UI 视图、专属配置页与 Web 躯壳挂载槽总线）**：允许任何扩展在 `@ai0/console-webui` 中动态注册自己的专属配置面板、实时状态监控卡片、独立路由页面（`/extensions/custom/:pluginId`），或将 Web 交互躯壳挂载为控制台内的一个互动舞台页（`/shells/stage/:shellPluginId`）。
 
 ---
 
-## 二、统一插件包清单规范 (`ai0.extension.json`)
+### 1.2 五阶多态异构扩展载体（The 5 Polymorphic Extension Carriers —— 破除“只有一种代码插件类型”的生态瓶颈）
 
-所有类型的社区扩展均通过统一的声明式清单注册其扩展维度、所需的权限范围以及向 WebUI 控制台贡献的配置表单或监控卡片：
+**核心生态公理**：如果要求写一份世界观、配一个日常技能、接一个外部工具或编排一条跨端规则都必须编写并编译 TypeScript 代码包（`dist/index.js`），90% 的社区创作者将被挡在门外。
+为此，参照并升维 **AstrBot v4（Stars 代码插件 / MCP / `SKILL.md` / 内置 RAG / Sub-Agent 编排 / Platform Adapter）**、**SillyTavern（角色卡 / Lorebook）** 与 **ComfyUI（可分享工作流蓝图）** 的成功生态经验，`@ai0/kernel` 内置 **五种异构多态扩展加载器（5 Polymorphic Loaders）**：
+
+| 扩展载体形态 | 载体文件格式与开发门槛 | 核心运作机制与可玩性场景 | 覆盖的功能总线维度 |
+| :--- | :--- | :--- | :--- |
+| **形态 I：零代码声明式灵魂、世界观与剧情资产包**<br/>*(Declarative Soul, Lore & Story Packs)* | `.soul-template.yaml` / `.png` (Tavern V2/V3) / `lorebook.yaml` / `milestones.yaml` / `.scenario.yaml`<br/>**【零代码 / 网页可视化直接创作】** | 纯声明式数据与触发规则，零可执行代码，100% 免疫代码级恶意攻击；在控制台拖拽即食、通过“四步蒸馏料理台 / 词书激活模拟器 / 里程碑编辑器”在线可视化调教并一键打包分享。 | `ext.soul_asset`、`ext.cognitive_organ`（参数预设） |
+| **形态 II：Agent `SKILL.md` 自然语言技能手册与沙盒脚本包**<br/>*(Markdown Skill Manuals & Sandboxed Scripts)* | `<skill-folder>/SKILL.md` + 可选 `scripts/*.py|js` + `templates/`<br/>**【自然语言 Markdown / 轻量脚本】** | 吸收并升维 Agent Skills 规范：`SKILL.md` 包含 YAML Frontmatter（技能名、触发语义描述、所需的底层 MCP/Actuator 权限白名单、**角色内执行姿态提示 `in_character_demeanor`**）与 Markdown 步骤指南。用户无需编译代码，直接在控制台网页编写一段 Markdown 手册即可教会她新技能（如“每天陪我复盘代码提交并用傲娇语气写总结”）。 | `ext.action_mcp_skill`、`ext.cognitive_organ`（好奇心冲浪议程） |
+| **形态 III：免代码标准协议与跨进程热挂载连接器**<br/>*(Zero-Code Protocol & Out-of-Process Bridges)* | JSON/YAML 连接配置（`MCP stdio/SSE/HTTP`、`Protocol v0 WebSocket`、`OpenAPI / Webhook`、`OpenAI-Compatible API`）<br/>**【免写 `ai0` 插件代码 / 跨语言通用】** | 外部进程可使用任何语言（Python / Rust / C# Unity / C++ Unreal / Go）编写；在控制台仅需填写启动命令行、WebSocket/SSE URL 或导入 OpenAPI JSON Schema，并签发 `Scoped Capability Token` 即可秒级热挂载。 | `ext.shell`、`ext.action_mcp_skill`、`ext.model_provider`、`ext.media_pipeline` |
+| **形态 IV：可视化认知管线、好奇心子代理与跨插件 ECA 蓝图**<br/>*(Visual Cognitive Flows & ECA Blueprints)* | `.flow.yaml` / `orchestration_rules.yaml` / `blackboard_policy.yaml`<br/>**【控制台可视化积木与节点连线】** | 无需修改内核源码，在控制台通过可视化积木编排：**① `When -> If -> Then` 跨插件事件联动规则**、**② `W3` 后台好奇心冲浪/读书笔记子代理管线**、**③ `<2500 Token` 认知黑板槽位预算与语境预设**，支持一键导出 `.flow.yaml` 供社区复用。 | 跨总线协同编排、`ext.cognitive_organ`、`ext.memory_knowledge` |
+| **形态 V：微内核原生代码插件与动态控制台 UI 视图包**<br/>*(Native Microkernel Code Plugins & Console UI)* | `ai0.extension.json` + `./dist/index.js` (ESM / WASM) + `./schema/config.json`<br/>**【TypeScript / WASM 深度开发】** | 面向硬核开发者与研究者：直接实现微内核生命周期 Hook 接口（如自定义情绪微分方程、自定义媒体流编解码器、自定义存储连接器），并可通过 `ext.console_ui` 向控制台注入自定义配置表单、实时监控卡片或挂载 Web 躯壳舞台路由。 | 全部 8 大功能总线（`ext.shell` 至 `ext.console_ui`） |
+
+---
+
+## 二、五阶多态扩展的统一清单规范 (`ai0.extension.json` & `SKILL.md` 契约)
+
+### 2.1 原生代码插件与复合扩展包清单规范 (`ai0.extension.json`)
+
+所有通过包管理器安装的扩展均通过声明式清单注册其载体类型（`carrier_kind`）、目标功能总线（`dimension`）、五域黑板读写权限（`D1~D5`）以及向 WebUI 控制台贡献的动态配置 Schema 与 UI 视图插槽：
 
 ```json
 {
-  "manifest_version": "1.0.0",
+  "manifest_version": "1.1.0",
   "extension_id": "community.organ.dream-journal",
   "display_name": "睡眠期梦境与悄悄话日记器官",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "author": "example-community",
+  "carrier_kind": "native_code_plugin",
   "dimension": "ext.cognitive_organ",
   "entry": "./dist/index.js",
   "permissions": {
@@ -36,9 +63,13 @@
   },
   "console_contributions": {
     "config_schema": "./schema/config.json",
+    "default_config_profiles": {
+      "poetic_dreamer": { "dream_frequency": "every_sleep_cycle", "max_blackboard_tokens": 120 },
+      "minimal_quiet": { "dream_frequency": "rare_milestone_only", "max_blackboard_tokens": 60 }
+    },
     "ui_slots": [
       {
-        "slot_target": "workspace.soul.memory_tab",
+        "slot_target": "slot.memory.custom_tab",
         "widget_type": "markdown_card_list",
         "title": "🌙 她的睡眠梦境日记本",
         "data_endpoint": "organ.dream-journal.list_entries"
@@ -48,21 +79,53 @@
 }
 ```
 
+### 2.2 自然语言与脚本混合技能包规范 (`SKILL.md` — 载体形态 II)
+
+对齐并向数字生命场景升维 Agent Skills 规范，一个 `SKILL.md` 技能包无需编译即可由内核动态检索加载，并特别增加**“角色内执行姿态与共同经历沉淀提示（Diegetic Persona Demeanor & Episodic Crystallization Hint）”**，防止她在调用技能干活时突然变成冷冰冰的客服机器人：
+
+```markdown
+---
+skill_id: "community.skill.daily-github-companion-review"
+display_name: "深夜代码提交陪伴复盘与温柔日报"
+description: "当主人请求复盘今日代码进展，或深夜编程结束准备休息时触发"
+required_mcp_tools: ["github.list_today_commits", "local_fs.write_daily_note"]
+capability_risk: "low_read_and_scoped_write"
+max_audience_scope: "only_owner"
+in_character_demeanor: "保持你原有的角色口癖与关系亲密度；不要像生硬的项目经理汇报工作，而是像并肩作战的伙伴一样夸奖主人的核心突破，顺便吐槽一两句熬夜太晚。"
+crystallize_as_episodic_memory: true
 ---
 
-## 三、八大扩展维度（Extension Points）核心接口契约
+# 执行步骤指南 (Action Plan Guidelines for W2 Agency Runner)
+1. 调用 `github.list_today_commits` 获取主人今天在活跃仓库中的提交记录；
+2. 提炼出今天攻克的 1~2 个最关键的架构或代码改动点；
+3. 按 `templates/companion_dev_log.md` 格式将复盘摘要写入主人的本地笔记目录；
+4. 向 `W1` 快环汇报错落有致、符合角色性格的复盘反馈，并在 `Step8_EpisodicCrystallization` 中将“今天陪主人一起完成了 X 模块攻关”沉淀为一条带成就感的情景记忆。
+```
 
-### 维度 1：具身运行环境扩展 (`ext.shell`)
-* **职责**：决定数字生命“在哪里存在、能感知什么环境、能渲染什么表达、能在宿主端侧执行什么动作”。
-* **接入协议**：通过 `Protocol v0` WebSocket 跨进程/跨网络接入 `@ai0/gateway`（详见第 04 篇），无需运行在内核进程内，可使用任何语言（TypeScript / Python / C# Unity / C++ Unreal / Rust）开发。
+---
 
-### 维度 2：多模态感官与表达媒体管线扩展 (`ext.media_pipeline`)
-* **职责**：位于具身躯壳与认知内核之间的**流式媒体加工中间件**。让极简躯壳无需自己捆绑庞大的语音/视觉模型即可获得顶级多模态能力。
+## 三、八大功能扩展总线（Extension Buses）核心接口契约与架构正本清源
+
+### 总线 1：具身运行环境扩展 (`ext.shell`) —— 正本清源 `Shell` 架构层与 `@ai0/plugin-webchat` 的插件定位
+
+* **核心架构正本清源（`Shell` is the Architecture Layer; `plugin-webchat` is Just One Mounted Plugin）**：
+  1. **`Shell（具身运行环境）` 是一等公民架构层**：任何与数字生命发生感知与表达交互的外部或浏览器载体（桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord 桥接器、游戏 Mod、网页对话舞台）在架构上一律平等抽象为 `ext.shell`。
+  2. **`@ai0/plugin-webchat` 绝不是控制台的一个顶层架构层面，而仅仅是一个默认预装的普通 `ext.shell` + `ext.console_ui` 插件**：
+     * 在通信上，它 100% 走公开标准协议端点 `ws://host:port/protocol/v0/shell`（零特权、零内部后门）；
+     * 在 WebUI 控制台中，它仅仅通过 `ext.console_ui` 的 `slot.shells.mounted_stage` 插槽，在控制台的 **“具身躯壳（Shells）”** 导航域下动态挂载了一个普通的子路由页面（`/shells/stage/builtin.webchat`）。
+     * **100% 可替换与平权**：如果社区开发者编写了 `community.live2d.webstage`（带 Live2D 骨骼渲染的网页舞台插件）或 `community.galgame.stage`（视觉小说对话框舞台插件），安装启用后同样平权挂载在 `/shells/stage/:shellPluginId` 下；如果用户只使用外部桌宠或 QQ 躯壳并将 `@ai0/plugin-webchat` 禁用卸载，WebUI 控制台的整体架构、顶栏 `LIVE / SANDBOX` 环境切换与 `/dashboard` 首屏依然 **100% 独立自洽**！
+
+### 总线 2：多模态感官与表达媒体管线扩展 (`ext.media_pipeline`)
+
+* **职责**：位于具身躯壳（`Shell`）与认知内核之间的**可串联流式媒体加工中间件链（Middleware Chain）**。
 * **核心接口契约**：
   ```typescript
   export interface IMediaPipelineExtension {
     readonly id: string;
-    /** 上行：将原始音频流/视频帧转化为标准化语义 PerceptionEnvelope (如 Whisper ASR + 语气情绪识别 / 视觉皱眉检测) */
+    /** 可选：动态向内核声明本媒体管线支持的语音情感标签或视觉识别语义标签 (汇入 expression_vocabulary) */
+    getSupportedVocabulary?(): { voice_emotion_tags?: string[]; visual_semantic_cues?: string[] };
+
+    /** 上行：将原始音频流/视频帧转化为标准化语义 PerceptionEnvelope (如流式 Whisper ASR / 语气识别 / 视觉皱眉检测) */
     onUpstreamMediaFrame?(frame: RawMediaChunk, context: ShellContext): AsyncGenerator<Partial<PerceptionEnvelope>>;
     
     /** 下行：将内核吐出的 ExpressionEnvelope (含 ext.affect.v1 & ext.rhythm.v1) 合成为情感语音流与口型同步帧 (Visemes) */
@@ -70,74 +133,87 @@
   }
   ```
 
-### 维度 3：大脑认知器官与生命周期钩子扩展 (`ext.cognitive_organ`)
-* **职责**：允许社区研究者和开发者**向大脑内部插入新的认知脑区或替换默认算法**，并且天然享受内核的**“一键消融开关（Ablation Toggle）”**与**“权威状态协调器事务保护”**！
+### 总线 3：大脑认知器官与生命周期钩子扩展 (`ext.cognitive_organ`)
+
+* **职责**：允许社区研究者和开发者**向大脑内部插入新的认知脑区或替换默认算法**，支持在控制台独立配置三大钩子、调节其在 `<2500 Token` 认知黑板中的配额上限，并支持一键消融对比实验。
 * **核心接口契约**：
   ```typescript
   export interface ICognitiveOrganExtension {
     readonly organId: string;
-    readonly defaultEnabled: boolean; // 支持在控制台随时关闭以做消融对比实验
+    readonly defaultEnabled: boolean; // 支持在控制台随时关闭以做消融对比实验 (关闭时注入中性常数)
 
-    /** 钩子 1：在编译 System 1 认知黑板前调用，可向黑板贡献自定义身心体感或注意力提示 (受 Token 预算硬约束) */
+    /** 钩子 1：在编译 System 1 认知黑板前调用，向黑板专属槽位贡献身心体感或情境提示 (受 blackboard_policy.yaml 的 maxTokens 硬约束) */
     contributeToBlackboard?(snapshot: ReadOnlyCognitiveSnapshot, maxTokens: number): Promise<BlackboardContribution | null>;
 
-    /** 钩子 2：在每轮交互结束后异步调用，评估事件并向协调器提交状态变更提案 (LLM 提议、代码裁决) */
+    /** 钩子 2：在每轮交互结束后异步调用，评估事件并向协调器提交状态变更提案 (LLM 提议、代码防火墙裁决) */
     onTurnCompleted?(turnTrace: VerifiableTurnTrace, snapshot: ReadOnlyCognitiveSnapshot): Promise<StateMutationProposal[]>;
 
-    /** 钩子 3：在 VirtualClock 跨越睡眠/空闲阈值唤醒 W3 时调用 (如：自定义睡眠记忆压缩算法、做梦灵感生成) */
+    /** 钩子 3：在 VirtualClock 跨越睡眠/空闲/好奇心阈值唤醒 W3 时调用 (如：自定义睡眠记忆压缩、梦境日记生成、好奇心冲浪反思) */
     onSleepCycleWakeup?(snapshot: ReadOnlyCognitiveSnapshot, rawDirtyEvents: ReadonlyArray<EventLogRecord>): Promise<StateMutationProposal[]>;
   }
   ```
 
-### 维度 4：行动工具与技能包扩展 (`ext.action_mcp_skill`)
-* **职责**：为大脑的 **8 步一等行动认知环（`W2`）** 提供外部世界操作能力。
-* **支持形态**：
-  1. **标准 MCP Servers（`stdio` / `SSE` / `Streamable HTTP`）**：无缝兼容现有 MCP 生态；
-  2. **复合行动技能包（`SKILL.md` + 脚本工作流）**：声明多步任务的标准操作规范与前置检查。
-* **安全强制约束**：所有调用必须先通过内核 `ThreeDimensionalPolicyEngine.evaluate(Principal, Audience, CapabilityRisk)` 的确定性裁决。
+### 总线 4：行动工具与复合技能包扩展 (`ext.action_mcp_skill`)
 
-### 维度 5：记忆引擎与活体知识源连接器扩展 (`ext.memory_knowledge`)
-* **职责**：扩展长期记忆的检索重排算法，或将外部动态数据源作为**可热插拔客观知识库（Hot-Swappable Knowledge Bases）**挂载给大脑。
-* **核心接口契约**：
-  ```typescript
-  export interface IKnowledgeConnectorExtension {
-    readonly connectorId: string; // 如 "connector.obsidian.vault" | "connector.wiki.eldenring"
-    /** 按需检索外部知识切片 (返回结果由内核强制打上 taint_level='untrusted_external' 防记忆投毒) */
-    retrieveSlices(query: string, topK: number): Promise<ExternalKnowledgeSlice[]>;
-    /** 当该知识库被卸载 (Unmount) 时，将曾被高权重引用的切片浓缩为百字常识卡 (Gist Card) 留存于长期记忆 */
-    extractGistCardsBeforeUnmount(citedSliceIds: string[]): Promise<CrystallizedGistCard[]>;
-  }
-  ```
+* **职责**：为大脑的 **8 步一等行动认知环（`W2`）** 与 **受控好奇心冲浪环（`W3`）** 提供外部世界操作能力。
+* **支持三种多态挂载方式**：
+  1. **标准 MCP Servers（`stdio` / `SSE` / `Streamable HTTP` — 载体形态 III）**：免写插件代码，无缝挂载现有 MCP 生态；
+  2. **通用 HTTP Webhook / OpenAPI 工具桥接（载体形态 III）**：导入 OpenAPI JSON 或配置 REST Webhook 即可转化为行动工具；
+  3. **复合自然语言与脚本技能包（`SKILL.md` — 载体形态 II）**：声明多步任务操作手册、角色内执行姿态与沙盒脚本。
+* **安全强制约束**：所有调用必须先通过内核 `ThreeDimensionalPolicyEngine.evaluate(Principal, Audience, CapabilityRisk)` 的确定性三维授权裁决。
 
-### 维度 6：模型与推理后端提供商扩展 (`ext.model_provider`)
-* **职责**：为五大认知脑区（快思考对话、慢思考反思、睡眠记忆提取、行动规划、多模态感知）以及 L0 本地安全危机分类器提供可插拔算力后端。
-* **扩展能力**：支持接入云端大模型、本地 Ollama / vLLM / llama.cpp、自定义 Embedding / Reranker，以及**角色专属 LoRA 适配器热切换**与 Token 成本实时计量。
+### 总线 5：内建混合 RAG 知识库与外部活体知识连接器扩展 (`ext.memory_knowledge`)
 
-### 维度 7：灵魂资产、世界观词库与评测剧本包 (`ext.soul_asset`)
-* **职责**：让社区能够像分享游戏 Mod 一样，安全地分享与装载“灵魂基因与测试基准”：
-  1. **纯净灵魂模板包（`.soul-template.yaml`）**：打包 Tier 1 核心人格 DNA、存在论契约、作息参数与初始黄金声线样本（**物理剥离一切个人聊天流水与私密记忆**，确保分享零隐私风险）；
-  2. **世界观词条库（`Lorebook / WorldInfo`）**：当对话出现特定关键词或语义聚类时，动态滑入认知黑板的背景设定词条；
-  3. **回归评测剧本包（`.scenario.yaml`）**：社区共建的“人设抗崩塌测试集”、“SB 243 危机干预合规测试集”、“跨场合隐私防套话测试集”；
-  4. **现世二次元社区存量资产零摩擦吸纳（SillyTavern `Character Card V2/V3 & WorldInfo` 官方蒸馏与安全清洗转换器）**：
-     为使 `ai0` 开箱即可继承现世二次元 AI 社区沉淀的海量精品角色资产，`@ai0/storage` 与 `@ai0/sdk` 内置确定性的 Tavern Card 导入蒸馏管线：
-     * **`data.description` & `data.personality`** $\rightarrow$ 结构化提取并映射至 `identity.yaml`（Tier 1 角色背景基线与核心性格特征）；
-     * **`data.mes_example` & `data.first_mes` / `data.alternate_greetings`** $\rightarrow$ 自动按 `<START>` 切分对话对，提纯写入 `voice_exemplars.jsonl`（黄金声线锚点池），供换模型或预算降级时的动态 Few-Shot 声线校准使用；
-     * **`data.character_book`（WorldInfo）** $\rightarrow$ 无损转换至 `lorebooks/imported_world.yaml`（保留 `keys`、`secondary_keys`、激活优先级与受控 Token 预算）；
-     * **安全清洗防火墙（Prompt-Injection & Jailbreak Sanitizer）**：在导入阶段由代码强制剥离传统角色卡 `data.system_prompt` 与 `data.post_history_instructions` 中常见的越狱指令、覆盖系统安全底线的伪造 System 标签以及情感 PUA 留存脚本，确保导入后的 `.soul-template` 100% 遵守本架构的 Tier 0 安全不变量与双层存在论契约。
+* **架构升维：开箱即用内建混合 RAG 引擎 + 可插拔外部知识连接器**：
+  为了确保使用者无需依赖第三方插件即可拥有顶级知识库体验（对齐并超越 AstrBot 内置 RAG），同时保留连接外部知识生态的自由度，本总线采用**“内建底座 + 扩展连接器”**双层设计：
+  1. **内建混合 RAG 知识库引擎（Built-in Hybrid Knowledge Engine in `@ai0/storage`）**：
+     * 原生支持在控制台上传或同步本地文档（Markdown / PDF / DOCX / 代码文件 / 设定集），提供可视化分块（Chunking）预览；
+     * 检索层采用 **`sqlite-vec` 稠密向量检索（Dense Cosine Similarity） + SQLite `FTS5` BM25 稀疏关键词检索（Sparse Retrieval） + 可插拔 Reranker 模型重排** 的混合检索管线；
+     * 所有来自外部文档的知识切片在进入上下文时，由代码强制打上 `taint_level = 'untrusted_external'` 标签，严防文档中的间接 Prompt 注入篡改核心人设或主人画像。
+  2. **外部活体知识连接器接口（`IKnowledgeConnectorExtension` — 如 Obsidian / Notion / MediaWiki / GitHub 连接器）**：
+     ```typescript
+     export interface IKnowledgeConnectorExtension {
+       readonly connectorId: string; // 如 "connector.obsidian.vault" | "connector.wiki.eldenring"
+       /** 按需检索外部知识切片 (返回结果由内核强制打上 taint_level='untrusted_external' 防记忆投毒) */
+       retrieveSlices(query: string, topK: number): Promise<ExternalKnowledgeSlice[]>;
+       /** 当该知识库被卸载 (Unmount) 时，将曾被高权重引用的切片浓缩为 <150 字共同话题常识卡 (Gist Card) 留存于长期记忆 */
+       extractGistCardsBeforeUnmount(citedSliceIds: string[]): Promise<CrystallizedGistCard[]>;
+     }
+     ```
 
-### 维度 8：控制台 UI 视图与观测卡片扩展 (`ext.console_ui`)
-* **职责**：让第三方插件不再是“后台黑盒”，允许任何插件向 `WebUI 控制台` 的指定插槽（Slots）动态注入配置表单与实时状态监控卡片（详见第 06 篇）。
+### 总线 6：模型推理提供商与角色 LoRA 扩展 (`ext.model_provider`)
+
+* **职责**：为五大认知脑区（`W1` 快对话、`W2` 8步行动规划、`W3` 睡眠整理与好奇心冲浪、`W4` 多模态感知、`L0` 本地安全危机分类器）以及内建 RAG 的 Embedding / Reranker 提供可插拔算力后端，原生支持**角色专属 LoRA 适配器热切换**与双轨精力 Token 代谢计量。
+
+### 总线 7：灵魂资产、世界观词库、关系里程碑与评测剧本包 (`ext.soul_asset` — 载体形态 I)
+
+* **职责**：让全球二次元与数字生命社区能够像分享游戏 Mod 一样，零编程门槛地分享与混搭四大类灵魂资产：
+  1. **纯净灵魂模板包（`.soul-template.yaml`）**：打包 Tier 1 核心人格 DNA、双层存在论契约、24h 作息生物钟曲线参数与初始黄金声线样本（**由代码物理剥离一切个人聊天流水与私密记忆**，确保分享零隐私泄露）；
+  2. **动态世界观词条库（`Lorebook / WorldInfo`）**：支持主触发词（`keys`）、次级合取触发词（`secondary_keys`）、递归激活深度（`recursive_depth`）、插入认知黑板槽位优先级与单轮 Token 预算硬上限；
+  3. **关系羁绊里程碑、时间仪式与正向剧情事件包（`milestones_and_rituals.yaml`）**：定义当相伴天数、特殊纪念日/生日、关系信任/亲密阈值或共同完成的行动任务数量达成时，自动触发的正向角色成长提案（如解锁更亲密的专属称呼、新增一段纪念日黄金声线样本或注册一条温暖的前瞻约定；**严格受反操控宪章约束：仅允许正向奖励与成长，物理禁止配置任何“未上线扣分/错过纪念日冷暴力”等暗黑留存规则**）；
+  4. **SillyTavern `Character Card V2/V3 & WorldInfo` 官方无损蒸馏与越狱清洗转换器**：
+     * `data.description & personality` $\rightarrow$ 提纯映射至 `identity.yaml`（Tier 1）；
+     * `data.mes_example & first_mes` $\rightarrow$ 按 `<START>` 自动切分为独立对话胶囊，写入 `voice_exemplars.jsonl`（黄金声线锚点池）；
+     * `data.character_book` $\rightarrow$ 无损转换至 `lorebooks/imported_world.yaml`；
+     * **安全清洗防火墙（Jailbreak & PUA Sanitizer）**：由确定性代码在导入阶段强制剥离原卡 `system_prompt / post_history_instructions` 中夹带的越狱指令、伪造 System 标签与情感操控留存脚本，并在控制台“四步蒸馏料理台”中以红绿 Diff 高亮展示剥离明细。
+
+### 总线 8：控制台动态 UI 视图、配置表单与 Web 躯壳舞台挂载槽 (`ext.console_ui`)
+
+* **职责**：让任何插件都能在 `@ai0/console-webui` 中拥有可视化配置与观测界面，支持三类挂载形态：
+  1. **自动配置表单（`config_schema`）**：在控制台 `/extensions/configurator` 中由 `ExtensionDynamicSchemaDrawer` 自动渲染 `Tier-V1/V2/V3` 配置面板，支持绑定密钥保险箱（Secrets Vault）与保存即单插件热重载；
+  2. **内嵌观测卡片与页签（`ui_slots`）**：挂载于记忆域、媒体调音台或右侧伴生检视副栏；
+  3. **独立插件页面与 Web 具身躯壳舞台挂载槽（`/extensions/custom/:pluginId` & `/shells/stage/:shellPluginId`）**：允许 `@ai0/plugin-webchat` 或社区开发的 Live2D/VRM/Galgame 网页躯壳插件作为控制台内的一个标准子路由页面动态挂载运行。
 
 ---
 
-## 四、跨插件行为编排与多端注意力路由引擎（Cross-Plugin Orchestration Engine）
+## 四、跨插件行为编排、可视化认知流（`.flow.yaml`）与多 `Shell` 注意力路由引擎
 
-当用户同时安装了多个躯壳插件（如：桌面萌宠 + 手机 Telegram + 直播间插件）、多个媒体管线与多个行动工具时，内核通过声明式的 **《行为编排规则表（`orchestration_rules.yaml`）》** 统一仲裁：
+当用户同时安装了多个具身 `Shell`（如桌面萌宠 + 手机 IM + 直播间）、多个媒体管线、多个认知器官与多个 `SKILL.md` 技能时，内核通过声明式的 **《跨插件编排与认知流蓝图（`orchestration_rules.yaml` / `.flow.yaml` —— 载体形态 IV）》** 统一仲裁（并可在控制台 `/shells/attention-arbitration` 与 `/extensions/flows-eca` 页面中通过可视化积木拖拽编排）：
 
 ```yaml
-# 1. 多端同时在线时的前台注意力焦点仲裁规则
+# 1. 多 Shell 同时在线时的前台注意力焦点仲裁规则 (/shells/attention-arbitration)
 attention_focus_arbitration:
-  focus_hysteresis_window_ms: 4000          # 当前活跃躯壳的话轮保持惯性窗口，防止焦点高频横跳
+  focus_hysteresis_window_ms: 4000          # 当前活跃 Shell 的话轮保持惯性窗口，防止焦点高频横跳
   priority_order:
     - match: { event_urgency: "l0_crisis" }
       action: "preempt_immediately"
@@ -150,22 +226,39 @@ attention_focus_arbitration:
     - match: { venue_type: "public_livestream" }
       weight: 40
 
-# 2. 主动搭话 (Proactive Initiation) 的出口躯壳选择策略
+# 2. 主动搭话 (Proactive Initiation) 的出口 Shell 选择策略
 proactive_routing_policy:
   never_broadcast_to_all_shells: true       # 铁律：严禁全端同时弹窗广播!
   preferred_target_selection:
-    - "last_active_private_shell_within_2h" # 优先发往 2 小时内互动过的私密躯壳
-    - "online_desktop_avatar_if_user_active"# 其次发往检测到用户正在电脑前的桌面躯壳
+    - "last_active_private_shell_within_2h" # 优先发往 2 小时内互动过的私密 Shell
+    - "online_desktop_avatar_if_user_active"# 其次发往检测到用户正在电脑前的桌面 Shell
     - "fallback_primary_im_private"         # 最后回退至主私聊 IM
 
-# 3. 跨插件事件-行动联动规则 (Event-Condition-Action Rules)
+# 3. 跨插件事件-条件-行动联动蓝图 (ECA Flows — /extensions/flows-eca)
 cross_plugin_triggers:
   - rule_id: "late_night_coding_care"
     when:
       source_shell: "community.desktop.companion"
       semantic_event: "sensor.active_window_sustained"
-      condition: "window_category == 'ide_coding' && circadian_phase == 'late_night_sleep_window'"
-    then:
-      route_to_brain_organ: "organ.homeostasis"
-      inject_situational_cue: "主人已经在深夜连续写代码超过 2 小时，请在合适间隙温柔提醒他保存代码去休息"
+    if_condition: "window_category == 'ide_coding' && sustained_ms > 7200000 && circadian_phase == 'late_night_sleep_window'"
+    then_actions:
+      - route_to_brain_organ: "organ.homeostasis"
+        inject_situational_cue: "主人已经在深夜连续写代码超过 2 小时，请在合适话轮气口温柔提醒他保存代码去休息"
+      - register_interaction_opportunity:
+          ttl_ms: 600000
+          priority: "medium_care"
 ```
+
+---
+
+## 五、创作者在线虚拟躯壳调试沙盒与一键脱敏资产打包引擎（Creator SDK DevTools & `.ai0pack` Bundler）
+
+为了让社区创作者无需搭建繁琐的外围客户端环境就能在首版控制台中高效开发、调试并分享五阶多态扩展，系统内建两大创作者基础设施：
+
+1. **内置虚拟躯壳与多模态感官模拟器（Mock Shell & Sensor Simulator — `/shells/simulator`）**：
+   * 创作者在开发一个新的 `SKILL.md` 技能、一条 `Lorebook` 词书、一个 `ext.cognitive_organ` 脑区插件或一条跨插件 ECA 规则时，无需真的启动 Unity/Live2D 客户端或登录外部 IM；
+   * 直接在控制台打开虚拟躯壳模拟器，可任意伪造握手参数（切换 `private_1on1 | group_chat | public_livestream`、切换 `owner_verified | stranger:troll`），一键发送模拟触觉（如连戳 3 下脑袋）、模拟视觉语义（如皱眉 + 竞争假设）、模拟中途流式打断（指定 `spoken_char_offset`）或模拟动态热更新 `Actuators`，并在右侧伴生检视栏中实时观测 8 步决策轨迹与插件 Hook 耗时。
+2. **代码级强制脱敏的一键社区资产打包器（Privacy-Scrubbed Creator Asset Bundler）**：
+   * 当用户在控制台调教出一套满意的角色人格、生物钟曲线、`Lorebook` 词库、里程碑规则、`SKILL.md` 技能或 `.flow.yaml` 编排蓝图，点击 **`[📦 一键脱敏打包导出社区分享包]`** 时：
+   * 后端打包引擎在代码层**强制物理排除** `soul_core.sqlite`（所有个人对话 `event_log`、私密情景记忆、决策轨迹）、`redaction_ledger.json`、`attachments/` 个人照片以及 Secrets Vault 中的任何 API Key；
+   * 仅将纯净的设定、声线锚点、词书、技能手册或流程蓝图封装为带 SHA-256 校验与版本元数据的标准 `.soul-template` / `.ai0-skill` / `.ai0-flow` 资产包，从物理根源杜绝“创作者分享角色卡却意外泄露自己私聊记录或密钥”的社区安全事故。
