@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（问题域规范）
 >
-> 本文档定义系统的第三层（下行表达意图与上行回执闭环）、**协议 v0 最小稳定核心的裁剪准则**、**微内核“八大功能扩展总线 × 五阶多态异构扩展载体”生态架构**，以及 **`WebUI 控制台`** 的系统定位、`Shell` 一等架构层正本清源（剥离 `plugin-webchat` 越位层级）、顶栏 `LIVE / SANDBOX` 二元实例环境隔离、常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`<RouterOutlet />`）与 8 大域 30 条专职路由全景。
+> 本文档定义系统的第三层（下行表达意图与上行回执闭环）、**协议 v0 最小稳定核心的裁剪准则**、**微内核“八大功能扩展总线 × 五阶多态异构扩展载体”生态架构**，以及 **`WebUI 控制台`** 的系统定位、`Shell` 一等架构层正本清源（剥离 `plugins/shells/webchat` 越位层级）、顶栏 `LIVE / SANDBOX` 二元实例环境隔离、常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`<RouterOutlet />`）与 8 大域 30 条专职路由全景。
 
 ---
 
@@ -64,7 +64,7 @@
 为此，本架构将系统扩展体系设计为 **《八大功能扩展总线（Where it hooks） × 五阶多态异构扩展载体（How it's built & played）》**（详细接口规范见 `docs/architecture/05-eight-dimension-extension-system.md`）：
 
 ### 3.1 八大功能扩展总线（The 8 Functional Buses）
-1. **`ext.shell`（具身运行环境总线 — 系统核心一等交互架构层）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers` 含动态表现力词典 `expression_vocabulary`）与什么端侧身体动作（`Actuators`）”（桌宠、Live2D/3D、微信/QQ/Discord、Minecraft 等游戏、以及挂载在控制台内的 Web 交互舞台插件如 `@ai0/plugin-webchat`）。
+1. **`ext.shell`（具身运行环境总线 — 系统核心一等交互架构层）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers` 含动态表现力词典 `expression_vocabulary`）与什么端侧身体动作（`Actuators`）”（桌宠、Live2D/3D、微信/QQ/Discord、Minecraft 等游戏、以及挂载在控制台内的 Web 交互舞台插件如 `plugins/shells/webchat`）。
 2. **`ext.media_pipeline`（多模态音视频与感官管线总线）**：位于躯壳与大脑之间的信号加工厂——如流式 ASR 语音识别、情感 TTS 语音合成（GPT-SoVITS / FishAudio / ElevenLabs）、声线滤镜、摄像头微表情语义提取器。
 3. **`ext.cognitive_organ`（大脑认知器官与生命周期钩子总线）**：允许社区研究者插拔或新增大脑内部的认知子系统（三大钩子：`contributeToBlackboard` / `onTurnCompleted` / `onSleepCycleWakeup`）——如自定义情绪动力学算法、睡眠期梦境日记器官、塔罗心境器官。
 4. **`ext.action_mcp_skill`（外部行动工具与复合技能包总线）**：决定“她能调用什么外部软件工作流协助或陪伴使用者完成任务”（标准 MCP Servers、HTTP Webhook/OpenAPI 桥接器与包含角色内执行姿态的复合 `SKILL.md` 行动技能手册）。
@@ -88,9 +88,9 @@
 
 1. **架构定位：无头认知微内核的唯一官方实体控制平面（Control Plane）**：
    系统的核心本体永远是无头（Headless）的**数字生命认知微内核**，而 `WebUI 控制台（@ai0/console-webui）` 是系统标配的**内建实体控制平面**，默认根路由首屏为 **`/dashboard`（数字生命全景态势、活跃 `Shells` 星图与系统总览大盘）**。
-2. **正本清源 `Shell（具身运行环境）` 的一等架构地位，剥离 `@ai0/plugin-webchat` 的越位层级**：
+2. **正本清源 `Shell（具身运行环境）` 的一等架构地位，剥离 `plugins/shells/webchat` 的越位层级**：
    * 系统真正的顶层交互架构层是 **`Shell（具身运行环境，ext.shell）`**（作为控制台第 2 大核心一级导航域 `/shells/*`，统领所有桌宠、Live2D/3D、IM、游戏与 Web 躯壳的双向连接、三平面能力、注意力焦点仲裁、丘脑门控与媒体管线）。
-   * **`@ai0/plugin-webchat` 绝不是控制台的一个顶层架构层面或顶栏模式**——它仅仅是遵循 `Shell` 架构与 `Protocol v0` 的一个默认预装插件，启用后通过 `ext.console_ui` 在 `/shells/stage/builtin.webchat` 下动态挂载一个普通子路由页面（与社区开发的 Web Live2D/3D 舞台插件 100% 平权，可随时替换或禁用，绝不绑架控制台本身架构）。
+   * **`plugins/shells/webchat` 绝不是控制台的一个顶层架构层面或顶栏模式**——它仅仅是遵循 `Shell` 架构与 `Protocol v0` 的一个默认预装插件，启用后通过 `ext.console_ui` 在 `/shells/stage/builtin.webchat` 下动态挂载一个普通子路由页面（与社区开发的 Web Live2D/3D 舞台插件 100% 平权，可随时替换或禁用，绝不绑架控制台本身架构）。
 3. **后端全量设计 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形层 -> Tier-V2 紧凑表单层 -> Tier-V3 权威源码层`）**：
    * 借鉴 **`AstrBot / NapCat / Koishi`** 的成熟面板操作体验，融合 **`kirakira.moe (KIRAKIRA-Cerasus)`** 对 Material Design 3 的二次元个性化组件封装（紧凑 `32px` 控件、细腻水波纹 Ripple、弹簧物理缓动、动态灵魂色调），将后端全量认知机制、五阶多态扩展配置与系统基建 100% 零阉割投射至前端 **8 大一级导航域 × 30 条专职子路由**。
 

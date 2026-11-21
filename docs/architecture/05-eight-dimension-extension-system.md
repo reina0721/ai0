@@ -13,7 +13,7 @@
 
 普通干活型 Agent 只需要扩展“手脚（工具）”。但一个完整的**数字生命认知中枢**是一个活体赛博有机体，社区开发者和玩家需要沿着 **8 条标准化功能总线** 全方位改造她：
 
-1. **`ext.shell`（具身运行环境总线）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers`）与什么端侧身体动作（`Actuators`）”（如桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord IM、Minecraft 等游戏 Mod、以及挂载在浏览器里的 Web 交互舞台插件如 `@ai0/plugin-webchat`）。
+1. **`ext.shell`（具身运行环境总线）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers`）与什么端侧身体动作（`Actuators`）”（如桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord IM、Minecraft 等游戏 Mod、以及挂载在浏览器里的 Web 交互舞台插件如 `plugins/shells/webchat`）。
 2. **`ext.media_pipeline`（多模态音视频与感官管线总线）**：位于躯壳与大脑之间的流式媒体信号加工厂（流式 ASR 语音转写、GPT-SoVITS / FishAudio 情感 TTS 合成与口型同步 `Visemes`、摄像头微表情语义提取器）。
 3. **`ext.cognitive_organ`（大脑认知器官与生命周期钩子总线）**：允许向大脑内部插入新的认知脑区或替换默认算法（如睡眠期梦境日记器、塔罗占卜心境器官、自定义情绪动力学模型、自定义显著性门控），天然享受内核的一键消融开关与 MVCC 事务保护。
 4. **`ext.action_mcp_skill`（外部行动工具与复合技能总线）**：为大脑的 **8 步一等行动认知环（`W2`）** 与 **潜意识好奇心冲浪环（`W3`）** 提供外部世界操作工作流（标准 MCP Servers、HTTP Webhook/OpenAPI 桥接器、以及包含任务手册与脚本的复合 `SKILL.md` 技能包）。
@@ -122,14 +122,14 @@ config_schema:
 
 ## 三、八大功能扩展总线（Extension Buses）核心接口契约与架构正本清源
 
-### 总线 1：具身运行环境扩展 (`ext.shell`) —— 正本清源 `Shell` 架构层与 `@ai0/plugin-webchat` 的插件定位
+### 总线 1：具身运行环境扩展 (`ext.shell`) —— 正本清源 `Shell` 架构层与 `plugins/shells/webchat` 的插件定位
 
-* **核心架构正本清源（`Shell` is the Architecture Layer; `plugin-webchat` is Just One Mounted Plugin）**：
+* **核心架构正本清源（`Shell` is the Architecture Layer; `plugins/shells/webchat` is Just One Mounted Plugin）**：
   1. **`Shell（具身运行环境）` 是一等公民架构层**：任何与数字生命发生感知与表达交互的外部或浏览器载体（桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord 桥接器、游戏 Mod、网页对话舞台）在架构上一律平等抽象为 `ext.shell`。
-  2. **`@ai0/plugin-webchat` 绝不是控制台的一个顶层架构层面，而仅仅是一个默认预装的普通 `ext.shell` + `ext.console_ui` 插件**：
+  2. **`plugins/shells/webchat` 绝不是控制台的一个顶层架构层面，而仅仅是一个默认预装的普通 `ext.shell` + `ext.console_ui` 插件**：
      * 在通信上，它 100% 走公开标准协议端点 `ws://host:port/protocol/v0/shell`（零特权、零内部后门）；
      * 在 WebUI 控制台中，它仅仅通过 `ext.console_ui` 的 `slot.shells.mounted_stage` 插槽，在控制台的 **“具身躯壳（Shells）”** 导航域下动态挂载了一个普通的子路由页面（`/shells/stage/builtin.webchat`）。
-     * **100% 可替换与平权**：如果社区开发者编写了 `community.live2d.webstage`（带 Live2D 骨骼渲染的网页舞台插件）或 `community.galgame.stage`（视觉小说对话框舞台插件），安装启用后同样平权挂载在 `/shells/stage/:shellPluginId` 下；如果用户只使用外部桌宠或 QQ 躯壳并将 `@ai0/plugin-webchat` 禁用卸载，WebUI 控制台的整体架构、顶栏 `LIVE / SANDBOX` 环境切换与 `/dashboard` 首屏依然 **100% 独立自洽**！
+     * **100% 可替换与平权**：如果社区开发者编写了 `community.live2d.webstage`（带 Live2D 骨骼渲染的网页舞台插件）或 `community.galgame.stage`（视觉小说对话框舞台插件），安装启用后同样平权挂载在 `/shells/stage/:shellPluginId` 下；如果用户只使用外部桌宠或 QQ 躯壳并将 `plugins/shells/webchat` 禁用卸载，WebUI 控制台的整体架构、顶栏 `LIVE / SANDBOX` 环境切换与 `/dashboard` 首屏依然 **100% 独立自洽**！
 
 ### 总线 2：多模态感官与表达媒体管线扩展 (`ext.media_pipeline`)
 
@@ -218,7 +218,7 @@ config_schema:
 * **职责**：让任何插件都能在 `@ai0/console-webui` 中拥有可视化配置与观测界面，支持三类挂载形态：
   1. **自动配置表单（`config_schema`）**：在控制台 `/extensions/configurator` 中由 `ExtensionDynamicSchemaDrawer` 自动渲染 `Tier-V1/V2/V3` 配置面板，支持绑定密钥保险箱（Secrets Vault）与保存即单插件热重载；
   2. **内嵌观测卡片与页签（`ui_slots`）**：挂载于记忆域、媒体调音台或右侧伴生检视副栏；
-  3. **独立插件页面与 Web 具身躯壳舞台挂载槽（`/extensions/custom/:pluginId` & `/shells/stage/:shellPluginId`）**：允许 `@ai0/plugin-webchat` 或社区开发的 Live2D/VRM/Galgame 网页躯壳插件作为控制台内的一个标准子路由页面动态挂载运行。
+  3. **独立插件页面与 Web 具身躯壳舞台挂载槽（`/extensions/custom/:pluginId` & `/shells/stage/:shellPluginId`）**：允许 `plugins/shells/webchat` 或社区开发的 Live2D/VRM/Galgame 网页躯壳插件作为控制台内的一个标准子路由页面动态挂载运行。
 
 ---
 
