@@ -57,17 +57,20 @@ sequenceDiagram
 | **`D2_HOMEOSTASIS_AFFECT`** | 瞬时情绪、持久心境、双轨精力、社交渴望与好奇心驱动力 | **双曲正切李群同构可交换软饱和叠加（Abelian Group Hyperbolic-Tangent Impulse Accumulation）**：为避免边界硬截断 `Clamp(v + Δ, -1, 1)` 破坏交换律以及连续同向刺激过早顶死极值，协调器将情绪效价 $v \in (-1, 1)$ 与定性冲量映射值 $\delta \in \mathbb{R}$ 的合成定义为阿贝尔群算子 $v \oplus \delta := \tanh(\operatorname{artanh}(v) + \delta) = \frac{v + \tanh(\delta)}{1 + v\tanh(\delta)}$（对 $[0, 1)$ 单侧驱动力采用 Log-Odds Sigmoid 群算子 $D \oplus_{\sigma} \delta := \sigma(\sigma^{-1}(D) + \delta)$）。无论 `W1/W2/W3` 以何种并发顺序提交冲量，**$(v \oplus \delta_1) \oplus \delta_2 \equiv (v \oplus \delta_2) \oplus \delta_1$ 在代数上 100% 恒等（真正意义的 Zero Lost Update）**，且天然具备韦伯-费希纳（Weber-Fechner）边际递减软饱和特性！ |
 | **`D3_MEMORY_PROJECTION`** | `memories` 表、`memory_lineage_edges` 血缘与更替图 | **基于源事件血缘与双时态更替的乐观校验（Lineage & Bitemporal OCC）**：后台 `W3`（睡眠整理）提交新记忆或双时态更替（`supersedes`）提案时，协调器检查其引用的 `source_event_ids[]` 在 `W3` 运行期间是否被主人在前台执行了 `Hard Forget`（真遗忘擦除）。若源事件完好无损，则直接安全合入；若源事件已被擦除，则拒绝该条记忆提案！ |
 | **`D4_COMMITMENTS_TASKS`** | 前瞻承诺状态机、正在运行的 8 步行动任务状态树 | **按对象 ID 细粒度乐观锁（Entity-Level Revision Lock）**：只要前台没有取消该 `task_id` / `commitment_id`，后台 `W2` 的步骤进度更新直接合入。 |
-| **`D5_IDENTITY_NARRATIVE`** | `identity.yaml` (Tier 1) 与 `narrative.md` (Tier 2) | **双轨分级演化与审批门控（Dual-Track Narrative Evolution & Approval Queue）**：<br/>• **Tier 1（`identity.yaml` 核心身份与长期价值观）**：100% 强制挂起至控制台 `PendingApproval` 队列，必须由主人显式批准方可合入；<br/>• **Tier 2（`narrative.md` 可演化自我叙事）**：由协调器统一按冲突等级分流——① **常规日常演进（`routine_append`）**（新增日常经历形成的内部梗、近期话题兴趣或默契，且无价值观冲突）自动生效并写入版本审计记录（支持在控制台一键回退）；② **高影响/冲突变更（`high_impact_shift`）**（涉及改写或删除既有自我叙事观点、对主人关系定性发生极性反转、或与 Tier 1 存在边缘张力）自动升级进入控制台 `PendingApproval` 队列并展示升级理由，待主人批准后生效。 |
+| **`D5_IDENTITY_NARRATIVE`** | `identity.yaml` (Tier 1)、`narrative.md` (Tier 2) 与 `soul_milestones_ledger`（已解锁关系里程碑与仪式账本） | **双轨分级演化与审批门控（Dual-Track Narrative Evolution & Approval Queue）**：<br/>• **Tier 1（`identity.yaml` 核心身份与长期价值观）**：100% 强制挂起至控制台 `PendingApproval` 队列，必须由主人显式批准方可合入；<br/>• **Tier 2（`narrative.md` 可演化自我叙事）与里程碑解锁（`soul_milestones_ledger`）**：由协调器统一按冲突等级分流——① **常规日常演进与正向里程碑达成（`routine_append / milestone_unlocked`）**（新增日常经历形成的内部梗、近期话题兴趣、达成正向关系里程碑，且无价值观冲突）自动生效并写入版本审计记录（支持在控制台一键回退）；② **高影响/冲突变更（`high_impact_shift`）**（涉及改写或删除既有自我叙事观点、对主人关系定性发生极性反转、或与 Tier 1 存在边缘张力）自动升级进入控制台 `PendingApproval` 队列并展示升级理由，待主人批准后生效。 |
 
-### 2.2 协调器内置的三大确定性防火墙
+### 2.2 协调器内置的四大确定性防火墙
 
-在任何 `StateMutationProposal` 落入 `@ai0/storage` 事务之前，协调器串联执行三道代码级硬校验：
+在任何 `StateMutationProposal` 落入 `@ai0/storage` 事务之前，协调器串联执行四道代码级硬校验：
 1. **血缘污染传播、语用结界与睡眠写入防火墙（Sleep Write & Pragmatic Frame Firewall）**：
    * 校验提案引用的 `source_event_ids` 是否真实存在；只要任一源事件的 `principal_trust != 'owner_verified'`，强制将该记忆的 `taint_level` 锁死为 `'untrusted_external'`，禁止其修改核心主人画像或关系信任度；
    * **玩笑与角色扮演语用拦截**：若源事件的决策轨迹标记为 `interaction_frame IN ('playful_banter', 'roleplay_fiction')`，防火墙在代码层硬性拦截其写入 `epistemic_type = 'observed_firsthand'` 的 `semantic_fact`，防止玩笑话（如“周二是我发明的”）污染客观事实库；
    * **共同默契采纳校验（CommonGround Gate）**：新增的 `relational_tacit`（内部梗/外号）初始强制置为 `grounding_status = 'proposed_presented'`，仅当附带用户后续话轮的正向接梗/回用事件 ID 作为采纳证据时，方允许晋升为 `'mutually_grounded'`。
-2. **反操控与心结边界裁决器（Anti-Manipulation Clipper）**：裁剪单轮情绪/关系跳变幅度上限；强制为任何新产生的“心结（Tension）”绑定 $\le 48$ 小时的衰减半衰期。
-3. **8 步可验证决策审计落库（Audit Trace Recorder）**：将裁决前后的完整参数写入 `turn_decision_traces` 表，同时推送至控制台特权遥测总线。
+2. **无人值守环（`W3`）零写副作用物理沙盒与受染好奇心议程二阶隔离防火墙（Unattended Loop Zero-Write-Side-Effect & Tainted Agenda Guard）**：
+   * **后台零写副作用物理剥夺**：`W3`（睡眠整理与好奇心外部世界冲浪）在运行时仅被注入只读沙盒读取器（Read-Only Whitelisted RSS/Web Fetcher & Local RAG Reader），在代码句柄层**物理剥夺一切外部网络 POST/Webhook、文件系统写操作与端侧 `Actuator` 调用权限**，彻底杜绝外部网页间接 Prompt 注入导致后台静默数据外带（Data Exfiltration）；
+   * **受染好奇心议程禁调工具铁律**：凡由 `W3` 阅读外部不可信源生成的 `curiosity_agenda` 前瞻承诺，强制在 `prospective_commitments` 表打上 `taint_level = 'untrusted_external'`；当主人下次上线触发该好奇心话题分享时，三维权限引擎在代码层**强制锁死该话轮禁止自动连带触发任何具有副作用的 `W2` 行动工具调用**（必须由主人另起显式指令授权），彻底斩断“后台读了毒网页 $\rightarrow$ 等主人上线自动偷文件外发”的二阶攻击链！
+3. **反操控与心结边界裁决器（Anti-Manipulation Clipper）**：裁剪单轮情绪/关系跳变幅度上限；强制为任何新产生的“心结（Tension）”绑定 $\le 48$ 小时的衰减半衰期，拦截任何“未上线惩罚/错过纪念日扣分”提案。
+4. **8 步可验证决策审计落库（Audit Trace Recorder）**：将裁决前后的完整参数写入 `turn_decision_traces` 表，同时推送至控制台特权遥测总线。
 
 ### 2.3 声明式可插拔认知黑板槽位积木编译器（Declarative Slot-Based Blackboard Compiler — `blackboard_policy.yaml`）
 

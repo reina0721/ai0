@@ -93,14 +93,30 @@ capability_risk: "low_read_and_scoped_write"
 max_audience_scope: "only_owner"
 in_character_demeanor: "保持你原有的角色口癖与关系亲密度；不要像生硬的项目经理汇报工作，而是像并肩作战的伙伴一样夸奖主人的核心突破，顺便吐槽一两句熬夜太晚。"
 crystallize_as_episodic_memory: true
+required_vault_secrets: ["GITHUB_PERSONAL_TOKEN"]
+config_schema:
+  type: "object"
+  properties:
+    daily_note_dir: { type: "string", default: "~/Notes/DailyDev", title: "日报保存目录" }
+    review_detail_level: { type: "string", enum: ["concise", "deep_architectural"], default: "concise", title: "复盘颗粒度" }
 ---
 
 # 执行步骤指南 (Action Plan Guidelines for W2 Agency Runner)
 1. 调用 `github.list_today_commits` 获取主人今天在活跃仓库中的提交记录；
 2. 提炼出今天攻克的 1~2 个最关键的架构或代码改动点；
-3. 按 `templates/companion_dev_log.md` 格式将复盘摘要写入主人的本地笔记目录；
+3. 按 `templates/companion_dev_log.md` 格式将复盘摘要写入主人的 `{{config.daily_note_dir}}` 目录；
 4. 向 `W1` 快环汇报错落有致、符合角色性格的复盘反馈，并在 `Step8_EpisodicCrystallization` 中将“今天陪主人一起完成了 X 模块攻关”沉淀为一条带成就感的情景记忆。
 ```
+
+### 2.3 五阶多态扩展的统一内联配置 Schema、密钥引用与 `.soul/config/extensions_state.json` 持久化契约
+
+为确保前端 `/extensions/configurator`（`ExtensionDynamicSchemaDrawer` 组件）能够用**同一套可视化表单引擎**管理全部五阶异构扩展（而非仅限载体 V 编译型代码插件），内核规定：
+1. **统一配置声明接口**：
+   * 载体 V（原生代码插件）：在 `ai0.extension.json` 中通过 `console_contributions.config_schema` 指向 JSON Schema；
+   * 载体 II（`SKILL.md` 技能手册）与载体 IV（`.flow.yaml` 认知流蓝图）：直接在 YAML Frontmatter / 头部声明内联 `config_schema` 与 `required_vault_secrets: string[]`（引用系统级 `Secrets Vault` 中的加密密钥键名，严禁明文硬编码 API Key）；
+   * 载体 III（MCP / Webhook 连接器）：由网关自动根据连接类型生成标准连接参数与环境变量 Schema。
+2. **统一状态持久化与单扩展热重载（`.soul/config/extensions_state.json`）**：
+   所有已安装五阶扩展的启停状态、当前激活的配置 Profile 实例值、对 `D1~D5` 黑板状态域的读写权限覆写开关以及绑定的 Vault 密钥指针，统一持久化于 `.soul/config/extensions_state.json`；每当用户在控制台保存配置（携带 `expected_rev`），协调器写入一条 `config_or_ablation_changed` 审计事件并仅对该扩展执行毫秒级热重载（Hot-Reload）。
 
 ---
 

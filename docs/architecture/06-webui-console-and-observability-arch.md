@@ -33,9 +33,18 @@
 
 **核心视觉与布局工程铁律（防“首屏大杂烩”与防“碎片化小悬浮卡片”定律）**：
 1. **常驻外围多态壳层（Persistent App Shell Chrome）**：**混合顶栏（`48px`）+ 左侧三态可折叠路由导航栏/迷你栏（`56px ↔ 220px ↔ 56px+190px 双轨`）+ 右侧三态可折叠上下文检视副栏/迷你工具条（`48px ↔ 400px ↔ 540px`）** 紧凑排布于统一的深邃底层框架画布（`App Frame Base Canvas`）上，在路由切换时保持常驻不闪烁。
-2. **中央 `<main>` 一体式圆角卡片路由视口容器盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）**：
+2. **中央 `<main>` 一体式圆角卡片路由视口容器盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）与三段式内部视口几何契约**：
    * 被外围多态功能栏紧密环绕（紧凑咬合间距 `6px~8px`）的中央 `<main>` 主内容区域，**整体作为一个单一、完整、带精致大圆角（`border-radius: 16px`）、微抬升色调表面（`Surface-Container-Elevated`）、`1px` 细腻高光描边与独立裁剪边界（`overflow: hidden`）的“圆角卡片式大容器盒子”**，将当前路由页面的整块信息架构完整包裹起来！
-   * **单路由单页面、拒绝碎卡片套娃**：`<main>` 圆角卡片大盒子作为客户端路由的 `<RouterOutlet />` 视口，在任意时刻**仅渲染当前 URL 匹配的那 1 个路由页面**；在该圆角卡片大盒子内部，通过干净的内部页头（Internal Sub-header）、柔和的 `1px` 主从分栏分割线（Split-Panes）与高内聚平铺分节（Flat Sections）展开五大 UI/UX 视图结构母版，**严禁将所有功能塞进首屏主页，也严禁把 `<main>` 拆成满屏零散漂浮的粗重阴影小卡片**！
+   * **两级紧凑导航几何契约（左栏精炼 8 大一级域零滚动条 + `<main>` 盒子顶部内嵌 `40px` 粘性水平子路由栏 `InternalStickySubNav`）**：
+     为彻底防止 30 条子路由在左侧 `220px` 导航栏纵向展开导致菜单臃肿与垂直滚动条，规定：**左侧导航栏（`PolymorphicNavRail`）在展开态下永远仅精炼渲染 8 个一级核心域入口（外加底部已启用 Web `Shell` 舞台快捷入口，总高 $<420\text{px}$，永远零垂直滚动条！）**；点击任一一级域后，该域下的 2~6 条专职二级子路由统一收敛在 **`<main>` 圆角卡片大盒子内部顶端的 `40px` 粘性胶囊页签横条（`InternalStickySubNav`）** 中丝滑切换！
+   * **`<main>` 圆角卡片盒子的三段式内部滚动几何（Three-Part Internal Viewport Geometry）**：
+     `<main>` 容器（`height: calc(100vh - 64px), display: flex, flex-direction: column, overflow: hidden`）内部严格遵循：
+     1. **顶部固定子路由与态势带（`InternalStickySubNav & TelemetryMetricStrip`，`height: 40px~44px, flex-shrink: 0`）**：承载当前一级域下的二级子路由胶囊页签与页面级快捷操作；
+     2. **中部独立滚动/无限画布主工作区（`MainScrollableBody`，`flex: 1, overflow-y: auto`）**：承载五大 UI/UX 视图结构母版，高内聚平铺分栏，严禁碎卡片套娃；
+     3. **底部按需升起的内嵌粘性事务条（`FloatingDirtyDiffBar / SandboxTimeWarpLabBar`，`flex-shrink: 0`）**：当存在未保存修改或处于沙盒环境时在盒子底部平滑锁定。
+3. **首次启动 3 步开箱向导（`FirstBootOnboardingModal`）与全局非阻塞待审批快捷抽屉（`GlobalPendingApprovalDrawer`）**：
+   * 当新用户首次启动且尚无 `.soul` 实例或模型配置时（Zero-State），自动弹出轻量 3 步开箱向导：**① 接入首个大模型 Provider 并一键 Ping 测速 $\rightarrow$ ② 拖拽导入 SillyTavern 角色卡四步蒸馏（或选择内置纯净模板）创建首个 `.soul` $\rightarrow$ ③ 一键测试已挂载的 `Shell`**；
+   * 当后台异步发生高优待审批事项（如 `W2` 行动环触发 `REQUIRE_OWNER_CONFIRM` 工具授权、或 `W3` 睡眠环提交了 Tier 1/2 人格演进提案）时，顶栏 `[🔔 待审批]` 角标脉冲闪烁，点击即在当前页直接滑出 **`GlobalPendingApprovalDrawer` 非阻塞快捷审批抽屉**，无需打断当前工作流跳转页面即可一键审查 Diff 并点击 `Approve / Reject`！
 
 ```mermaid
 flowchart TB
@@ -558,29 +567,29 @@ steps:
 | | **9. `KiraSpoilerMask`** | 二次元风格毛玻璃剧透遮罩层（`backdrop-filter: blur(8px)` + 微光边框），用于包裹 `theatrical_subtext` 内心潜台词，点击以水波纹平滑揭开 |
 | | **10. `KiraTooltip` & `KiraPopoverCard`** | 弹簧渐显悬浮解释卡，鼠标悬停在任何专业参数上即可查看其通俗陪伴作用与底层数学公式（如李群 $\tanh$ 软饱和说明） |
 | **Layer 2**<br/>**常驻多态外壳与 `<main>` 一体式圆角卡片视口容器**<br/>*(7 项)* | **11. `SovereigntyViewportFrame`** | 全屏固定视口根容器，根据 `target_instance` 切换全局 `🟢 LIVE` 主权翡翠绿或 `🧪 SANDBOX` 实验琥珀/紫防呆警示边框 |
-| | **12. `HybridTopBar`** | `48px` 常驻混合顶栏，集成 `.soul` 实例选择器、当前路由面包屑、`LIVE / SANDBOX` 环境切换胶囊、心境/双轨精力迷你脉搏环、待审批角标、`⌘K` 入口与全局急停开关 |
-| | **13. `PolymorphicNavRail`** | 左侧三态可折叠路由导航栏容器（`56px` 迷你图标栏 $\leftrightarrow$ `220px` 8 大域路由树展开栏 $\leftrightarrow$ `56px+190px` 一二级双轨），支持 `Ctrl+B` 与边缘拖拽切换 |
-| | **14. `MainRoundedCardOutlet` & `InternalSplitSection`** | **包裹整个 `<main>` `<RouterOutlet />` 路由视口的一体式大圆角悬浮卡片容器盒子（`border-radius: 16px`，`overflow: hidden`）** + 盒子内部高内聚平铺主从分栏与分节组件（**严禁把 `<main>` 拆成满屏零碎小悬浮卡片**） |
+| | **12. `HybridTopBar` & `GlobalPendingApprovalDrawer`** | `48px` 常驻混合顶栏（含 `.soul` 实例切换、面包屑、`LIVE / SANDBOX` 切换胶囊、生命脉搏微环、全局急停）+ 点击 `[🔔 待审批]` 直接滑出的非阻塞 Tier 1/2 人格 Diff 与 `W2` 工具授权快捷审批抽屉 |
+| | **13. `PolymorphicNavRail`** | 左侧三态可折叠路由导航栏容器（`56px` 迷你图标栏 $\leftrightarrow$ `220px` 精炼 8 大一级域零滚动条导航栏 $\leftrightarrow$ `56px+190px` 一二级双轨），支持 `Ctrl+B` 切换 |
+| | **14. `MainRoundedCardOutlet` & `InternalStickySubNav`** | **包裹整个 `<main>` `<RouterOutlet />` 路由视口的一体式大圆角悬浮卡片容器盒子（`border-radius: 16px`，`overflow: hidden`）** + 盒子内部顶端 `40px` 粘性水平二级子路由胶囊栏与高内聚平铺主从分节组件（**严禁把 `<main>` 拆成满屏零碎小悬浮卡片**） |
 | | **15. `PolymorphicContextInspector`** | 右侧三态可折叠上下文检视副栏（`48px` 迷你工具栏 $\leftrightarrow$ `400px` 单栏白盒检视抽屉 $\leftrightarrow$ `540px` 沙盒 A/B 双栏并列对比抽屉） |
-| | **16. `TelemetryMetricStrip`** | 位于 `<main>` 圆角卡片盒子内部顶端的紧凑水平态势指标带（内嵌迷你实时趋势波形 Sparklines） |
+| | **16. `TelemetryMetricStrip` & `FirstBootOnboardingModal`** | 位于 `<main>` 圆角卡片盒子内部顶端的紧凑水平态势指标带 + 首次启动空状态（Zero-State）3 步开箱引导弹窗（配模型 $\rightarrow$ 蒸馏角色 $\rightarrow$ 连躯壳） |
 | | **17. `CommandPaletteModal`** | `Ctrl+K / ⌘K` 全局命令面板，支持秒级路由跳转全部 30 条页面、检索记忆血缘节点、切换 `.soul` 实例或一键派生沙盒副本 |
 | **Layer 3**<br/>**复杂参数降维可视化与数字生命领域组件**<br/>*(16 项)* | **18. `BlackboardSlotComposer`** | `<2500 Token` 认知状态黑板槽位积木拖拽编排器、场景语境预设切换器与 `only_owner` vs `public_all` 70% 社交面具阻尼实时对比模拟器 |
 | | **19. `EmbodimentStarMapCard`** | 双向 WebSocket 具身 `Shell` 连接星图 + `Sensors`（视神经感官覆盖桶 `live_foveal/stale` 与 TTL 倒计时）/ `Realizers`（含动态表现力词典） / `Actuators`（动态动作热更新）三平面透视器 |
 | | **20. `ThalamicGateDebounceTuner`** | L0 丘脑显著性门控、感官习惯化 $\gamma_{\text{hab}}$ 衰减曲线、`1200ms` 话轮防抖聚合状态机与 `ephemeral_blackboard` 15 分钟滑动窗口调校器 |
-| | **21. `EmbodiedKeyframeTimeline`** | `ext.embodied.v1` 动画三锚点关键帧排练调音条：可视化编辑与预览 `pre_speech`（视线先行）$\rightarrow$ `on_substring`（核心词微表情达峰）$\rightarrow$ `on_utterance_end`（余韵保持 `linger_ms`） |
-| | **22. `MockShellSensorSimulator`** | 内置免外部客户端的虚拟躯壳与多模态感官发生器（伪造任意四元组握手、注入触觉/视觉竞争假设、模拟指定字数偏移打断） |
+| | **21. `EmbodiedKeyframeTimeline`** | `ext.embodied.v1` 三锚点关键帧（`pre_speech -> on_substring -> on_utterance_end`）+ `ext.media.sideband.v1`（`char_offset_timestamps_ms` 音频毫秒时间戳到单字偏移 `spoken_char_offset` 二分反算标尺与口型 `viseme_frames`）排练调音条 |
+| | **22. `MockShellSensorSimulator`** | 内置免外部客户端的虚拟躯壳与多模态感官发生器（伪造任意四元组握手、注入触觉/视觉竞争假设、模拟指定音频毫秒或字数偏移打断） |
 | | **23. `MountedShellStageHost`** | `/shells/stage/:shellPluginId` 通用 Web 具身躯壳舞台挂载容器（以零特权标准协议承载 `@ai0/plugin-webchat` 或社区 Web Live2D/3D 舞台插件，并联动右侧 8 步轨迹副栏） |
 | | **24. `EdibleSoulDistillerWizard`** | **可食用蒸馏角色四步可视化料理流水线组件**：拖拽投料 $\rightarrow$ 四路分馏（性格 DNA / `<START>` 黄金声线试听胶囊 / Lorebook / 越狱与 PUA 清洗红绿对比） $\rightarrow$ 一键装瓶食用 |
 | | **25. `LorebookActivationSimulator`** | 动态世界观词库编排与激活模拟器：输入测试话语实时高亮命中 `keys / secondary_keys`、递归激活链与滑入黑板 Token 占用 |
 | | **26. `BioRhythmAffectCurveCanvas`** | 可拖拽 24h 作息生物钟与免打扰曲线 + 快慢情绪二阶耦合 ODE 冲击/衰减实时仿真画布 + 性格气质预设胶囊与 `Next-Wakeup` 倒计时器 |
-| | **27. `LineageDagGraphCanvas`** | 主观记忆血缘 DAG 拓扑画布：支持四级溯源染色、双时态 `supersedes` 新旧偏好折叠链、`CommonGround` 默契三态流转及 `Hard Forget` 级联擦除/局部微重算影响半径高亮 |
-| | **28. `HybridRetrievalFormulaTuner`** | 艾宾浩斯混合检索公式 $R(m_i,t)$ 权重滑块、睡眠 Level-0 防反刍规则、`W3` 好奇心外部世界冲浪源（RSS/知识库）配置与在线检索打分拆解沙盒 |
-| | **29. `KnowledgeUnmountGistWizard`** | 内建混合 RAG 文档分块管理器 + 卸载知识集前自动筛选高引用切片并浓缩生成 `<150` 字 `CrystallizedGistCard` 常识卡的交互向导 |
+| | **27. `LineageDagGraphCanvas`** | 主观记忆血缘 DAG 拓扑画布：支持四级溯源染色、双时态 `supersedes` 折叠链、**内建 RAG 知识切片沉淀常识卡（`knowledge_chunk -> crystallized_from`）血缘边追踪**、`CommonGround` 默契三态流转及 `Hard Forget` 级联擦除半径高亮 |
+| | **28. `HybridRetrievalFormulaTuner`** | 艾宾浩斯混合检索公式 $R(m_i,t)$ 权重滑块、睡眠 Level-0 防反刍规则、`W3` 好奇心外部世界冲浪源（带只读零写副作用沙盒与 `taint_level='untrusted_external'` 议程隔离锁）配置及在线检索打分沙盒 |
+| | **29. `KnowledgeUnmountGistWizard`** | 内建混合 RAG 文档分块管理器 + 卸载知识集前自动筛选 `citation_count > 0` 高引用切片并浓缩生成 `<150` 字 `CrystallizedGistCard` 常识卡（写入 `crystallized_from` 血缘边）的交互向导 |
 | | **30. `RelationshipTensionCard`** | 关系向量雷达图 + 用户可打扰度仪表盘 + 未解心结（`Tension`）源事件溯源、48h 半衰期软化曲线与 **`[🕊️ 一键温柔释怀]`** 主权卡片 |
-| | **31. `MilestoneRitualTimeline`** | 共同经历里程碑画廊、纪念日日历与 `milestones_and_rituals.yaml` 正向剧情触发规则可视化编辑器（内置反操控零惩罚锁） |
+| | **31. `MilestoneRitualTimeline`** | 绑定 `soul_milestones_ledger` 账本表的共同经历里程碑画廊、源事件点击溯源、纪念日日历与 `milestones_and_rituals.yaml` 正向剧情触发规则编辑器（内置反操控零惩罚锁） |
 | | **32. `BrainRegionRoutingMatrix`** | 五脑区（`W1~W4` + `L0`）异构模型连线路由矩阵 + 双轨精力算力代谢环形液位计（含犯困降级线与 `5%` 危机备用金锁） + 5 场景声线漂移雷达图 |
 | | **33. `OpportunityPoolBubbleStrip`** | 有界发言机会池（`InteractionOpportunity`）微时序气泡槽：实时展示等待话轮气口的候选槽点、有效期倒计时及话题翻篇时的 `withdrawn/expired` 作废动画 |
-| **Layer 4**<br/>**五阶扩展配置、确定性事务与多轨终端复合组件**<br/>*(12 项)* | **34. `ExtensionDynamicSchemaDrawer`** | 自动读取任何已安装扩展 `ai0.extension.json` 的 `config_schema` 渲染 `Tier-V1/V2/V3` 配置表单、切换预设 Profile、绑定 Vault 密钥并支持**单插件独立热重载** |
+| **Layer 4**<br/>**五阶扩展配置、确定性事务与多轨终端复合组件**<br/>*(12 项)* | **34. `ExtensionDynamicSchemaDrawer`** | 统一解析全部五阶多态扩展（`ai0.extension.json` / `SKILL.md` Frontmatter / `.flow.yaml` / MCP 连接器）的 `config_schema` 渲染 `Tier-V1/V2/V3` 配置表单，持久化至 `.soul/config/extensions_state.json` 并触发**单扩展毫秒级热重载** |
 | | **35. `BlackboardDomainPermissionMatrix`** | 双层权限围栏矩阵：管理外部 `Shell` 的 `Scoped Capability Token` + 管控内部扩展对 `D1~D5` 五大黑板状态域的读写提案权限与网络开关 |
 | | **36. `SkillMarkdownStudio` & `McpSkillSandboxTester`** | 载体形态 II & III 专属：在线 `SKILL.md` 自然语言技能手册可视化创作台（含角色内姿态 `in_character_demeanor`）+ MCP Server 工具树与在线单步调试沙盒 |
 | | **37. `CognitiveOrganHookBench`** | 载体形态 V（总线 3）专属：大脑认知器官三大钩子（`contributeToBlackboard` Token 配额滑块 / `onTurnCompleted` / `onSleepCycleWakeup`）配置与实时黑板切片预览台 |

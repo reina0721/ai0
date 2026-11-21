@@ -32,6 +32,8 @@ souls/example.soul/
 │   └── default_orchestration.flow.yaml
 ├── knowledge/                     # 【内建混合 RAG 知识库文档源与卸载常识提炼池】
 │   └── documents/
+├── config/                        # 【五阶多态扩展运行态配置与权限覆写持久化】
+│   └── extensions_state.json      # 统一保存所有已启用扩展 (含 SKILL.md / .flow.yaml / 原生插件) 的 config_schema 实例值、D1~D5 权限覆写与 Vault 密钥引用指针
 ├── state/
 │   ├── soul_core.sqlite           # 【核心状态、事件溯源与内建混合 RAG 数据库】(SQLite 3 + WAL + sqlite-vec + FTS5)
 │   └── redaction_ledger.json      # 【跨快照永久遗忘墓碑账本】记录已生效的真遗忘目标 ID，恢复旧快照时强制重放擦除!
@@ -139,15 +141,16 @@ CREATE TABLE memories (
 );
 
 -- 记忆血缘与认知更替有向无环图边表 (Lineage & Epistemic Revision DAG Edges)
--- 记录每条记忆源自哪些原始事件/父记忆 (derived_from)，或取代/反驳了哪条旧记忆 (supersedes / contradicts)
+-- 记录每条记忆源自哪些原始事件/父记忆 (derived_from)、取代/反驳了哪条旧记忆 (supersedes / contradicts)，或由哪个知识库切片浓缩沉淀而来 (crystallized_from)
 CREATE TABLE memory_lineage_edges (
     child_memory_id     TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
-    parent_type         TEXT NOT NULL CHECK (parent_type IN ('event', 'memory')),
-    parent_id           TEXT NOT NULL,                     -- 指向 event_log.event_id 或 memories.memory_id
+    parent_type         TEXT NOT NULL CHECK (parent_type IN ('event', 'memory', 'knowledge_chunk')),
+    parent_id           TEXT NOT NULL,                     -- 指向 event_log.event_id、memories.memory_id 或 knowledge_chunks.chunk_id
     relation_type       TEXT NOT NULL DEFAULT 'derived_from' CHECK (relation_type IN (
                             'derived_from',                -- 正向血缘派生 (用于真遗忘级联擦除与微重算)
                             'supersedes',                  -- 双时态事实更替 (新偏好/纠错后的新事实取代旧事实)
-                            'contradicts'                  -- 待睡眠整理消解的证据冲突边
+                            'contradicts',                 -- 待睡眠整理消解的证据冲突边
+                            'crystallized_from'            -- 由内建混合 RAG 或外部知识库切片浓缩生成的百字常识卡 (kb_crystallized_gist) 血缘边
                         )),
     PRIMARY KEY (child_memory_id, parent_type, parent_id)
 );
@@ -169,6 +172,7 @@ CREATE TABLE prospective_commitments (
                             'curiosity_agenda'             -- 她自己产生的好奇心探索线索
                         )),
     visibility_scope    TEXT NOT NULL,                     -- 'only_owner' | 'group:<id>' | 'public_all'
+    taint_level         TEXT NOT NULL DEFAULT 'trusted_owner' CHECK (taint_level IN ('trusted_owner', 'semi_trusted_friend', 'untrusted_external')), -- 若由 W3 外部好奇心冲浪生成则强制锁死为 'untrusted_external'，唤醒时物理禁止自动连带触发副作用工具调用!
     description         TEXT NOT NULL,
     trigger_type        TEXT NOT NULL CHECK (trigger_type IN ('at_virtual_ts', 'on_next_interaction_after_ts', 'on_idle_window')),
     trigger_virtual_ts  INTEGER NOT NULL,
@@ -255,6 +259,22 @@ CREATE VIRTUAL TABLE knowledge_chunks_fts USING fts5(
     collection_id UNINDEXED,
     content_text,
     tokenize = 'unicode61'
+);
+```
+
+### 2.7 表 7：关系羁绊里程碑与时间仪式达成账本表 (`soul_milestones_ledger`)
+
+为使 `.soul/milestones_and_rituals.yaml` 中定义的正向成长规则与前端 `/memory/relationship` 页面的**共同经历里程碑画廊**形成持久化闭环（归属协调器 `D5_IDENTITY_NARRATIVE` 状态域管辖），数据库维护已达成里程碑与时间仪式的不可变解锁账本：
+
+```sql
+CREATE TABLE soul_milestones_ledger (
+    milestone_id        TEXT PRIMARY KEY,                  -- 对应 milestones_and_rituals.yaml 中的规则 ID (如 'ms.companion_30_days')
+    title               TEXT NOT NULL,                     -- 里程碑标题 (如 '相伴满月纪念' / '共同攻克第 10 个行动任务')
+    category            TEXT NOT NULL CHECK (category IN ('temporal_anniversary', 'trust_breakthrough', 'joint_agency_achievement', 'story_event')),
+    unlocked_virtual_ts INTEGER NOT NULL,                  -- 达成时的 VirtualClock 虚拟毫秒时间戳
+    trigger_event_id    TEXT NOT NULL REFERENCES event_log(event_id), -- 触发该里程碑的源事件 ID (供画廊点击溯源)
+    unlocked_rewards_json TEXT NOT NULL DEFAULT '{}',      -- 正向成长解锁载荷 (如解锁的新专属称呼、新增黄金声线样本 ID 或纪念日前瞻约定 ID)
+    state_rev_unlocked  INTEGER NOT NULL                   -- 达成时的权威状态版本号 v_N
 );
 ```
 

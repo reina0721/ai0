@@ -230,6 +230,28 @@ export interface ExtEmbodiedV1 extends EmbodiedKeyframe {
    */
   keyframes?: EmbodiedKeyframe[];
 }
+
+/**
+ * 4. 网关侧媒体管线流式合成音频、口型同步帧与字符时间戳对齐伴生扩展 (ext.media.sideband.v1)
+ * 当轻量 Shell 委托网关侧 ext.media_pipeline (如 GPT-SoVITS / FishAudio) 代工合成语音时，随 ExpressionEnvelope 下发：
+ */
+export interface ExtMediaSidebandV1 {
+  /** 流式音频伴生通道标识或二进制帧引用 URI */
+  audio_stream_id: string;
+  audio_format: "pcm_s16le_24k" | "opus_webm" | "mp3";
+  total_duration_ms: number;
+  /**
+   * 字符级音频起始毫秒时间戳对齐表 (长度与 fallback_text 的 Unicode 字符长度严格一致)
+   * char_offset_timestamps_ms[k] 表示第 k 个字符在音频流中开始发声的毫秒偏移量，供语音中途打断时精确反算 spoken_char_offset!
+   */
+  char_offset_timestamps_ms: number[];
+  /** 口型同步序列 (Visemes)，供 Live2D/3D 躯壳驱动嘴部骨骼 */
+  viseme_frames?: Array<{
+    offset_ms: number;
+    viseme: "sil" | "aa" | "E" | "I" | "O" | "U" | "PP" | "FF" | "TH" | "DD" | "kk" | "CH" | "SS" | "nn" | "RR";
+    weight: number;
+  }>;
+}
 ```
 
 ---
@@ -287,3 +309,11 @@ stateDiagram-v2
     
     Interrupted --> Debouncing: 1. 立即发出 ControlSignal(barge_in_cancel) 停止后续生成与播放<br/>2. 将已发生对话精确截断至前 K 个字符<br/>3. 将第 K+1 之后的文本存入黑板 unsaid_remainder<br/>4. 转入新话轮处理
 ```
+
+### 4.3 语音流式播放中途打断时“音频播放毫秒数 $\rightarrow$ 单字级 `spoken_char_offset`”确定性反算规范
+
+当 `Shell` 播放由网关侧 `ext.media_pipeline` 合成的 TTS 语音流并遭遇用户中途插话打断（Barge-in）时，端侧音频播放器仅持有实际已播放的音频毫秒时长 `played_audio_ms`（如 `1420ms`）。为确保内核 `unsaid_remainder`（被打断未说完的腹稿）在语音模式下与纯文本模式下达到完全相同的单字级截断精度，规定如下确定性反算公式：
+1. 读取该分段 `ExpressionEnvelope.extensions["ext.media.sideband.v1"].char_offset_timestamps_ms` 单调递增数组 $T = [t_0, t_1, \dots, t_{N-1}]$；
+2. 通过二分查找计算已实际发声完毕的字符偏移量 $K = \texttt{spoken\_char\_offset}$：
+   $$K = \max \big\{ k \in \{0, 1, \dots, N\} \;\big|\; k = 0 \lor T[k-1] \le \texttt{played\_audio\_ms} \big\}$$
+3. `Shell` 在 `DeliveryReceipt(status="interrupted", spoken_char_offset=K)` 中上报该精确值 $K$（或上报 `played_audio_ms` 由 `@ai0/gateway` 查表自动填入 $K$），内核即可零误差将前 $K$ 个字归档为已说出话轮，将第 $K+1 \sim N$ 个字转存进 `D1_WORKING_TURN.unsaid_remainder` 腹稿槽位。

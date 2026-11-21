@@ -99,11 +99,12 @@ flowchart TB
 │   └── architecture/                    # 解法域：6 篇全量系统工程架构设计规范
 │
 ├── packages/
-│   ├── protocol/                        # [@ai0/protocol] 零依赖协议契约包
+│   ├── protocol/                        # [@ai0/protocol] 零依赖双平面协议与契约唯一真相源包 (Exclusive Machine SSOT)
 │   │   ├── src/
-│   │   │   ├── core-v0/                 # 冻结核心五原语 Zod Schema & TypeScript 类型
-│   │   │   ├── extensions/              # 官方标准扩展命名空间 (ext.affect.v1, ext.rhythm.v1, ext.embodied.v1)
-│   │   │   └── plugin-manifests/        # 八大扩展维度的插件 Manifest Schema 定义
+│   │   │   ├── core-v0/                 # 通道 A (公开具身协议面)：冻结核心五原语 Zod Schema & TypeScript 类型 (含 expression_vocabulary)
+│   │   │   ├── extensions/              # 官方标准扩展命名空间 (ext.perception.v1, ext.affect.v1, ext.rhythm.v1, ext.embodied.v1, ext.media.sideband.v1)
+│   │   │   ├── plugin-manifests/        # 八大功能总线 × 五阶多态扩展载体 (ai0.extension.json / SKILL.md / .flow.yaml) Schema 定义
+│   │   │   └── control-plane/           # 通道 B (特权控制与遥测面)：VerifiableTurnTrace / BlackboardPolicy / Milestones / 四轨遥测帧与 Admin API Zod 契约
 │   │
 │   ├── storage/                         # [@ai0/storage] Local-First .soul 存储与血缘引擎
 │   │   ├── src/
