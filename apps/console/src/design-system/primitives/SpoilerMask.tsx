@@ -1,3 +1,4 @@
+import ButtonBase from "@mui/material/ButtonBase";
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 
 export interface SpoilerMaskProps {
@@ -30,11 +31,11 @@ export function SpoilerMask(props: SpoilerMaskProps): ReactElement {
       data-revealed={revealed}
       className={`ai0-spoiler-mask${revealed ? " is-revealed" : ""}${props.className ? ` ${props.className}` : ""}`}
     >
-      <div className="ai0-spoiler-mask__content" aria-hidden={!revealed}>
+      <div className="ai0-spoiler-mask__content" aria-hidden={!revealed} inert={!revealed}>
         {props.children}
       </div>
       {revealed ? null : (
-        <button
+        <ButtonBase
           type="button"
           className="ai0-spoiler-mask__veil ai0-ripple-btn"
           aria-label={props.label ?? "Reveal theatrical subtext"}
@@ -43,7 +44,7 @@ export function SpoilerMask(props: SpoilerMaskProps): ReactElement {
         >
           <span aria-hidden="true">✦</span>
           <span>{props.label ?? "Reveal inner thought"}</span>
-        </button>
+        </ButtonBase>
       )}
     </section>
   );

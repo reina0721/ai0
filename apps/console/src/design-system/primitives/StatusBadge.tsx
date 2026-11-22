@@ -1,3 +1,4 @@
+import Chip from "@mui/material/Chip";
 import type { ReactElement, ReactNode } from "react";
 
 export type StatusBadgeTone =
@@ -33,16 +34,15 @@ export function StatusBadge(props: StatusBadgeProps): ReactElement {
   const icon = props.icon ?? TONE_ICONS[tone];
 
   return (
-    <span
+    <Chip
+      component="span"
+      size="small"
       role="status"
       title={props.title}
       data-tone={tone}
       data-taint={props.taint}
       className={`ai0-badge ai0-badge--${tone}${props.className ? ` ${props.className}` : ""}`}
-      style={{ height: "22px" }}
-    >
-      <span className="ai0-badge__icon" aria-hidden="true">{icon}</span>
-      <span className="ai0-badge__label">{props.children}</span>
-    </span>
+      label={<><span className="ai0-badge__icon" aria-hidden="true">{icon}</span>{props.children}</>}
+    />
   );
 }

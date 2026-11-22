@@ -1,3 +1,4 @@
+import Chip from "@mui/material/Chip";
 import type { ReactElement, ReactNode } from "react";
 
 export type ChipTone = "neutral" | "accent" | "success" | "warning" | "danger";
@@ -43,19 +44,17 @@ export function ChipPool(props: ChipPoolProps): ReactElement {
         const chip = chipFields(rawChip);
         const active = selected.has(chip.id);
         return (
-          <button
+          <Chip
             key={chip.id}
-            type="button"
+            size="small"
+            label={chip.label}
             aria-pressed={active}
             disabled={chip.disabled}
             data-chip-id={chip.id}
             data-tone={chip.tone}
             className={`ai0-chip-pool__chip${active ? " is-selected" : ""}`}
-            style={{ height: "22px" }}
-            onClick={() => props.onToggle?.(chip.id)}
-          >
-            {chip.label}
-          </button>
+            onClick={props.onToggle ? () => props.onToggle?.(chip.id) : undefined}
+          />
         );
       })}
     </div>

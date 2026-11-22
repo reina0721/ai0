@@ -1,4 +1,7 @@
-import type { FormEvent, ReactElement } from "react";
+import Slider from "@mui/material/Slider";
+import type { ReactElement } from "react";
+
+import { CompactInput } from "../primitives/CompactInput.js";
 
 export type HybridRetrievalFormulaTunerProps = {
   audienceSql: string;
@@ -28,41 +31,38 @@ export function HybridRetrievalFormulaTuner({
         <p className="text-sm font-semibold text-slate-900">Hybrid retrieval tuner</p>
         <p className="text-xs text-slate-500">Filter the audience before ranking memories by decay.</p>
       </div>
-      <label className="block text-xs font-semibold text-slate-700">
+      <div className="block text-xs font-semibold text-[var(--ai0-on-surface)]">
         Stage 1 · SQL audience hard filter
-        <textarea
-          className="mt-1 min-h-16 w-full rounded-md border border-slate-200 p-2 font-mono text-xs"
-          value={audienceSql}
-          onChange={(event: FormEvent<HTMLTextAreaElement>) => onAudienceSqlChange?.(event.currentTarget.value)}
-        />
-      </label>
+        <CompactInput ariaLabel="SQL audience hard filter" className="mt-1" inputClassName="font-mono"
+          multiline rows={2} value={audienceSql} onInput={onAudienceSqlChange} />
+      </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-xs font-semibold text-slate-700">
+        <div className="text-xs font-semibold text-[var(--ai0-on-surface)]">
           Retention mᵢ: {retention.toFixed(2)}
-          <input
+          <Slider
             className="mt-2 w-full"
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
+            aria-label="Retention"
+            size="small"
+            min={0.1}
+            max={1}
+            step={0.05}
             value={retention}
-            onChange={(event: FormEvent<HTMLInputElement>) => onRetentionChange?.(Number(event.currentTarget.value))}
+            onChange={(_, next) => { if (typeof next === "number") onRetentionChange?.(next); }}
           />
-        </label>
-        <label className="text-xs font-semibold text-slate-700">
+        </div>
+        <div className="text-xs font-semibold text-[var(--ai0-on-surface)]">
           θconfident: {confidenceThreshold.toFixed(2)}
-          <input
+          <Slider
             className="mt-2 w-full"
-            type="range"
-            min="0.1"
-            max="0.95"
-            step="0.05"
+            aria-label="Confidence threshold"
+            size="small"
+            min={0.1}
+            max={0.95}
+            step={0.05}
             value={confidenceThreshold}
-            onChange={(event: FormEvent<HTMLInputElement>) =>
-              onConfidenceThresholdChange?.(Number(event.currentTarget.value))
-            }
+            onChange={(_, next) => { if (typeof next === "number") onConfidenceThresholdChange?.(next); }}
           />
-        </label>
+        </div>
       </div>
       <div className="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
         <p className="font-mono text-slate-800">R(mᵢ, t) = e^(−t(1−mᵢ)/7) = {recall.toFixed(3)}</p>

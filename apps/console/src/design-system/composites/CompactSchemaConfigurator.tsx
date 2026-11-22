@@ -1,4 +1,4 @@
-import type { FormEvent, ReactElement } from "react";
+import type { ReactElement } from "react";
 import { CompactInput, SegmentedPill } from "../primitives/index.js";
 
 export type SchemaTier = "visual" | "compact" | "code";
@@ -22,12 +22,13 @@ const tiers = [
 export function CompactSchemaConfigurator({ tier, value, code, onTierChange, onChange, onCodeChange }: CompactSchemaConfiguratorProps): ReactElement {
   const set = (key: keyof CompactSchemaValue, next: string) => onChange({ ...value, [key]: next });
   return (
-    <section style={{ background: "var(--ai0-surface-main-card)", border: "var(--ai0-border-subtle)", borderRadius: "14px", padding: "16px", display: "grid", gap: "14px" }}>
+    <section style={{ background: "var(--ai0-surface-workspace)", border: "var(--ai0-border-subtle)", borderRadius: "14px", padding: "16px", display: "grid", gap: "14px" }}>
       <header><strong>Schema configurator</strong><p style={{ margin: "4px 0 0", color: "var(--ai0-on-surface-muted)" }}>Move from an approachable model to authoritative source code.</p></header>
       <SegmentedPill value={tier} options={tiers} onChange={onTierChange} />
       {tier === "visual" && <div style={{ padding: "18px", border: "1px dashed color-mix(in oklch, var(--ai0-accent), transparent 76%)", borderRadius: "10px", color: "var(--ai0-on-surface-muted)" }}>Visual field map · {value.name || "Untitled schema"}</div>}
       {tier === "compact" && <div style={{ display: "grid", gap: "8px" }}><CompactInput value={value.name} placeholder="Schema name" onInput={(next) => set("name", next)} /><CompactInput value={value.summary} placeholder="Short description" onInput={(next) => set("summary", next)} /><CompactInput value={value.source} placeholder="Source binding" onInput={(next) => set("source", next)} /></div>}
-      {tier === "code" && <textarea value={code} onChange={(event: FormEvent<HTMLTextAreaElement>) => onCodeChange(event.currentTarget.value)} aria-label="Authoritative JSON or YAML" style={{ minHeight: "152px", resize: "vertical", border: "var(--ai0-border-subtle)", borderRadius: "10px", padding: "10px", background: "var(--ai0-surface-container-low)", color: "var(--ai0-on-surface)" }} />}
+      {tier === "code" && <CompactInput multiline rows={8} value={code} onInput={onCodeChange}
+        ariaLabel="Authoritative JSON or YAML" inputClassName="font-mono" />}
       <small style={{ color: "var(--ai0-on-surface-muted)" }}>Tier V3 is the source of truth; lower tiers are safe projections.</small>
     </section>
   );

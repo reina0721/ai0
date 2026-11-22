@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { RippleButton } from "../primitives/RippleButton.js";
 export interface NarrativeSnapshot {
   autobiography: string
   persona: string
@@ -38,7 +39,10 @@ export function DualColumnNarrativeApproval({
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4">
         <p className="max-w-xl text-sm text-slate-600">{rationale}</p>
-        <div className="flex gap-2"><button className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50" disabled={!pending} onClick={() => onReject?.(proposalId)} type="button">Reject</button><button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50" disabled={!pending} onClick={() => onApprove?.(proposalId)} type="button">Approve evolution</button></div>
+        <div className="flex gap-2">
+          <RippleButton disabled={!pending} onClick={() => onReject?.(proposalId)}>Reject</RippleButton>
+          <RippleButton variant="primary" disabled={!pending} onClick={() => onApprove?.(proposalId)}>Approve evolution</RippleButton>
+        </div>
       </footer>
     </section>
   )

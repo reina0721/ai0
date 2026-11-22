@@ -52,6 +52,20 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(snap.totalBlackboardTokens).toBeLessThanOrEqual(snap.maxBlackboardTokens);
     expect(snap.pragmaStatus.journal_mode.toLowerCase()).toBe("wal");
 
+    runtime.soulArchiveManager.createSnapshot("e2e-snapshot");
+    const rollbackPath = `${baseUrl}/api/admin/v1/system/snapshots/rollback`;
+    const adminHeaders = { "content-type": "application/json", "x-ai0-owner-token": ownerToken };
+    const snapshots = await fetch(rollbackPath, { headers: adminHeaders });
+    expect(snapshots.status).toBe(200);
+    expect(await snapshots.json()).toEqual({ snapshot_ids: ["e2e-snapshot"] });
+    const badRollback = await fetch(rollbackPath, {
+      method: "POST",
+      headers: adminHeaders,
+      body: JSON.stringify({ snapshot_id: "../e2e.soul" })
+    });
+    expect(badRollback.status).toBe(404);
+    expect(runtime.storage.listEvents({ limit: 1 })).toHaveLength(1);
+
     // 2. Real Channel A WebChat dialogue (private vs public social mask)
     const chatRes = await fetch(`${baseUrl}/protocol/v0/shell/perception`, {
       method: "POST",

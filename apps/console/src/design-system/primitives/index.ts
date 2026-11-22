@@ -8,3 +8,4 @@ export * from "./ChipPool.js";
 export * from "./StatusBadge.js";
 export * from "./SpoilerMask.js";
 export * from "./HoverTooltip.js";
+export * from "./CompactDisclosure.js";

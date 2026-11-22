@@ -1,6 +1,12 @@
-import type { ReactElement } from "react";
+import Drawer from "@mui/material/Drawer";
+import Link from "@mui/material/Link";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import Tooltip from "@mui/material/Tooltip";
+import { useReducedMotion } from "motion/react";
+import { useRef, useState, type ReactElement } from "react";
 
-import { RippleButton, SegmentedPill, CompactSelect } from "../primitives/index.js";
+import { RippleButton, SegmentedPill, CompactSelect, HoverTooltip } from "../primitives/index.js";
 import { CONSOLE_SOUL_THEMES, renderConsoleIcon, type ConsoleSoulTheme } from "../tokens/index.js";
 
 export interface PendingApprovalItem {
@@ -13,90 +19,48 @@ export interface PendingApprovalItem {
 export interface GlobalPendingApprovalDrawerProps {
   open: boolean;
   approvals: readonly PendingApprovalItem[];
+  pending?: boolean;
+  readOnly?: boolean;
   onApprove?: (id: string, kind?: "growth" | "task") => void;
   onReject?: (id: string, kind?: "growth" | "task") => void;
   onClose?: () => void;
 }
 
-export function GlobalPendingApprovalDrawer(
-  props: GlobalPendingApprovalDrawerProps
-): ReactElement {
+export function GlobalPendingApprovalDrawer(props: GlobalPendingApprovalDrawerProps): ReactElement {
+  const reduced = useReducedMotion();
   return (
-    <aside
-      hidden={!props.open}
-      aria-label="Pending approvals"
-      className="ai0-global-pending-approval-drawer"
-      style={{
-        position: "absolute",
-        zIndex: 40,
-        top: "50px",
-        right: "14px",
-        width: "380px",
-        maxHeight: "min(540px, 76vh)",
-        overflowY: "auto",
-        padding: "14px 16px",
-        border: "var(--ai0-border-subtle)",
-        borderRadius: "14px",
-        background: "var(--ai0-surface-main-card)",
-        boxShadow: "var(--ai0-shadow-float)"
-      }}
+    <Drawer
+      anchor="right"
+      open={props.open}
+      onClose={props.onClose}
+      transitionDuration={reduced ? 0 : 220}
+      slotProps={{ paper: { className: "ai0-approvals-drawer", "aria-label": "待审批队列" } }}
     >
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-        <strong style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-          {renderConsoleIcon("bell", 15)}
-          <span>待审批队列 ({props.approvals.length})</span>
-        </strong>
-        <RippleButton
-          variant="ghost"
-          size="sm"
-          className="ai0-inspector-close-btn"
-          ariaLabel="Close approvals"
-          style={{ width: "26px", padding: 0 }}
-          onClick={props.onClose}
-        >
-          {renderConsoleIcon("close", 14)}
-        </RippleButton>
+      <header className="ai0-drawer-title">
+        <h2>待审批队列 ({props.approvals.length})</h2>
+        <RippleButton variant="ghost" size="sm" ariaLabel="关闭待审批" onClick={props.onClose}>{renderConsoleIcon("close")}</RippleButton>
       </header>
-      {props.approvals.length === 0 ? (
-        <p style={{ fontSize: "12px", color: "var(--ai0-on-surface-muted)" }}>
-          当前无待处理的演化提案或工具授权请求。
-        </p>
-      ) : null}
+      {props.readOnly ? <p className="ai0-approval-note">审批写入正式存档，在 LIVE 环境可以处理。</p> : null}
+      {!props.approvals.length ? <p className="ai0-approval-note">暂无待处理的提案与任务。</p> : null}
       {props.approvals.map((approval) => (
-        <article
-          key={approval.id}
-          data-approval-id={approval.id}
-          data-approval-kind={approval.kind ?? "growth"}
-          style={{ padding: "10px 0", borderTop: "var(--ai0-border-subtle)", display: "grid", gap: "6px" }}
-        >
-          <strong style={{ fontSize: "12.5px" }}>{approval.title}</strong>
-          {approval.summary ? (
-            <p style={{ fontSize: "12px", color: "var(--ai0-on-surface-muted)" }}>{approval.summary}</p>
-          ) : null}
-          <div style={{ display: "flex", gap: "6px" }}>
+        <article key={approval.id} className="ai0-approval-item" data-approval-id={approval.id} data-approval-kind={approval.kind}>
+          <strong>{approval.title}</strong>
+          {approval.summary ? <p>{approval.summary}</p> : null}
+          <div>
             <RippleButton
-              variant="primary"
-              size="sm"
-              data-quick-approve={approval.id}
-              data-quick-kind={approval.kind ?? "growth"}
+              variant="primary" size="sm" disabled={props.readOnly || props.pending}
+              data-quick-approve={approval.id} data-quick-kind={approval.kind ?? "growth"}
               onClick={() => props.onApprove?.(approval.id, approval.kind)}
-            >
-              {renderConsoleIcon("check", 13)}
-              <span>批准</span>
-            </RippleButton>
+            >批准</RippleButton>
             <RippleButton
-              variant="secondary"
-              size="sm"
-              data-quick-reject={approval.id}
-              data-quick-kind={approval.kind ?? "growth"}
+              variant="secondary" size="sm" disabled={props.readOnly || props.pending}
+              data-quick-reject={approval.id} data-quick-kind={approval.kind ?? "growth"}
               onClick={() => props.onReject?.(approval.id, approval.kind)}
-            >
-              驳回
-            </RippleButton>
+            >驳回</RippleButton>
           </div>
         </article>
       ))}
-    </aside>
+    </Drawer>
   );
 }
 
@@ -115,176 +79,115 @@ export interface HybridTopBarProps extends Omit<GlobalPendingApprovalDrawerProps
   onSoulThemeChange?: (theme: ConsoleSoulTheme) => void;
   onToggleAppearance?: () => void;
   onOpenOnboarding?: () => void;
+  onOpenNavigation?: () => void;
   onOpenCommandPalette?: () => void;
   onToggleApprovals?: () => void;
   onNavigate?: (path: string) => void;
+  hrefFor?: (path: string) => string;
 }
 
-const THEME_LABELS: Record<ConsoleSoulTheme, string> = {
-  "sakura-pink": "樱粉",
-  "astral-blue": "星蓝",
-  "cyber-emerald": "翠绿"
-};
+const themes = [
+  { value: "sakura-pink", label: "樱粉" },
+  { value: "astral-blue", label: "星蓝" },
+  { value: "cyber-emerald", label: "翠绿" }
+] as const satisfies readonly { value: typeof CONSOLE_SOUL_THEMES[number]; label: string }[];
 
 export function HybridTopBar(props: HybridTopBarProps): ReactElement {
   const targetMode = props.targetInstance === "live" ? "live" : "sandbox";
-  const soulOptions = props.souls?.length
-    ? props.souls
-    : [{ value: props.activeSoulId, label: props.personaDisplay ?? "Mio" }];
+  const [menuAnchor, setMenuAnchor] = useState<HTMLButtonElement | null>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const closeMenu = () => setMenuAnchor(null);
+  const storagePath = "/system/instances-storage";
+  const logoHref = props.hrefFor?.("/dashboard") ?? "/dashboard";
 
   return (
-    <div className="ai0-hybrid-top-bar-host" style={{ position: "relative" }}>
+    <div className="ai0-hybrid-top-bar-host">
       <header className="ai0-hybrid-top-bar">
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
-          <a
-            href="/dashboard"
-            onClick={(e) => {
-              if (props.onNavigate) {
-                e.preventDefault();
-                props.onNavigate("/dashboard");
-              }
-            }}
-            style={{
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "7px",
-              fontSize: "15px",
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-              color: "var(--ai0-on-surface)",
-              padding: "0 4px",
-              whiteSpace: "nowrap",
-              flexShrink: 0
-            }}
-          >
-            <span style={{ color: "var(--ai0-accent)", display: "inline-flex" }}>
-              {renderConsoleIcon("logo", 17)}
-            </span>
-            <span>ai0</span>
-          </a>
-
-          <span style={{ width: "1px", height: "16px", background: "var(--ai0-surface-container-high)", flexShrink: 0 }} />
-
-          <CompactSelect
-            value={props.activeSoulId}
-            options={soulOptions}
-            ariaLabel="Active soul"
-            style={{ height: "28px", minHeight: "28px" }}
-            onChange={props.onSoulChange}
-          />
-
-          <RippleButton
-            variant="ghost"
-            size="sm"
-            data-open-onboarding="true"
-            title="打开初始化配置向导"
-            onClick={props.onOpenOnboarding}
-          >
-            {renderConsoleIcon("wizard", 14)}
-            <span>初始化向导</span>
+        <div className="ai0-topbar-leading">
+          <RippleButton variant="ghost" size="sm" className="ai0-topbar-navigation" ariaLabel="打开导航" onClick={props.onOpenNavigation}>
+            {renderConsoleIcon("sidebar", 17)}
           </RippleButton>
-
-          {props.stateRev !== undefined ? (
-            <span
-              className="ai0-badge"
-              data-state-rev-badge="true"
-              style={{ fontFamily: "var(--ai0-font-mono)", fontSize: "11px", flexShrink: 0 }}
-            >
-              rev #{props.stateRev}
+          <Link className="ai0-console-brand" color="inherit" underline="none" href={logoHref} onClick={(event) => {
+            if (!props.onNavigate || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            props.onNavigate("/dashboard");
+          }}>
+            {renderConsoleIcon("logo", 18)}<span>ai0</span>
+          </Link>
+          {props.onSoulChange ? <div className="ai0-topbar-soul"><CompactSelect
+              value={props.activeSoulId}
+              options={props.souls?.length ? props.souls : [{ value: props.activeSoulId, label: props.personaDisplay ?? props.activeSoulId }]}
+              ariaLabel="当前存档"
+              onChange={props.onSoulChange}
+          /></div> : <Tooltip describeChild title={<>{props.activeSoulId}</>} placement="bottom">
+            <span className="ai0-topbar-soul" tabIndex={props.personaDisplay !== props.activeSoulId ? 0 : undefined}>
+              {props.personaDisplay ?? props.activeSoulId}
             </span>
-          ) : null}
+          </Tooltip>}
+          {props.stateRev !== undefined ? <code className="ai0-revision" data-state-rev-badge="true">rev {props.stateRev}</code> : null}
         </div>
 
         <SegmentedPill
+          className="ai0-instance-switch"
           value={targetMode}
-          ariaLabel="Target instance"
-          options={[
-            { value: "live", label: "正式环境" },
-            { value: "sandbox", label: "沙盒环境" }
-          ]}
+          ariaLabel="实例环境"
+          options={[{ value: "live", label: "LIVE" }, { value: "sandbox", label: "SANDBOX" }]}
           onChange={props.onTargetModeChange}
         />
 
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+        <div className="ai0-topbar-actions">
           {props.vitalSummary ? (
-            <span
-              className="ai0-top-vital-strip"
-              title="心境指数 · 24h 节律精力 · 算力预算剩余"
-            >
-              <span className={`ai0-status-dot${targetMode === "sandbox" ? " is-sandbox" : ""}`} />
-              <span>{props.vitalSummary}</span>
-            </span>
+            <Tooltip describeChild title={<>心境、节律精力和算力预算</>} placement="bottom">
+              <span className="ai0-top-vital-strip" tabIndex={0}>
+                <span className={"ai0-status-dot" + (targetMode === "sandbox" ? " is-sandbox" : "")} />
+                {props.vitalSummary}
+              </span>
+            </Tooltip>
           ) : null}
-
-          <RippleButton
-            variant="ghost"
-            size="sm"
-            data-toggle-approvals="true"
-            title="查看待审批提案与任务授权"
-            onClick={props.onToggleApprovals}
-          >
+          <RippleButton variant="ghost" size="sm" data-toggle-approvals="true" className="ai0-topbar-secondary" ariaLabel="查看待审批" onClick={props.onToggleApprovals}>
             {renderConsoleIcon("bell", 15)}
-            <span>待审批{props.approvals.length > 0 ? ` (${props.approvals.length})` : ""}</span>
+            <span>待审批{props.approvals.length ? " (" + props.approvals.length + ")" : ""}</span>
           </RippleButton>
-
-          <a
-            href="/system/instances-storage"
-            onClick={(e) => {
-              if (props.onNavigate) {
-                e.preventDefault();
-                props.onNavigate("/system/instances-storage");
+          <RippleButton variant="ghost" size="sm" data-toggle-appearance="true" className="ai0-topbar-secondary ai0-icon-button" ariaLabel="切换浅色或深色外观" onClick={props.onToggleAppearance}>
+            {renderConsoleIcon(props.appearance === "dark" ? "sun" : "moon", 15)}
+          </RippleButton>
+          <CompactSelect className="ai0-topbar-secondary" value={props.soulTheme} ariaLabel="Soul 配色" options={themes} onChange={props.onSoulThemeChange} />
+          <HoverTooltip content="命令面板 · Ctrl / ⌘ + K" interactiveChild>
+            <RippleButton variant="ghost" size="sm" data-open-palette="true" ariaLabel="打开命令面板" ariaHasPopup="dialog" className="ai0-command-trigger" onClick={props.onOpenCommandPalette}>
+              {renderConsoleIcon("search", 16)}<kbd>⌘K</kbd>
+            </RippleButton>
+          </HoverTooltip>
+          <RippleButton
+            size="sm" variant="ghost" className="ai0-icon-button" ariaLabel="更多操作" ariaHasPopup="menu" ariaExpanded={Boolean(menuAnchor)}
+            ref={menuButton}
+            onClick={() => setMenuAnchor(menuButton.current)}
+          >
+            {renderConsoleIcon("system", 16)}
+          </RippleButton>
+          <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={closeMenu} slotProps={{ paper: { className: "ai0-topbar-menu" }, list: { "aria-label": "控制台操作" } }}>
+            <MenuItem data-open-onboarding="true" onClick={() => { closeMenu(); props.onOpenOnboarding?.(); }} disabled={targetMode === "sandbox"}>{renderConsoleIcon("wizard", 15)}初始化向导</MenuItem>
+            <MenuItem component="a" href={props.hrefFor?.(storagePath) ?? storagePath} onClick={(event) => {
+              if (props.onNavigate && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                event.preventDefault();
+                props.onNavigate(storagePath);
               }
-            }}
-            className="ai0-ripple-btn"
-            data-variant="tonal"
-            data-size="sm"
-            style={{ textDecoration: "none" }}
-          >
-            <span className="ai0-ripple-btn__content">
-              {renderConsoleIcon("export", 14)}
-              <span>导出</span>
-            </span>
-          </a>
-
-          <RippleButton
-            variant="ghost"
-            size="sm"
-            data-toggle-appearance="true"
-            ariaLabel="Toggle light or dark appearance"
-            title="切换浅色 / 深色外观"
-            style={{ width: "28px", padding: 0 }}
-            onClick={props.onToggleAppearance}
-          >
-            {renderConsoleIcon("sun", 15, "ai0-icon-sun")}
-            {renderConsoleIcon("moon", 15, "ai0-icon-moon")}
-          </RippleButton>
-
-          <CompactSelect
-            value={props.soulTheme}
-            ariaLabel="Soul theme"
-            style={{ height: "28px", minHeight: "28px" }}
-            options={CONSOLE_SOUL_THEMES.map((theme) => ({ value: theme, label: THEME_LABELS[theme] }))}
-            onChange={(value: string) => props.onSoulThemeChange?.(value as ConsoleSoulTheme)}
-          />
-
-          <RippleButton
-            variant="ghost"
-            size="sm"
-            data-open-palette="true"
-            ariaLabel="Open command palette"
-            title="快捷命令面板 (Ctrl/Cmd + K)"
-            style={{ fontFamily: "var(--ai0-font-mono)", fontSize: "11.5px", padding: "0 8px" }}
-            onClick={props.onOpenCommandPalette}
-          >
-            {renderConsoleIcon("search", 13)}
-            <span>⌘K</span>
-          </RippleButton>
+              closeMenu();
+            }}>{renderConsoleIcon("export", 15)}导出与存储</MenuItem>
+            <MenuItem onClick={() => { closeMenu(); props.onToggleApprovals?.(); }}>{renderConsoleIcon("bell", 15)}待审批 ({props.approvals.length})</MenuItem>
+            <MenuItem onClick={() => { closeMenu(); props.onToggleAppearance?.(); }}>{renderConsoleIcon(props.appearance === "dark" ? "sun" : "moon", 15)}切换外观</MenuItem>
+            {themes.map((theme) => (
+              <MenuItem key={theme.value} selected={props.soulTheme === theme.value} onClick={() => { closeMenu(); props.onSoulThemeChange?.(theme.value); }}>
+                {renderConsoleIcon(props.soulTheme === theme.value ? "check" : "sparkles", 15)}{theme.label}
+              </MenuItem>
+            ))}
+          </Menu>
         </div>
       </header>
       <GlobalPendingApprovalDrawer
         open={Boolean(props.approvalsOpen)}
         approvals={props.approvals}
+        readOnly={targetMode === "sandbox" || props.readOnly}
+        pending={props.pending}
         onApprove={props.onApprove}
         onReject={props.onReject}
         onClose={props.onClose}

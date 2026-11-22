@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { StatusBadge, SpoilerMask } from "../primitives/index.js";
+import { CompactDisclosure, StatusBadge, SpoilerMask } from "../primitives/index.js";
 import type { VerifiableTurnTrace } from "@ai0/protocol";
 
 export interface VerifiableTraceAccordionProps {
@@ -38,15 +38,15 @@ export function VerifiableTraceAccordion(props: VerifiableTraceAccordionProps): 
   const receiptRemainder = props.trace.steps.step8_delivery_receipt?.unsaid_remainder;
   return <section className="ai0-verifiable-trace-accordion" aria-label="Verifiable turn trace"
     style={{ display: "grid", gap: "1px", background: "var(--ai0-border-subtle)" }}>
-    <header style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "var(--ai0-surface-container-low)" }}>
+    <header style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "var(--ai0-surface-inset)" }}>
       <StatusBadge tone="info">8-step trace</StatusBadge><code>{props.trace.trace_id}</code><small>{props.trace.target_instance}</small>
     </header>
     {STEP_KEYS.map((key, index) => {
       const step = props.trace.steps[key];
       const open = props.openStep === index + 1;
-      return <details open={open} onToggle={() => props.onStepChange?.(index + 1)}
-        style={{ padding: "7px 8px", background: "var(--ai0-surface-main-card)" }}>
-        <summary style={{ cursor: "pointer", display: "flex", gap: "8px" }}><StatusBadge tone="neutral">{index + 1}</StatusBadge>{STEP_LABELS[index]}</summary>
+      return <CompactDisclosure key={key} expanded={props.openStep === undefined ? undefined : open}
+        onChange={props.onStepChange ? () => props.onStepChange?.(index + 1) : undefined}
+        summary={<><StatusBadge tone="neutral">{index + 1}</StatusBadge>{STEP_LABELS[index]}</>}>
         {key === "step5_strategy_proposal" ? <SpoilerMask revealed={props.revealedSubtext}
           label={theatricalSubtext.masked_placeholder} onReveal={props.onRevealSubtext}>
           <p>{theatricalSubtext.raw_text}</p>
@@ -54,7 +54,7 @@ export function VerifiableTraceAccordion(props: VerifiableTraceAccordionProps): 
         {key === "step8_delivery_receipt" && (props.unsaidRemainder ?? receiptRemainder) ? <mark style={{ display: "block", marginTop: "7px" }}>
           Unsaid remainder: {props.unsaidRemainder ?? receiptRemainder}
         </mark> : null}
-      </details>;
+      </CompactDisclosure>;
     })}
   </section>;
 }

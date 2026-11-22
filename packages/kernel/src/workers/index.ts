@@ -144,6 +144,13 @@ export interface W1AsyncTurnResult {
   trace: VerifiableTurnTrace;
   compiledBlackboard: CompiledBlackboard;
   route: RegionRoute;
+  provider?: { name: string; model: string };
+}
+
+export interface W1AsyncTurnOptions {
+  signal?: AbortSignal;
+  onStage?: (stage: "gate" | "recall" | "blackboard" | "generating") => void;
+  deferDeliveryReceipt?: boolean;
 }
 
 export class W1FastDialogueWorker {
@@ -272,7 +279,9 @@ export class W1FastDialogueWorker {
     return this.commitTurnResult(input, preSnapshot, stateRevBefore, recalled, sqlFilter, synthesized);
   }
 
-  async runTurnAsync(input: W1TurnInput): Promise<W1AsyncTurnResult> {
+  async runTurnAsync(input: W1TurnInput, options: W1AsyncTurnOptions = {}): Promise<W1AsyncTurnResult> {
+    const { signal, onStage } = options;
+    signal?.throwIfAborted();
     const preSnapshot = this.coordinator.getSnapshot();
     const stateRevBefore = preSnapshot.state_rev;
     const affect = preSnapshot.D2_HOMEOSTASIS_AFFECT;
@@ -282,16 +291,19 @@ export class W1FastDialogueWorker {
       affect.circadian_energy
     );
     const crisis = evaluateCrisisGuard(input.summary_text, this.clock);
+    onStage?.("gate");
     const { recalled, sqlFilter } =
       crisis.status === "INTERCEPTED_CRISIS"
         ? { recalled: [] as readonly RecalledMemoryItem[], sqlFilter: "SHORT_CIRCUITED_BY_L0_SB243" }
         : this.recallMemories(input, preSnapshot);
+    if (crisis.status !== "INTERCEPTED_CRISIS") onStage?.("recall");
 
     const organContributions: string[] = [];
     if (this.extensionHost) {
       for (const ext of this.extensionHost.listExtensions()) {
         if (ext.buses.includes("ext.cognitive_organ")) {
           const item = await this.extensionHost.contributeOrgan(ext.id, preSnapshot, 120);
+          signal?.throwIfAborted();
           if (item?.text) organContributions.push(`[${item.slot_id}] ${item.text}`);
         }
       }
@@ -311,6 +323,8 @@ export class W1FastDialogueWorker {
       },
       input.audience_scope
     );
+    signal?.throwIfAborted();
+    onStage?.("blackboard");
 
     if (crisis.status === "INTERCEPTED_CRISIS") {
       const expression = this.buildExpression(input, crisis.supportive_text, true);
@@ -323,7 +337,8 @@ export class W1FastDialogueWorker {
         crisisStatus: "INTERCEPTED_CRISIS",
         sqlFilter,
         recalled: [],
-        expression
+        expression,
+        deferDeliveryReceipt: options.deferDeliveryReceipt
       });
       this.onTraceCommitted?.(trace);
       return { expression, trace, compiledBlackboard, route };
@@ -336,6 +351,7 @@ export class W1FastDialogueWorker {
     const workingTurn = preSnapshot.D1_WORKING_TURN as typeof preSnapshot.D1_WORKING_TURN & {
       unsaid_remainder?: string | null;
     };
+    onStage?.("generating");
     const synthesized = await this.llmClient.generateDialogue({
       userText: input.summary_text,
       compiledBlackboardText: live?.compiledBlackboardOverride || compiledBlackboard.compiled_prompt_text,
@@ -357,7 +373,8 @@ export class W1FastDialogueWorker {
       unsaidRemainder: workingTurn.unsaid_remainder ?? undefined,
       activeTaskSummary: progressSummary || undefined,
       routedModelId: live?.dynamicLlmConfig?.model || route.selected_model_id
-    });
+    }, signal);
+    signal?.throwIfAborted();
 
     const committed = this.commitTurnResult(
       input,
@@ -365,9 +382,15 @@ export class W1FastDialogueWorker {
       stateRevBefore,
       recalled,
       sqlFilter,
-      synthesized
+      synthesized,
+      options.deferDeliveryReceipt
     );
-    return { ...committed, compiledBlackboard, route };
+    return {
+      ...committed,
+      compiledBlackboard,
+      route,
+      provider: { name: synthesized.provider_used, model: synthesized.model_used }
+    };
   }
 
   private recallMemories(
@@ -396,7 +419,8 @@ export class W1FastDialogueWorker {
     stateRevBefore: number,
     recalled: readonly RecalledMemoryItem[],
     sqlFilter: string,
-    synthesized: LlmDialogueSynthesisOutput
+    synthesized: LlmDialogueSynthesisOutput,
+    deferDeliveryReceipt = false
   ): { expression: ExpressionEnvelope; trace: VerifiableTurnTrace } {
     const expression = this.buildExpression(input, synthesized.surface_utterance, false, synthesized);
 
@@ -446,7 +470,8 @@ export class W1FastDialogueWorker {
       sqlFilter,
       recalled,
       expression,
-      synthesized
+      synthesized,
+      deferDeliveryReceipt
     });
     this.onTraceCommitted?.(trace);
     return { expression, trace };
@@ -519,6 +544,7 @@ export class W1FastDialogueWorker {
     recalled: readonly RecalledMemoryItem[];
     expression: ExpressionEnvelope;
     synthesized?: LlmDialogueSynthesisOutput;
+    deferDeliveryReceipt?: boolean;
   }): VerifiableTurnTrace {
     const {
       input,
@@ -530,7 +556,8 @@ export class W1FastDialogueWorker {
       sqlFilter,
       recalled,
       expression,
-      synthesized
+      synthesized,
+      deferDeliveryReceipt
     } = params;
     return VerifiableTurnTraceSchema.parse({
       trace_id: `trc_${input.event_id}`,
@@ -619,9 +646,9 @@ export class W1FastDialogueWorker {
           chunks_count: 1,
           extensions_attached: Object.keys(expression.extensions)
         },
-        step8_delivery_receipt: {
+        step8_delivery_receipt: deferDeliveryReceipt ? null : {
           status: "completed",
-          spoken_char_offset: expression.fallback_text.length,
+          spoken_char_offset: Array.from(expression.fallback_text).length,
           degraded_extensions: []
         }
       }

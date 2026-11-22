@@ -1,4 +1,9 @@
-import { useEffect, useState, type ReactElement } from "react";
+import {
+  WorkspaceCode, WorkspaceDiff, WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspacePage,
+  WorkspaceRow, WorkspaceSection, WorkspaceStatus, WorkspaceTable, WorkspaceTableBody,
+  WorkspaceTableCell, WorkspaceTableHead, WorkspaceTableRow
+} from "./workspace-layout.js";
+import { useState, type ReactElement } from "react";
 
 import { useConsole } from "../context/ConsoleContext.js";
 import {
@@ -11,6 +16,12 @@ import { MainRoundedCardOutlet } from "../design-system/shell/index.js";
 import { renderConsoleIcon } from "../design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
 import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
+import {
+  useAdminResource, useWorkspaceDraft, useWorkspaceSave,
+  WorkspaceConfirm, WorkspaceHeader, WorkspaceReadState, WorkspaceSaveButton
+} from "./workspace.js";
+
+type RollbackMode = "meta_reconciled" | "dream_bridge" | "silent_hard";
 
 export interface Domain8SystemPageProps {
   pathname: string;
@@ -26,10 +37,30 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
   const sys = studio?.systemSettings;
   const souls = snap?.availableSouls ?? [];
 
-  // Security & settings state
-  const [auth2fa, setAuth2fa] = useState(sys?.auth2faEnabled ?? false);
-  const [codeSandbox, setCodeSandbox] = useState(sys?.codeSandboxEnabled ?? true);
-  const [proxyUrl, setProxyUrl] = useState(sys?.proxyUrl ?? "");
+  const canWrite = Boolean(ctx?.ownerToken && ctx.mode === "live");
+  const settings = useWorkspaceDraft({
+    auth2faEnabled: sys?.auth2faEnabled ?? false, codeSandboxEnabled: sys?.codeSandboxEnabled ?? true, proxyUrl: sys?.proxyUrl ?? ""
+  });
+  const compliance = useWorkspaceDraft({
+    sb243BreakMinutes: sys?.sb243BreakMinutes ?? 180, crisisHotlineRegion: sys?.crisisHotlineRegion ?? ""
+  });
+  const settingsForm = useWorkspaceSave(route?.id === "system.settings-security" ? route.id : undefined,
+    settings.dirty, settings.discard, async () => { await ctx?.postStudio("config", { systemSettings: settings.value }); },
+    "系统安全与代理设置已保存", settings.accept);
+  const complianceForm = useWorkspaceSave(route?.id === "system.safety-sb243" ? route.id : undefined,
+    compliance.dirty, compliance.discard, async () => {
+      if (compliance.value.sb243BreakMinutes < 30 || compliance.value.sb243BreakMinutes > 180) {
+        throw new Error("提醒间隔应为 30 至 180 分钟。");
+      }
+      await ctx?.postStudio("config", { systemSettings: compliance.value });
+    }, "合规存档配置已保存", compliance.accept);
+  const [snapshotId, setSnapshotId] = useState("");
+  const [rollbackMode, setRollbackMode] = useState<RollbackMode>("meta_reconciled");
+  const [confirmRollback, setConfirmRollback] = useState(false);
+  const [operating, setOperating] = useState(false);
+  const snapshots = useAdminResource<{ snapshot_ids: string[] }>(
+    canWrite && route?.id === "system.instances-storage" ? "system/snapshots/rollback" : undefined
+  );
 
   // Export & multi-instance state
   const [incBricks, setIncBricks] = useState(true);
@@ -43,124 +74,104 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
   const [newSoulName, setNewSoulName] = useState("");
   const [newSoulRole, setNewSoulRole] = useState("digital_employee");
 
-  useEffect(() => {
-    if (!sys) return;
-    setAuth2fa(sys.auth2faEnabled);
-    setCodeSandbox(sys.codeSandboxEnabled);
-    setProxyUrl(sys.proxyUrl);
-  }, [sys]);
-
   if (route?.id === "system.safety-sb243") {
     return (
       <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
-        <div className="ai0-page">
-          <header className="ai0-page-header">
-            <div className="ai0-page-header__title">
-              <h1>权限与合规</h1>
-            </div>
-          </header>
-          <div className="ai0-grid-2">
-            <section className="ai0-card is-elevated">
+        <WorkspacePage>
+          <WorkspaceHeader title="权限矩阵与合规护栏">
+
+            <WorkspaceSaveButton form={complianceForm} />
+          </WorkspaceHeader>
+          <WorkspaceGrid columns={2}>
+            <WorkspaceSection>
               <h2>三维工具与动作授权矩阵</h2>
-              <table className="ai0-table">
-                <thead>
-                  <tr><th>操作风险等级</th><th>主账户 1v1</th><th>认证群组</th><th>公开场合</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>只读检索 (RAG / 查询)</td><td><span className="ai0-badge" data-tone="good">自动放行</span></td><td><span className="ai0-badge" data-tone="good">仅公开集</span></td><td><span className="ai0-badge" data-tone="good">仅公开集</span></td></tr>
-                  <tr><td>文件写入 / 日历 / 外部请求</td><td><span className="ai0-badge" data-tone="warn">人工审批</span></td><td><span className="ai0-badge" data-tone="danger">硬拒绝</span></td><td><span className="ai0-badge" data-tone="danger">硬拒绝</span></td></tr>
-                  <tr><td>隐私擦除 / 修改核心 DNA</td><td><span className="ai0-badge" data-tone="accent">仅主账户</span></td><td><span className="ai0-badge" data-tone="danger">硬拒绝</span></td><td><span className="ai0-badge" data-tone="danger">硬拒绝</span></td></tr>
-                </tbody>
-              </table>
-            </section>
-            <section className="ai0-card is-elevated">
+              <><WorkspaceTable>
+                <WorkspaceTableHead>
+                  <WorkspaceTableRow><WorkspaceTableCell component="th" scope="col">操作风险等级</WorkspaceTableCell><WorkspaceTableCell component="th" scope="col">主账户 1v1</WorkspaceTableCell><WorkspaceTableCell component="th" scope="col">认证群组</WorkspaceTableCell><WorkspaceTableCell component="th" scope="col">公开场合</WorkspaceTableCell></WorkspaceTableRow>
+                </WorkspaceTableHead>
+                <WorkspaceTableBody>
+                  <WorkspaceTableRow><WorkspaceTableCell>只读检索 (RAG / 查询)</WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="good">自动放行</WorkspaceStatus></WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="good">仅公开集</WorkspaceStatus></WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="good">仅公开集</WorkspaceStatus></WorkspaceTableCell></WorkspaceTableRow>
+                  <WorkspaceTableRow><WorkspaceTableCell>文件写入 / 日历 / 外部请求</WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="warn">人工审批</WorkspaceStatus></WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="danger">硬拒绝</WorkspaceStatus></WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="danger">硬拒绝</WorkspaceStatus></WorkspaceTableCell></WorkspaceTableRow>
+                  <WorkspaceTableRow><WorkspaceTableCell>隐私擦除 / 修改核心 DNA</WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="accent">仅主账户</WorkspaceStatus></WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="danger">硬拒绝</WorkspaceStatus></WorkspaceTableCell><WorkspaceTableCell><WorkspaceStatus data-tone="danger">硬拒绝</WorkspaceStatus></WorkspaceTableCell></WorkspaceTableRow>
+                </WorkspaceTableBody>
+              </WorkspaceTable></>
+            </WorkspaceSection>
+            <WorkspaceSection>
               <h2>危机拦截与健康使用护栏 (SB 243)</h2>
-              <div className="ai0-field">
-                <label>连续交互休息提醒间隔 (分钟，法定上限 180)</label>
-                <CompactInput id="sys-sb243-break" type="number" min={30} max={180} value={sys?.sb243BreakMinutes ?? 180} unit="min" />
-              </div>
-              <div className="ai0-field">
+              <WorkspaceField>
+                <label>连续交互休息提醒间隔 (分钟，30–180)</label>
+                <CompactInput id="sys-sb243-break" type="number" min={30} max={180} value={compliance.value.sb243BreakMinutes} unit="min"
+                  disabled={!canWrite} onInput={(value) => compliance.setValue((prior) => ({ ...prior, sb243BreakMinutes: Number(value) }))} />
+              </WorkspaceField>
+              <WorkspaceField>
                 <label>危机援助热线地区配置</label>
-                <CompactInput id="sys-hotline" type="text" value={sys?.crisisHotlineRegion ?? "CN-4001619995 / US-988"} />
-              </div>
-              <div className="ai0-card" style={{ background: "var(--ai0-surface-container-low)" }}>
+                <CompactInput id="sys-hotline" type="text" value={compliance.value.crisisHotlineRegion}
+                  disabled={!canWrite} onInput={(crisisHotlineRegion) => compliance.setValue((prior) => ({ ...prior, crisisHotlineRegion }))} />
+              </WorkspaceField>
+              <WorkspaceItem className="ai0-workspace-inset">
                 <strong>SQLite 存储引擎安全状态</strong>
-                <small style={{ fontFamily: "var(--ai0-font-mono)" }}>
-                  journal_mode={snap?.pragmaStatus.journal_mode ?? "wal"} · foreign_keys={snap?.pragmaStatus.foreign_keys ?? 1} · secure_delete={snap?.pragmaStatus.secure_delete ?? 1}
+                <small className="ai0-workspace-mono">
+                  journal_mode={snap?.pragmaStatus.journal_mode ?? "—"} · foreign_keys={snap?.pragmaStatus.foreign_keys ?? "—"} · secure_delete={snap?.pragmaStatus.secure_delete ?? "—"}
                 </small>
-              </div>
-            </section>
-          </div>
-        </div>
+              </WorkspaceItem>
+            </WorkspaceSection>
+          </WorkspaceGrid>
+          <WorkspaceSection>
+            <h2>危机转介统计</h2>
+            {snap?.sb243Metrics.map((metric) => (
+              <WorkspaceRow key={metric.year_month}>
+                <time>{metric.year_month}</time><strong>{metric.crisis_referral_triggered_count} 次</strong>
+              </WorkspaceRow>
+            ))}
+            {!snap?.sb243Metrics.length ? <small>当前实例暂无转介统计。</small> : null}
+          </WorkspaceSection>
+        </WorkspacePage>
       </MainRoundedCardOutlet>
     );
   }
 
   if (route?.id === "system.settings-security") {
-    const handleSaveSettings = async () => {
-      if (!ctx) return;
-      try {
-        await ctx.postStudio("/api/studio/config", {
-          systemSettings: {
-            auth2faEnabled: auth2fa,
-            codeSandboxEnabled: codeSandbox,
-            proxyUrl
-          }
-        });
-        await ctx.refreshSnapshot();
-        ctx.showToast("系统安全与代理设置已保存");
-      } catch (err) {
-        ctx.showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
-      }
-    };
-
     return (
       <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
-        <div className="ai0-page" data-system-settings-page="true">
-          <header className="ai0-page-header">
-            <div className="ai0-page-header__title">
-              <h1>安全与外观</h1>
-            </div>
-            <div className="ai0-page-header__actions">
-              <RippleButton
-                variant="primary"
-                data-save-system-settings="true"
-                onClick={() => void handleSaveSettings()}
-              >
-                {renderConsoleIcon("save", 14)}
-                <span>保存设置</span>
-              </RippleButton>
-            </div>
-          </header>
-          <div className="ai0-grid-2">
-            <section className="ai0-card is-elevated">
-              <h2>访问认证、沙盒与网络代理</h2>
+        <WorkspacePage data-system-settings-page="true">
+          <WorkspaceHeader title="安全与外观">
+
+            <WorkspaceSaveButton form={settingsForm} name="保存设置" />
+
+          </WorkspaceHeader>
+          <WorkspaceGrid columns={2}>
+            <WorkspaceSection>
+              <h2>访问策略存档配置</h2>
+              <small>在此记录 2FA、脚本隔离和代理偏好。实际运行能力由 daemon 提供。</small>
               <JellySwitch
                 id="sys-auth-2fa"
-                checked={auth2fa}
-                onChange={setAuth2fa}
+                checked={settings.value.auth2faEnabled}
+                disabled={!canWrite}
+                onChange={(auth2faEnabled) => settings.setValue((prior) => ({ ...prior, auth2faEnabled }))}
                 label="启用管理员双因素认证 (2FA)"
               />
               <JellySwitch
                 id="sys-code-sandbox"
-                checked={codeSandbox}
-                onChange={setCodeSandbox}
+                checked={settings.value.codeSandboxEnabled}
+                disabled={!canWrite}
+                onChange={(codeSandboxEnabled) => settings.setValue((prior) => ({ ...prior, codeSandboxEnabled }))}
                 label="启用 Agent 脚本隔离执行沙盒"
               />
-              <div className="ai0-field">
-                <label>全局 HTTP / SOCKS5 代理地址（留空直连）</label>
+              <WorkspaceField>
+                <label>HTTP / SOCKS5 代理地址</label>
                 <CompactInput
                   id="sys-proxy-url"
                   type="url"
                   placeholder="http://127.0.0.1:7890"
-                  value={proxyUrl}
-                  onInput={setProxyUrl}
+                  value={settings.value.proxyUrl}
+                  disabled={!canWrite}
+                  onInput={(proxyUrl) => settings.setValue((prior) => ({ ...prior, proxyUrl }))}
                 />
-              </div>
-            </section>
-            <section className="ai0-card is-elevated">
+              </WorkspaceField>
+            </WorkspaceSection>
+            <WorkspaceSection>
               <h2>控制台外观模式</h2>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <div className="ai0-workspace-actions">
                 <RippleButton
                   variant={ctx?.appearance === "light" ? "primary" : "secondary"}
                   data-set-appearance="light"
@@ -178,17 +189,21 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
                   <span>深色模式</span>
                 </RippleButton>
               </div>
-              <small>外观与主题色偏好会持久化至本地配置并在下次启动时自动恢复。</small>
-            </section>
-          </div>
-        </div>
+              <CompactSelect ariaLabel="主题色" value={ctx?.soulTheme ?? "sakura-pink"} options={[
+                { value: "sakura-pink", label: "樱花粉" }, { value: "astral-blue", label: "星蓝" }, { value: "cyber-emerald", label: "翡翠绿" }
+              ]} onChange={(theme) => void ctx?.setSoulTheme(theme)} />
+              <small>正式实例中的外观与主题色偏好保存至存档。</small>
+            </WorkspaceSection>
+          </WorkspaceGrid>
+        </WorkspacePage>
       </MainRoundedCardOutlet>
     );
   }
 
   // Export Packages & Multi-Instance Storage
   const handleExportPack = async (packageType: "soul-template" | "ai0pack") => {
-    if (!ctx) return;
+    if (!ctx || !canWrite || operating) return;
+    setOperating(true);
     try {
       const res = await ctx.postStudio<{
         filename: string;
@@ -214,20 +229,23 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
       link.href = url;
       link.download = res.filename;
       link.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       ctx.showToast(`已导出脱敏资产包：${res.filename}`);
     } catch (err) {
       ctx.showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setOperating(false);
     }
   };
 
   const handleCreateSoul = async () => {
-    if (!ctx) return;
+    if (!ctx || !canWrite || operating) return;
     const trimmed = newSoulName.trim();
     if (!trimmed) {
       ctx.showToast("请输入新实例名称");
       return;
     }
+    setOperating(true);
     try {
       const res = await ctx.postStudio<{ id: string }>("/api/studio/instances", {
         slug: trimmed,
@@ -239,40 +257,47 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
       ctx.showToast(`已创建独立存档实例：${res.id}`);
     } catch (err) {
       ctx.showToast(`创建失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setOperating(false);
     }
   };
 
-  const handleRollback = async (mode: "meta_reconciled" | "dream_bridge" | "silent_hard") => {
-    if (!ctx) return;
+  const validSnapshot = snapshots.data?.snapshot_ids.includes(snapshotId) ?? false;
+  const handleRollback = async () => {
+    if (!ctx || !canWrite || !validSnapshot || operating) return;
+    setOperating(true);
     try {
-      await ctx.postAdmin("/api/admin/v1/system/snapshots/rollback", { mode }, "live");
+      const result = await ctx.postAdmin<{ rolled_back_to: string }>("system/snapshots/rollback",
+        { mode: rollbackMode, snapshot_id: snapshotId.trim() }, "live");
       await ctx.refreshSnapshot();
-      ctx.showToast(`已按 [${mode}] 模式回滚并重放墓碑账本`);
-    } catch (err) {
-      ctx.showToast(`回滚失败：${err instanceof Error ? err.message : String(err)}`);
+      snapshots.refresh();
+      setConfirmRollback(false);
+      ctx.showToast(`已回滚到 ${result.rolled_back_to}`);
+    } catch (error) {
+      ctx.showToast(`回滚失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setOperating(false);
     }
   };
 
   return (
     <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
-      <div className="ai0-page" data-creator-publish-page="true">
-        <header className="ai0-page-header">
-          <div className="ai0-page-header__title">
-            <h1>导出与多实例</h1>
-          </div>
-        </header>
+      <WorkspacePage data-creator-publish-page="true">
+        <WorkspaceHeader title="导出与多实例">
 
-        <section className="ai0-card is-elevated">
-          <div className="ai0-card__head">
+        </WorkspaceHeader>
+
+        <WorkspaceSection>
+          <WorkspaceRow>
             <h2>脱敏资产导出</h2>
-            <span className="ai0-badge" data-tone="good">
+            <WorkspaceStatus data-tone="good">
               {renderConsoleIcon("shield", 12)}
               <span>隐私字段物理剥离</span>
-            </span>
-          </div>
+            </WorkspaceStatus>
+          </WorkspaceRow>
 
-          <div className="ai0-grid-2">
-            <div style={{ display: "grid", gap: "10px" }}>
+          <WorkspaceGrid columns={2}>
+            <div className="ai0-workspace-stack">
               <strong>包含资产模块：</strong>
               <JellySwitch
                 id="pub-inc-bricks"
@@ -292,10 +317,11 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
                 onChange={setIncSkills}
                 label="声明式 SKILL.md 技能集与 ECA 自动化规则 (.flow.yaml)"
               />
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
+              <div className="ai0-workspace-actions">
                 <RippleButton
                   variant="primary"
                   data-export-pack="soul-template"
+                  disabled={!canWrite || operating}
                   onClick={() => void handleExportPack("soul-template")}
                 >
                   {renderConsoleIcon("download", 14)}
@@ -304,6 +330,7 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
                 <RippleButton
                   variant="secondary"
                   data-export-pack="ai0pack"
+                  disabled={!canWrite || operating}
                   onClick={() => void handleExportPack("ai0pack")}
                 >
                   {renderConsoleIcon("export", 14)}
@@ -312,53 +339,50 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
               </div>
             </div>
 
-            <div id="publish-audit-report" className="ai0-card" style={{ background: "var(--ai0-surface-container-low)" }}>
+            <WorkspaceItem id="publish-audit-report" className="ai0-workspace-inset">
               {publishReport ? (
                 <>
                   <strong>脱敏资产包已生成：{publishReport.filename}</strong>
                   <small>
                     SHA-256 指纹：<code>{publishReport.sha256.slice(0, 32)}…</code>
                   </small>
-                  <div className="ai0-diff-after">
+                  <WorkspaceDiff side="after">
                     已剥离 {publishReport.excludedKeys.length} 项敏感隐私字段：
                     {publishReport.excludedKeys.join(", ")}
-                  </div>
+                  </WorkspaceDiff>
                 </>
               ) : (
                 <>
                   <strong>隐私脱敏审计清单</strong>
-                  <small>自动剥离：全部 {snap?.eventsCount ?? 5} 条原始对话事件 (event_log)</small>
-                  <small>自动剥离：全部 {snap?.memoriesCount ?? 5} 条个人情景与语义记忆</small>
-                  <small>自动剥离：全部模型 API Keys、Owner Token 与本地 Vault 凭据</small>
+                  <small>原始对话事件 (event_log)</small>
+                  <small>个人情景与语义记忆</small>
+                  <small>模型 API Key、Owner Token 与本地 Vault 凭据</small>
                 </>
               )}
-            </div>
-          </div>
-        </section>
+            </WorkspaceItem>
+          </WorkspaceGrid>
+        </WorkspaceSection>
 
-        <div className="ai0-grid-2">
-          <section className="ai0-card is-elevated">
-            <div className="ai0-card__head">
+        <WorkspaceGrid columns={2}>
+          <WorkspaceSection>
+            <WorkspaceRow>
               <h2>多 .soul 角色实例</h2>
-              <span className="ai0-badge" data-tone="info">{souls.length || 1} 个存档实例</span>
-            </div>
-            <div style={{ display: "grid", gap: "8px" }}>
+              <WorkspaceStatus data-tone="info">{souls.length} 个存档实例</WorkspaceStatus>
+            </WorkspaceRow>
+            <div className="ai0-workspace-stack">
               {souls.map((item) => (
-                <div
-                  key={item.id}
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 12px", borderRadius: "10px", background: "var(--ai0-surface-container-low)", border: item.active ? "var(--ai0-border-strong)" : "var(--ai0-border-subtle)" }}
-                >
+                <WorkspaceRow key={item.id} className="ai0-workspace-instance" data-active={item.active}>
                   <div>
-                    <strong>{item.name}</strong> · <span className="ai0-badge" data-tone="info">{item.role}</span>
-                    <div style={{ fontFamily: "var(--ai0-font-mono)", fontSize: "11px", color: "var(--ai0-on-surface-muted)" }}>{item.path}</div>
+                    <strong>{item.name}</strong> · <WorkspaceStatus data-tone="info">{item.role}</WorkspaceStatus>
+                    <div className="ai0-workspace-mono">{item.path}</div>
                   </div>
-                  <span className="ai0-badge" data-tone={item.active ? "live" : "info"}>{item.active ? "运行中" : "已就绪"}</span>
-                </div>
+                  <WorkspaceStatus data-tone={item.active ? "live" : "info"}>{item.active ? "运行中" : "已就绪"}</WorkspaceStatus>
+                </WorkspaceRow>
               ))}
             </div>
-            <div className="ai0-grid-3" style={{ paddingTop: "8px", borderTop: "var(--ai0-border-subtle)" }}>
-              <div className="ai0-field">
-                <label>实例名称</label>
+            <WorkspaceGrid columns={3} className="ai0-workspace-divided">
+              <WorkspaceField>
+                <label htmlFor="new-soul-name">实例名称</label>
                 <CompactInput
                   id="new-soul-name"
                   type="text"
@@ -366,11 +390,12 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
                   value={newSoulName}
                   onInput={setNewSoulName}
                 />
-              </div>
-              <div className="ai0-field">
-                <label>默认关系契约</label>
+              </WorkspaceField>
+              <WorkspaceField>
+                <span id="new-soul-role-label">默认关系契约</span>
                 <CompactSelect
                   id="new-soul-role"
+                  labelId="new-soul-role-label"
                   value={newSoulRole}
                   onChange={setNewSoulRole}
                   options={[
@@ -381,58 +406,54 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
                     { value: "vtuber_partner", label: "互动搭档" }
                   ]}
                 />
-              </div>
-              <div className="ai0-field" style={{ alignSelf: "end" }}>
+              </WorkspaceField>
+              <WorkspaceField className="ai0-workspace-align-end">
                 <RippleButton
                   variant="primary"
                   data-create-new-soul="true"
+                  disabled={!canWrite || operating || !newSoulName.trim()}
                   onClick={() => void handleCreateSoul()}
                 >
                   {renderConsoleIcon("plus", 14)}
                   <span>新建实例</span>
                 </RippleButton>
-              </div>
-            </div>
-          </section>
+              </WorkspaceField>
+            </WorkspaceGrid>
+          </WorkspaceSection>
 
-          <section className="ai0-card is-elevated">
+          <WorkspaceSection>
             <h2>Git 快照回滚与墓碑重放</h2>
-            <p style={{ fontSize: "12.5px", color: "var(--ai0-on-surface-muted)" }}>
+            <p className="ai0-workspace-muted">
               回滚至任意历史快照时，存储引擎会强制重放 <code>redaction_ledger.json</code> 防复活账本，确保已物理擦除的隐私记录不会随旧快照恢复。
             </p>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <RippleButton
-                variant="secondary"
-                size="sm"
-                data-rollback-mode="meta_reconciled"
-                onClick={() => void handleRollback("meta_reconciled")}
-              >
-                透明共识回滚（推荐）
-              </RippleButton>
-              <RippleButton
-                variant="secondary"
-                size="sm"
-                data-rollback-mode="dream_bridge"
-                onClick={() => void handleRollback("dream_bridge")}
-              >
-                梦境过渡回滚
-              </RippleButton>
-              <RippleButton
-                variant="secondary"
-                size="sm"
-                data-rollback-mode="silent_hard"
-                onClick={() => void handleRollback("silent_hard")}
-              >
-                静默硬回滚
-              </RippleButton>
-            </div>
-            <div className="ai0-card" style={{ background: "var(--ai0-surface-container-low)" }}>
+            <WorkspaceGrid columns={2}>
+              <WorkspaceField><span id="rollback-snapshot-label">历史快照 ID</span><CompactSelect value={snapshotId} labelId="rollback-snapshot-label"
+                disabled={!canWrite || !snapshots.data?.snapshot_ids.length}
+                onChange={setSnapshotId} options={[
+                  { value: "", label: "选择快照" },
+                  ...(snapshots.data?.snapshot_ids ?? []).map((id) => ({ value: id, label: id }))
+                ]} /></WorkspaceField>
+              <WorkspaceField><span id="rollback-mode-label">回滚模式</span><CompactSelect value={rollbackMode} labelId="rollback-mode-label"
+                disabled={!canWrite} onChange={setRollbackMode} options={[
+                  { value: "meta_reconciled", label: "透明共识回滚" },
+                  { value: "dream_bridge", label: "梦境过渡回滚" },
+                  { value: "silent_hard", label: "静默硬回滚" }
+                ]} /></WorkspaceField>
+            </WorkspaceGrid>
+            {!snapshots.data?.snapshot_ids.length ? <WorkspaceReadState {...snapshots}
+              empty={canWrite ? "当前没有可选快照。" : "回滚在正式实例中开放。"} onRetry={snapshots.refresh} /> : null}
+            <RippleButton variant="danger" disabled={!canWrite || !validSnapshot || operating}
+              onClick={() => setConfirmRollback(true)}>回滚到指定快照</RippleButton>
+            {confirmRollback ? <WorkspaceConfirm title="回滚正式存档"
+              description={<p>将 LIVE 回滚到 <code>{snapshotId.trim()}</code>。服务端会先保存当前存档快照。</p>}
+              busy={operating} onCancel={() => setConfirmRollback(false)} onConfirm={() => void handleRollback()} /> : null}
+            <WorkspaceItem className="ai0-workspace-inset">
               <strong>容器化自托管部署</strong>
-              <pre className="ai0-code-box">docker compose up -d{"\n"}# Healthcheck: GET http://127.0.0.1:4173/healthz</pre>
-            </div>
-          </section>
-        </div>
-      </div>
+              <WorkspaceCode>docker compose up -d{"\n"}# Healthcheck: GET http://127.0.0.1:4173/healthz</WorkspaceCode>
+            </WorkspaceItem>
+          </WorkspaceSection>
+        </WorkspaceGrid>
+      </WorkspacePage>
     </MainRoundedCardOutlet>
   );
 }

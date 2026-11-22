@@ -1,3 +1,5 @@
+import ButtonBase from "@mui/material/ButtonBase";
+import Tooltip from "@mui/material/Tooltip";
 import type { ReactElement } from "react";
 import { StatusBadge, SegmentedPill } from "../primitives/index.js";
 
@@ -45,24 +47,28 @@ export function BlackboardSlotComposer(props: BlackboardSlotComposerProps): Reac
     </header>
     <div role="meter" aria-valuemin={0} aria-valuemax={budget} aria-valuenow={used}
       className="ai0-blackboard-composer__quota" style={{ height: "22px", display: "flex",
-        overflow: "hidden", borderRadius: "11px", background: "var(--ai0-surface-container-low)" }}>
-      {slots.map((slot) => <button type="button" title={`${slot.label}: ${slot.tokenCount} tokens`}
-        aria-label={`${slot.label}, ${slot.tokenCount} tokens`} onClick={() => props.onSelectSlot?.(slot.id)}
-        style={{ width: `${Math.max(4, slot.tokenCount / budget * 100)}%`, border: 0,
-          borderRight: "var(--ai0-border-subtle)", background: "var(--ai0-accent-tint)" }} />)}
+        overflow: "hidden", borderRadius: "11px", background: "var(--ai0-surface-inset)" }}>
+      {slots.map((slot) => (
+        <Tooltip key={slot.id} title={<>{slot.label}: {slot.tokenCount} tokens</>}>
+          <ButtonBase aria-pressed={slot.id === selected?.id}
+            aria-label={`${slot.label}, ${slot.tokenCount} tokens`} onClick={() => props.onSelectSlot?.(slot.id)}
+            style={{ width: `${Math.max(4, slot.tokenCount / budget * 100)}%`, border: 0,
+              borderRight: "var(--ai0-border-subtle)", background: "var(--ai0-accent-tint)" }} />
+        </Tooltip>
+      ))}
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "minmax(230px, 0.9fr) 1.1fr",
       border: "var(--ai0-border-subtle)" }}>
       <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>
-        {slots.map((slot) => <li draggable data-selected={slot.id === selected?.id}
+        {slots.map((slot) => <li key={slot.id} draggable data-selected={slot.id === selected?.id}
           onDragStart={(event: SlotDragEvent) => event.dataTransfer?.setData("text/slot-id", slot.id)}
           onDragOver={(event: SlotDragEvent) => event.preventDefault()}
           onDrop={(event: SlotDragEvent) => props.onReorder?.(
             event.dataTransfer?.getData("text/slot-id") ?? "", slot.id)}
           style={{ display: "grid", gridTemplateColumns: "22px 1fr auto", gap: "7px",
             padding: "8px", borderBottom: "var(--ai0-border-subtle)", cursor: "grab" }}>
-          <span aria-hidden="true">⠿</span><button type="button" onClick={() => props.onSelectSlot?.(slot.id)}
-            style={{ textAlign: "left" }}>{slot.label}</button>
+          <span aria-hidden="true">⠿</span><ButtonBase onClick={() => props.onSelectSlot?.(slot.id)}
+            aria-pressed={slot.id === selected?.id} style={{ justifyContent: "start", textAlign: "left" }}>{slot.label}</ButtonBase>
           <StatusBadge tone="neutral">P{slot.priority} · {slot.tokenCount}</StatusBadge>
         </li>)}
       </ol>

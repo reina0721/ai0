@@ -8,15 +8,16 @@ export interface ConsoleBootstrapPayload {
   snapshot: ConsoleLiveSnapshot;
 }
 
-export async function fetchBootstrap(mode: ConsoleMode): Promise<ConsoleBootstrapPayload> {
+export async function fetchBootstrap(mode: ConsoleMode, signal?: AbortSignal): Promise<ConsoleBootstrapPayload> {
   const res = await fetch(`/api/studio/bootstrap?mode=${encodeURIComponent(mode)}`, {
-    cache: "no-store"
+    cache: "no-store",
+    signal
   });
   const data = (await res.json().catch(() => ({}))) as Partial<ConsoleBootstrapPayload> & {
     error?: string;
     message?: string;
   };
-  if (!res.ok || !data.snapshot) {
+  if (!res.ok || !data.snapshot || !data.ownerToken) {
     throw new Error(data.error ?? data.message ?? `HTTP_${res.status}`);
   }
   return {
@@ -27,43 +28,37 @@ export async function fetchBootstrap(mode: ConsoleMode): Promise<ConsoleBootstra
 }
 
 export async function fetchSnapshot(mode: ConsoleMode): Promise<ConsoleLiveSnapshot> {
-  const res = await fetch(`/api/admin/v1/snapshot?mode=${encodeURIComponent(mode)}`, {
-    cache: "no-store"
-  });
-  const data = (await res.json().catch(() => ({}))) as ConsoleLiveSnapshot & {
-    error?: string;
-    message?: string;
-  };
-  if (!res.ok) {
-    throw new Error(data.error ?? data.message ?? `HTTP_${res.status}`);
+  return getJson(`/api/admin/v1/snapshot?mode=${encodeURIComponent(mode)}`);
+}
+
+async function requestJson<T>(url: string, init: RequestInit, ownerToken: string): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (ownerToken) {
+    headers.set("x-ai0-owner-token", ownerToken);
   }
+  const res = await fetch(url, { ...init, headers, cache: "no-store" });
+  const data = (await res.json().catch(() => null)) as (T & { error?: string; message?: string }) | null;
+  if (!res.ok) {
+    throw new Error(data?.error ?? data?.message ?? `HTTP_${res.status}`);
+  }
+  if (data === null) throw new Error("服务端未返回有效 JSON");
   return data;
 }
 
-export async function postJson<T = Record<string, unknown>>(
+export function getJson<T>(url: string, ownerToken = "", signal?: AbortSignal): Promise<T> {
+  return requestJson<T>(url, { signal }, ownerToken);
+}
+
+export function postJson<T = Record<string, unknown>>(
   url: string,
   payload: Record<string, unknown> = {},
   ownerToken = ""
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    "content-type": "application/json"
-  };
-  if (ownerToken) {
-    headers["x-ai0-owner-token"] = ownerToken;
-  }
-  const res = await fetch(url, {
+  return requestJson<T>(url, {
     method: "POST",
-    headers,
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(payload)
-  });
-  const data = (await res.json().catch(() => ({}))) as T & {
-    error?: string;
-    message?: string;
-  };
-  if (!res.ok) {
-    throw new Error(data.error ?? data.message ?? `HTTP_${res.status}`);
-  }
-  return data;
+  }, ownerToken);
 }
 
 export function subscribeTelemetryStream(onFrame: (frame: unknown) => void): () => void {

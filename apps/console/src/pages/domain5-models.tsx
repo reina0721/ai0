@@ -1,15 +1,29 @@
-import { useEffect, useState, type ReactElement } from "react";
+import {
+  WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspacePage, WorkspaceRow, WorkspaceSection,
+  WorkspaceStatus
+} from "./workspace-layout.js";
+import { useState, type ReactElement } from "react";
+import LinearProgress from "@mui/material/LinearProgress";
 
 import { useConsole } from "../context/ConsoleContext.js";
 import {
   CompactInput,
   RippleButton,
-  CompactSelect
+  CompactSelect,
+  JellySwitch
 } from "../design-system/primitives/index.js";
 import { MainRoundedCardOutlet } from "../design-system/shell/index.js";
 import { renderConsoleIcon } from "../design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot, ConsoleStudioState } from "../live-snapshot.js";
-import { type ConsoleRoute } from "../router/routes.js";
+import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
+import {
+  useAdminResource, useWorkspaceDraft, useWorkspaceSave, WorkspaceHeader, WorkspaceReadState, WorkspaceSaveButton
+} from "./workspace.js";
+
+interface RuntimeRoute {
+  region: string;
+  route: { selected_model_id: string; fallback_model_id: string; drowsy_downgraded: boolean };
+}
 
 export interface Domain5ModelsPageProps {
   pathname: string;
@@ -30,240 +44,252 @@ export function Domain5ModelsPage(props: Domain5ModelsPageProps): ReactElement {
   const ctx = useConsole();
   const snap = props.snapshot ?? ctx?.snapshot;
   const studio = snap?.studioConfig;
+  const routeId = resolveConsoleRoute(props.pathname)?.id;
+  const editingRouting = routeId === "models.routing";
 
-  const [providers, setProviders] = useState<ConsoleStudioState["providers"]>(
-    studio?.providers ?? []
-  );
-  const [routing, setRouting] = useState<ConsoleStudioState["brainRouting"] | undefined>(
-    studio?.brainRouting
-  );
-  const [dailyBudget, setDailyBudget] = useState(
-    studio?.metabolicPolicy.dailyTokenBudget ?? 300000
-  );
-  const [sleepyPct, setSleepyPct] = useState(studio?.metabolicPolicy.sleepyThresholdPct ?? 25);
-  const [latencies, setLatencies] = useState<Record<string, number>>({});
+  const providerDraft = useWorkspaceDraft<ConsoleStudioState["providers"]>(studio?.providers ?? []);
+  const routingDraft = useWorkspaceDraft(studio?.brainRouting);
+  const budget = useWorkspaceDraft({
+    dailyBudget: studio?.metabolicPolicy.dailyTokenBudget ?? 300_000,
+    sleepyPct: studio?.metabolicPolicy.sleepyThresholdPct ?? 25,
+    autoDowngrade: studio?.metabolicPolicy.autoDowngradeEnabled ?? true
+  });
+  const { dailyBudget, sleepyPct, autoDowngrade } = budget.value;
+  const providers = providerDraft.value;
+  const routing = routingDraft.value;
+  const [newKeys, setNewKeys] = useState<Record<string, string>>({});
+  const [latencies, setLatencies] = useState<Record<string, {
+    milliseconds: number;
+    detail: string;
+    status: ConsoleStudioState["providers"][number]["status"];
+  }>>({});
+  const [pinging, setPinging] = useState<string>();
+  const runtimeRoutes = useAdminResource<{ regions: RuntimeRoute[] }>(editingRouting ? "models/routing" : undefined);
 
-  useEffect(() => {
-    if (studio?.providers) setProviders(studio.providers);
-    if (studio?.brainRouting) setRouting(studio.brainRouting);
-    if (studio?.metabolicPolicy) {
-      setDailyBudget(studio.metabolicPolicy.dailyTokenBudget);
-      setSleepyPct(studio.metabolicPolicy.sleepyThresholdPct);
-    }
-  }, [studio?.providers, studio?.brainRouting, studio?.metabolicPolicy]);
-
-  const llmProviders = providers.filter((p) => p.category === "llm" || p.category === "lora");
+  const llmProviders = providers.filter((provider) => provider.category === "llm" || provider.category === "lora");
   const meta = studio?.metabolicPolicy;
-  const usedPct = meta ? Math.round((meta.usedTokensToday / Math.max(1, dailyBudget)) * 100) : 9;
-  const remainPct = Math.max(0, 100 - usedPct);
+  const usedPct = meta ? Math.round((meta.usedTokensToday / Math.max(1, dailyBudget)) * 100) : undefined;
+  const remainPct = usedPct === undefined ? undefined : Math.max(0, 100 - usedPct);
+  const clearKeys = () => setNewKeys({});
+  const canConfigure = Boolean(studio && ctx?.mode === "live" && ctx.ownerToken);
 
   const updateProvider = (
     id: string,
     patch: Partial<ConsoleStudioState["providers"][number]>
   ) => {
-    setProviders((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    providerDraft.setValue((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   };
 
   const handlePing = async (providerId: string) => {
-    if (!ctx) return;
+    if (!ctx || !canConfigure || pinging) return;
+    setPinging(providerId);
     try {
-      const res = await ctx.postStudio<{ latencyMs: number; detail: string }>(
+      const res = await ctx.postStudio<{
+        latencyMs: number; detail: string; status: ConsoleStudioState["providers"][number]["status"];
+      }>(
         "/api/studio/provider-ping",
         { providerId }
       );
-      setLatencies((prev) => ({ ...prev, [providerId]: res.latencyMs }));
+      setLatencies((prev) => ({ ...prev, [providerId]: { milliseconds: res.latencyMs, detail: res.detail, status: res.status } }));
       ctx.showToast(res.detail);
     } catch (err) {
-      ctx.showToast(`连接测速失败：${err instanceof Error ? err.message : String(err)}`);
+      ctx.showToast(`连接测试失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setPinging(undefined);
     }
   };
 
-  const handleSave = async () => {
-    if (!ctx) return;
-    try {
-      await ctx.postStudio("/api/studio/config", {
-        providers,
-        ...(routing ? { brainRouting: routing } : {}),
-        metabolicPolicy: {
-          dailyTokenBudget: dailyBudget,
-          sleepyThresholdPct: sleepyPct
-        }
+  const providerForm = useWorkspaceSave(editingRouting ? undefined : "models.providers",
+    providerDraft.dirty || Object.values(newKeys).some((key) => key.trim()),
+    () => { providerDraft.discard(); clearKeys(); },
+    async () => {
+      const updated = providers.map((provider) => {
+        const latest = studio?.providers.find((item) => item.id === provider.id);
+        return {
+          ...provider,
+          apiKeyMasked: newKeys[provider.id]?.trim() || latest?.apiKeyMasked || provider.apiKeyMasked,
+          lastLatencyMs: latest?.lastLatencyMs ?? provider.lastLatencyMs,
+          status: latest?.status ?? provider.status
+        };
       });
-      await ctx.refreshSnapshot();
-      ctx.showToast("模型服务商与脑区路由配置已保存");
-    } catch (err) {
-      ctx.showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
+      await ctx?.postStudio("config", { providers: updated });
+    },
+    "模型服务商配置已保存", () => { providerDraft.accept(); clearKeys(); });
+  const routingForm = useWorkspaceSave(editingRouting ? "models.routing" : undefined,
+    routingDraft.dirty || budget.dirty,
+    () => { routingDraft.discard(); budget.discard(); },
+    async () => {
+      await ctx?.postStudio("config", {
+        ...(routing ? { brainRouting: routing } : {}),
+        metabolicPolicy: { dailyTokenBudget: dailyBudget, sleepyThresholdPct: sleepyPct, autoDowngradeEnabled: autoDowngrade }
+      });
+    },
+    "脑区路由与代谢策略已保存", () => { routingDraft.accept(); budget.accept(); });
 
   return (
     <MainRoundedCardOutlet domainId="models" activePath={props.pathname} onNavigate={props.onNavigate}>
-      <div className="ai0-page" data-models-page="true">
-        <header className="ai0-page-header">
-          <div className="ai0-page-header__title">
-            <h1>模型与路由</h1>
-          </div>
-          <div className="ai0-page-header__actions">
-            <RippleButton
-              variant="primary"
-              data-save-models-routing="true"
-              onClick={() => void handleSave()}
-            >
-              {renderConsoleIcon("save", 14)}
-              <span>保存配置</span>
-            </RippleButton>
-          </div>
-        </header>
-
-        <section className="ai0-card">
-          <div className="ai0-card__head">
-            <h2>模型与多模态服务商</h2>
-          </div>
-          <div className="ai0-grid-2">
-            {providers.map((prov) => {
-              const shownLatency = latencies[prov.id] ?? prov.lastLatencyMs;
-              const isReady = prov.status === "ready" || latencies[prov.id] !== undefined;
-              return (
-                <article key={prov.id} className="ai0-card is-elevated" data-provider-card={prov.id}>
-                  <div className="ai0-card__head">
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <strong>{prov.name}</strong>
-                        <span className="ai0-badge" data-tone="info">{CAT_LABELS[prov.category] ?? prov.category}</span>
+      <WorkspacePage data-models-page="true">
+        <WorkspaceHeader title={editingRouting ? "脑区路由与代谢策略" : "模型与多模态服务"}>
+          <WorkspaceSaveButton form={editingRouting ? routingForm : providerForm} />
+        </WorkspaceHeader>
+        {editingRouting ? null : (
+          <WorkspaceSection>
+            <WorkspaceRow>
+              <h2>模型与多模态服务商</h2>
+            </WorkspaceRow>
+            <WorkspaceGrid columns={2}>
+              {!providers.length ? <small>当前没有模型或多模态服务配置。</small> : null}
+              {providers.map((prov) => {
+                const shownLatency = latencies[prov.id]?.milliseconds ?? prov.lastLatencyMs;
+                const status = latencies[prov.id]?.status ?? prov.status;
+                const isReady = status === "ready" || status === "configured";
+                return (
+                  <WorkspaceItem key={prov.id} as="article" data-provider-card={prov.id}>
+                    <WorkspaceRow>
+                      <div>
+                        <div className="ai0-workspace-actions">
+                          <strong>{prov.name}</strong>
+                          <WorkspaceStatus data-tone="info">{CAT_LABELS[prov.category] ?? prov.category}</WorkspaceStatus>
+                        </div>
+                        <small>{prov.vendor}</small>
                       </div>
-                      <small>{prov.vendor}</small>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span className="ai0-badge" data-tone={isReady ? "live" : "warn"} data-provider-latency={prov.id}>
-                        {isReady ? `${shownLatency}ms` : "待测试"}
-                      </span>
-                      <RippleButton
-                        variant="secondary"
-                        size="sm"
-                        data-ping-provider={prov.id}
-                        onClick={() => void handlePing(prov.id)}
-                      >
-                        {renderConsoleIcon("zap", 12)}
-                        <span>测速</span>
-                      </RippleButton>
-                    </div>
-                  </div>
-                  <div className="ai0-grid-3">
-                    <div className="ai0-field">
-                      <label>Model ID</label>
-                      <CompactInput
-                        type="text"
-                        value={prov.modelId}
-                        data-prov-model={prov.id}
-                        onInput={(modelId) => updateProvider(prov.id, { modelId })}
-                      />
-                    </div>
-                    <div className="ai0-field">
-                      <label>API Base URL</label>
-                      <CompactInput
-                        type="url"
-                        value={prov.baseUrl}
-                        data-prov-url={prov.id}
-                        onInput={(baseUrl) => updateProvider(prov.id, { baseUrl })}
-                      />
-                    </div>
-                    <div className="ai0-field">
-                      <label>API Key (Vault)</label>
-                      <CompactInput
-                        type="password"
-                        value={prov.apiKeyMasked}
-                        data-prov-key={prov.id}
-                        onInput={(apiKeyMasked) => updateProvider(prov.id, { apiKeyMasked })}
-                      />
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+                      <div className="ai0-workspace-actions">
+                        <WorkspaceStatus data-tone={isReady ? "live" : "warn"} data-provider-latency={prov.id}>
+                          {isReady && shownLatency ? `≈ ${shownLatency}ms` : status === "error" ? "检查失败" : "待检查"}
+                        </WorkspaceStatus>
+                        <RippleButton
+                          variant="secondary"
+                          size="sm"
+                          data-ping-provider={prov.id}
+                          loading={pinging === prov.id}
+                          disabled={!canConfigure || providerDraft.dirty || Boolean(newKeys[prov.id]) || Boolean(pinging)}
+                          onClick={() => void handlePing(prov.id)}
+                        >
+                          {renderConsoleIcon("zap", 12)}
+                          <span>检查</span>
+                        </RippleButton>
+                      </div>
+                    </WorkspaceRow>
+                    <WorkspaceGrid columns={3}>
+                      <WorkspaceField>
+                        <label>Model ID</label>
+                        <CompactInput
+                          type="text"
+                          value={prov.modelId}
+                          disabled={!canConfigure}
+                          ariaLabel="模型 ID"
+                          data-prov-model={prov.id}
+                          onInput={(modelId) => updateProvider(prov.id, { modelId })}
+                        />
+                      </WorkspaceField>
+                      <WorkspaceField>
+                        <label>API Base URL</label>
+                        <CompactInput
+                          type="url"
+                          value={prov.baseUrl}
+                          disabled={!canConfigure}
+                          ariaLabel="API Base URL"
+                          data-prov-url={prov.id}
+                          onInput={(baseUrl) => updateProvider(prov.id, { baseUrl })}
+                        />
+                      </WorkspaceField>
+                      <WorkspaceField>
+                        <label>API Key (Vault)</label>
+                        <CompactInput
+                          type="password"
+                          value={newKeys[prov.id] ?? ""}
+                          placeholder={prov.apiKeyMasked || "输入新密钥"}
+                          disabled={!canConfigure}
+                          ariaLabel="替换 API Key"
+                          data-prov-key={prov.id}
+                          onInput={(value) => setNewKeys((keys) => ({ ...keys, [prov.id]: value }))}
+                        />
+                      </WorkspaceField>
+                    </WorkspaceGrid>
+                    <JellySwitch label="启用服务商" checked={prov.enabled} disabled={!canConfigure}
+                      onChange={(enabled) => updateProvider(prov.id, { enabled })} />
+                    {latencies[prov.id] ? <small>{latencies[prov.id]?.detail}</small> : null}
+                  </WorkspaceItem>
+                );
+              })}
+            </WorkspaceGrid>
+          </WorkspaceSection>)}
 
-        <div className="ai0-grid-2">
-          <section className="ai0-card is-elevated">
+        {editingRouting ? <WorkspaceGrid columns={2}>
+          <WorkspaceSection>
             <h2>五脑区异构路由矩阵</h2>
             {routing ? (
-              <div style={{ display: "grid", gap: "10px" }}>
+              <div className="ai0-workspace-stack">
                 {(Object.entries(routing) as Array<
                   [keyof ConsoleStudioState["brainRouting"], { primaryId: string; fallbackId: string; label: string }]
                 >).map(([regionKey, cfg]) => (
-                  <div
-                    key={regionKey}
-                    data-brain-region={regionKey}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: "10px",
-                      background: "var(--ai0-surface-container-low)",
-                      border: "var(--ai0-border-subtle)",
-                      display: "grid",
-                      gap: "8px"
-                    }}
-                  >
+                  <WorkspaceItem key={regionKey} data-brain-region={regionKey}>
                     <strong>{cfg.label}</strong>
-                    <div className="ai0-grid-2">
-                      <div className="ai0-field">
+                    <WorkspaceGrid columns={2}>
+                      <WorkspaceField>
                         <label>主力模型</label>
                         <CompactSelect
                           value={cfg.primaryId}
+                          disabled={!canConfigure}
+                          ariaLabel={`${cfg.label} 主力模型`}
                           data-route-primary={regionKey}
                           options={llmProviders.map((p) => ({ value: p.id, label: p.name }))}
                           onChange={(primaryId) =>
-                            setRouting((prev) =>
+                            routingDraft.setValue((prev) =>
                               prev ? { ...prev, [regionKey]: { ...prev[regionKey], primaryId } } : prev
                             )
                           }
                         />
-                      </div>
-                      <div className="ai0-field">
+                      </WorkspaceField>
+                      <WorkspaceField>
                         <label>降级备用模型</label>
                         <CompactSelect
                           value={cfg.fallbackId}
+                          disabled={!canConfigure}
+                          ariaLabel={`${cfg.label} 备用模型`}
                           data-route-fallback={regionKey}
                           options={llmProviders.map((p) => ({ value: p.id, label: p.name }))}
                           onChange={(fallbackId) =>
-                            setRouting((prev) =>
+                            routingDraft.setValue((prev) =>
                               prev ? { ...prev, [regionKey]: { ...prev[regionKey], fallbackId } } : prev
                             )
                           }
                         />
-                      </div>
-                    </div>
-                  </div>
+                      </WorkspaceField>
+                    </WorkspaceGrid>
+                  </WorkspaceItem>
                 ))}
               </div>
             ) : null}
-          </section>
+          </WorkspaceSection>
 
-          <section className="ai0-card is-elevated">
-            <h2>算力预算代谢与声线漂移监控</h2>
-            <div style={{ padding: "13px 14px", borderRadius: "10px", background: "var(--ai0-surface-container-low)", border: "var(--ai0-border-subtle)", display: "grid", gap: "9px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <WorkspaceSection>
+            <h2>算力预算代谢</h2>
+            <WorkspaceItem className="ai0-workspace-inset">
+              <div className="ai0-workspace-row">
                 <strong>今日可用预算余量</strong>
-                <strong style={{ fontSize: "17px", color: "var(--ai0-success)", fontVariantNumeric: "tabular-nums" }}>{remainPct}%</strong>
+                <strong className="ai0-workspace-metric__value">{remainPct === undefined ? "—" : `${remainPct}%`}</strong>
               </div>
-              <div style={{ height: "8px", borderRadius: "999px", background: "var(--ai0-surface-container-high)", overflow: "hidden" }}>
-                <div style={{ width: `${remainPct}%`, height: "100%", background: "var(--ai0-success)", borderRadius: "999px" }} />
-              </div>
+              {remainPct !== undefined ? <LinearProgress className="ai0-workspace-meter" variant="determinate"
+                value={Math.min(100, remainPct)} aria-label="今日可用预算余量" /> : null}
               <small>
-                已消耗 {(meta?.usedTokensToday ?? 27400).toLocaleString()} / {dailyBudget.toLocaleString()} Tokens · 低于 {sleepyPct}% 自动切换备用低耗模型 · 强制预留 {meta?.emergencyReservePct ?? 5}% L0 应急配额
+                {meta ? `已消耗 ${meta.usedTokensToday.toLocaleString()} / ${dailyBudget.toLocaleString()} Tokens · L0 应急配额 ${meta.emergencyReservePct}%` : "等待预算数据。"}
               </small>
-            </div>
-            <div className="ai0-grid-2">
-              <div className="ai0-field">
+            </WorkspaceItem>
+            <WorkspaceGrid columns={2}>
+              <WorkspaceField>
                 <label>每日 Token 预算上限</label>
                 <CompactInput
                   id="meta-daily-budget"
                   type="number"
                   step={10000}
                   value={dailyBudget}
-                  onInput={(v) => setDailyBudget(Number(v) || 300000)}
+                  ariaLabel="每日 Token 预算"
+                  disabled={!canConfigure}
+                  onInput={(v) => budget.setValue((previous) => ({ ...previous, dailyBudget: Math.max(1, Number(v)) }))}
                 />
-              </div>
-              <div className="ai0-field">
+              </WorkspaceField>
+              <WorkspaceField>
                 <label>降级触发阈值 (%)</label>
                 <CompactInput
                   id="meta-sleepy-pct"
@@ -272,22 +298,27 @@ export function Domain5ModelsPage(props: Domain5ModelsPageProps): ReactElement {
                   max={50}
                   value={sleepyPct}
                   unit="%"
-                  onInput={(v) => setSleepyPct(Number(v) || 25)}
+                  ariaLabel="降级触发阈值"
+                  disabled={!canConfigure}
+                  onInput={(v) => budget.setValue((previous) => ({ ...previous, sleepyPct: Math.max(5, Math.min(50, Number(v))) }))}
                 />
-              </div>
-            </div>
-            <div className="ai0-card" style={{ background: "var(--ai0-surface-container-low)" }}>
-              <strong>跨模型声线一致性基线（基于黄金原声样本）</strong>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                <span className="ai0-badge" data-tone="good">日常对话 94%</span>
-                <span className="ai0-badge" data-tone="good">情绪安抚 92%</span>
-                <span className="ai0-badge" data-tone="good">反差张力 89%</span>
-                <span className="ai0-badge" data-tone="good">禁词零触发 100%</span>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
+              </WorkspaceField>
+            </WorkspaceGrid>
+            <JellySwitch label="自动降级" checked={autoDowngrade} disabled={!canConfigure}
+              onChange={(enabled) => budget.setValue((previous) => ({ ...previous, autoDowngrade: enabled }))} />
+            <WorkspaceItem>
+              <WorkspaceRow>
+                <h2>内核运行时路由</h2><RippleButton size="sm" onClick={runtimeRoutes.refresh}>刷新</RippleButton>
+              </WorkspaceRow>
+              {runtimeRoutes.data?.regions.length ? runtimeRoutes.data.regions.map(({ region, route }) => (
+                <WorkspaceRow key={region}>
+                  <code>{region}</code><small>{route.selected_model_id}{route.drowsy_downgraded ? " · 已降级" : ""}</small>
+                </WorkspaceRow>
+              )) : <WorkspaceReadState {...runtimeRoutes} empty="当前没有内核路由数据。" onRetry={runtimeRoutes.refresh} />}
+            </WorkspaceItem>
+          </WorkspaceSection>
+        </WorkspaceGrid> : null}
+      </WorkspacePage>
     </MainRoundedCardOutlet>
   );
 }

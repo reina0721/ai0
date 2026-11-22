@@ -1,3 +1,5 @@
+import Dialog from "@mui/material/Dialog";
+import DialogContent from "@mui/material/DialogContent";
 import type { ReactElement } from "react";
 
 import { StatusBadge, RippleButton } from "../primitives/index.js";
@@ -31,36 +33,20 @@ export function FirstBootOnboardingModal(
   const previous = Math.max(1, props.step - 1) as OnboardingStep;
   const next = Math.min(3, props.step + 1) as OnboardingStep;
   return (
-    <section
-      hidden={!props.open}
-      role="dialog"
-      aria-modal="true"
+    <Dialog
+      open={props.open}
+      onClose={props.onDismiss}
       aria-label="First boot onboarding"
-      className="ai0-first-boot-onboarding"
-      style={{
-        position: "fixed",
-        zIndex: 50,
-        inset: 0,
-        display: props.open ? "grid" : "none",
-        placeItems: "center",
-        background: "color-mix(in oklch, var(--ai0-surface-frame-base), transparent 22%)"
-      }}
+      maxWidth="xs"
+      fullWidth
+      slotProps={{ paper: { className: "ai0-first-boot-onboarding" } }}
     >
-      <article
-        style={{
-          width: "min(460px, calc(100vw - 32px))",
-          padding: "18px",
-          border: "var(--ai0-border-subtle)",
-          borderRadius: "16px",
-          color: "var(--ai0-on-surface)",
-          background: "var(--ai0-surface-main-card)"
-        }}
-      >
+      <DialogContent sx={{ p: 2 }}>
         <header style={{ display: "flex", justifyContent: "space-between" }}>
           <span>First boot · Step {props.step}/3</span>
-          <button type="button" aria-label="Dismiss onboarding" onClick={props.onDismiss}>
+          <RippleButton size="sm" variant="ghost" ariaLabel="Dismiss onboarding" onClick={props.onDismiss}>
             ×
-          </button>
+          </RippleButton>
         </header>
         <ol
           style={{
@@ -93,8 +79,8 @@ export function FirstBootOnboardingModal(
             <RippleButton onClick={props.onComplete}>Finish</RippleButton>
           )}
         </footer>
-      </article>
-    </section>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -29,6 +29,7 @@ import {
   type KernelReadOnlyStorageView,
   type LlmProviderConfig,
   type TargetInstance,
+  type W1AsyncTurnOptions,
   type VerifiableTurnTrace as KernelTurnTrace
 } from "@ai0/kernel";
 import type { AudienceScope, SensorModality, VenueType } from "@ai0/protocol";
@@ -234,7 +235,8 @@ export class Ai0DaemonRuntime {
     audience_scope?: AudienceScope;
     modality?: SensorModality;
     mode?: "live" | "sandbox";
-  }) {
+  }, options: W1AsyncTurnOptions & { eventId?: string } = {}) {
+    options.signal?.throwIfAborted();
     const isSandbox = input.mode === "sandbox";
     const storage = isSandbox ? this.sandboxStorage : this.liveStorage;
     const clock = isSandbox ? this.sandboxClock : this.virtualClock;
@@ -248,7 +250,7 @@ export class Ai0DaemonRuntime {
     const principal = audience === "only_owner" ? "owner_verified" : "stranger";
     const modality: SensorModality = input.modality ?? "text";
     const nowMs = clock.nowMs();
-    const eventId = `evt_webchat_${nowMs}_${storage.listEvents({ limit: 1000 }).length + 1}`;
+    const eventId = options.eventId ?? `evt_webchat_${nowMs}_${storage.listEvents({ limit: 1000 }).length + 1}`;
 
     storage.appendEvent({
       event_id: eventId,
@@ -272,7 +274,7 @@ export class Ai0DaemonRuntime {
       shell_id: "builtin.webchat.default",
       venue_type: venue,
       audience_scope: audience,
-      summary_text: input.text
+      ...(options.eventId ? {} : { summary_text: input.text })
     }, target, nowMs);
 
     const studioConfig = readConsoleStudioConfig(this.soulDir);
@@ -293,12 +295,13 @@ export class Ai0DaemonRuntime {
     const routedProviderId = studioConfig.brainRouting.W1_fast_dialogue.primaryId;
     const routedProvider = studioConfig.providers.find((p) => p.id === routedProviderId);
     const vaultApiKey = routedProvider ? readVaultProviderKey(this.soulDir, routedProvider.id) : undefined;
+    const isOllama = routedProvider?.vendor.toLowerCase().includes("ollama");
     const dynamicLlmConfig: LlmProviderConfig | undefined =
-      routedProvider && vaultApiKey
+      routedProvider?.enabled && (vaultApiKey || isOllama)
         ? {
             provider: routedProvider.vendor.toLowerCase().includes("anthropic")
               ? "anthropic"
-              : routedProvider.vendor.toLowerCase().includes("ollama")
+              : isOllama
                 ? "ollama"
                 : "openai-compatible",
             baseUrl: routedProvider.baseUrl,
@@ -325,36 +328,38 @@ export class Ai0DaemonRuntime {
         dynamicLlmConfig,
         maxTotalTokens: studioConfig.soulStudio.maxBlackboardTokens
       }
+    }, options);
+
+    storage.runInTransaction(() => {
+      storage.saveTurnDecisionTrace(turn.trace);
+      if (audience === "only_owner" && input.text.trim().length >= 8 && !/(忘掉|遗忘|forget)/iu.test(input.text)) {
+        storage.insertMemoryWithLineage(
+          {
+            memory_id: `mem_${eventId}`,
+            memory_tier: "episodic_experience",
+            epistemic_type: "observed_firsthand",
+            attributed_principal: "owner:local",
+            visibility_scope: "only_owner",
+            taint_level: "trusted_owner",
+            content_text: `对话记录：${input.text.slice(0, 140)}`,
+            created_virtual_ts: nowMs,
+            last_recalled_ts: nowMs,
+            valid_from_virtual_ts: nowMs,
+            created_at_rev: coordinator.getSnapshot().state_rev
+          },
+          [{ parent_type: "event", parent_id: eventId, relation_type: "derived_from" }]
+        );
+      }
     });
-
-    this.lastIntentEventId.set(turn.expression.intent_id, eventId);
-    storage.saveTurnDecisionTrace(turn.trace);
-
-    if (audience === "only_owner" && input.text.trim().length >= 8 && !/(忘掉|遗忘|forget)/iu.test(input.text)) {
-      storage.insertMemoryWithLineage(
-        {
-          memory_id: `mem_${eventId}`,
-          memory_tier: "episodic_experience",
-          epistemic_type: "observed_firsthand",
-          attributed_principal: "owner:local",
-          visibility_scope: "only_owner",
-          taint_level: "trusted_owner",
-          content_text: `对话记录：${input.text.slice(0, 140)}`,
-          created_virtual_ts: nowMs,
-          last_recalled_ts: nowMs,
-          valid_from_virtual_ts: nowMs,
-          created_at_rev: coordinator.getSnapshot().state_rev
-        },
-        [{ parent_type: "event", parent_id: eventId, relation_type: "derived_from" }]
-      );
-    }
+    if (!options.eventId) this.lastIntentEventId.set(turn.expression.intent_id, eventId);
 
     return {
       event_id: eventId,
       expression: turn.expression,
       trace: turn.trace,
       compiledBlackboard: turn.compiledBlackboard,
-      route: turn.route
+      route: turn.route,
+      provider: turn.provider
     };
   }
 
@@ -363,14 +368,14 @@ export class Ai0DaemonRuntime {
     spoken_char_offset: number;
     full_text: string;
     mode?: "live" | "sandbox";
-  }) {
+  }, eventId?: string) {
     const isSandbox = input.mode === "sandbox";
     const storage = isSandbox ? this.sandboxStorage : this.liveStorage;
     const w1 = isSandbox ? this.sandboxW1 : this.workers.w1;
     const chars = Array.from(input.full_text);
     const offset = Math.max(0, Math.min(chars.length, Math.floor(input.spoken_char_offset)));
     const unsaidRemainder = chars.slice(offset).join("");
-    const turnEventId = this.lastIntentEventId.get(input.intent_id);
+    const turnEventId = eventId ?? this.lastIntentEventId.get(input.intent_id);
 
     w1.recordInterruption({
       intent_id: input.intent_id,
@@ -399,7 +404,7 @@ export class Ai0DaemonRuntime {
         event: "barge_in_interrupted",
         intent_id: input.intent_id,
         spoken_char_offset: offset,
-        unsaid_remainder: unsaidRemainder
+        ...(eventId ? {} : { unsaid_remainder: unsaidRemainder })
       },
       isSandbox ? "sandbox:console" : "live"
     );
@@ -411,11 +416,8 @@ export class Ai0DaemonRuntime {
     };
   }
 
-  clearWebChatTranscript(mode: "live" | "sandbox" = "live"): { ok: true; cleared: number } {
-    const storage = mode === "sandbox" ? this.sandboxStorage : this.liveStorage;
-    const countRow = storage.sqlite.prepare("SELECT COUNT(*) AS c FROM turn_decision_traces").get() as { c: number };
-    storage.sqlite.prepare("DELETE FROM turn_decision_traces").run();
-    return { ok: true, cleared: Number(countRow?.c ?? 0) };
+  clearWebChatTranscript(_mode: "live" | "sandbox" = "live"): { ok: true; cleared: number } {
+    return { ok: true, cleared: 0 };
   }
 
   async buildConsoleLiveSnapshot(mode: "live" | "sandbox" = "live"): Promise<ConsoleLiveSnapshot> {
@@ -480,6 +482,8 @@ export class Ai0DaemonRuntime {
 
     const recentTranscript: ConsoleLiveSnapshot["recentTranscript"] = [];
     for (const trace of [...traces].reverse().slice(-6)) {
+      const delivered = trace.steps.step8_delivery_receipt;
+      const generated = trace.steps.step7_emitted_intent.fallback_text;
       recentTranscript.push({
         id: `${trace.turn_event_id}:u`,
         role: "user",
@@ -489,7 +493,9 @@ export class Ai0DaemonRuntime {
       recentTranscript.push({
         id: `${trace.turn_event_id}:a`,
         role: "assistant",
-        text: trace.steps.step7_emitted_intent.fallback_text,
+        text: delivered?.status === "interrupted"
+          ? Array.from(generated).slice(0, delivered.spoken_char_offset).join("")
+          : generated,
         timestamp: new Date(trace.virtual_ts_ms).toISOString().slice(11, 19)
       });
     }

@@ -18,7 +18,7 @@ export type CognitiveOrganHookBenchProps = {
 };
 
 const frame = {
-  background: "var(--ai0-surface-main-card)",
+  background: "var(--ai0-surface-workspace)",
   border: "var(--ai0-border-subtle)",
   color: "var(--ai0-on-surface)",
 };

@@ -1,3 +1,4 @@
+import Link from "@mui/material/Link";
 import type { ReactElement, ReactNode } from "react";
 
 export type SovereigntyTargetInstance = "live" | `sandbox:${string}`;
@@ -39,48 +40,29 @@ export function SovereigntyViewportFrame(
       data-sovereignty={sandbox ? "sandbox" : "live"}
       data-sovereignty-color={colors.primary}
       className={`ai0-sovereignty-viewport-frame${props.className ? ` ${props.className}` : ""}`}
-      style={{
-        height: "100vh",
-        boxSizing: "border-box",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0px",
-        padding: "0px",
-        overflow: "hidden",
-        background: "var(--ai0-surface-frame-base)"
-      }}
     >
       {props.topBar}
       {sandbox ? (
         <div className="ai0-sandbox-ribbon">
           <span>
-            当前处于隔离沙盒环境（{props.targetInstance}）——所有时间推进、提示词调整与模拟事件均与正式存档完全隔离。
+            <strong>SANDBOX</strong> · 时钟推进与模拟事件写入隔离实例。
           </span>
-          <a
+          <Link
+            color="inherit"
+            underline="always"
             href="/sandbox/lab?mode=sandbox"
             onClick={(e) => {
-              if (props.onNavigate) {
+              if (props.onNavigate && e.button === 0 && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
                 e.preventDefault();
                 props.onNavigate("/sandbox/lab?mode=sandbox");
               }
             }}
-            style={{ color: "inherit", textDecoration: "underline", fontWeight: 600 }}
           >
             打开沙盒实验台
-          </a>
+          </Link>
         </div>
       ) : null}
-      <div
-        className="ai0-sovereignty-viewport-frame__workspace"
-        style={{
-          minHeight: 0,
-          flex: 1,
-          display: "grid",
-          gridTemplateColumns: "auto minmax(0, 1fr) auto",
-          gap: "0px",
-          overflow: "hidden"
-        }}
-      >
+      <div className="ai0-sovereignty-viewport-frame__workspace">
         {props.navigationRail}
         {mainContent}
         {props.contextInspector}

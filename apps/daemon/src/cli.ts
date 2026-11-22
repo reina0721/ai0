@@ -18,6 +18,7 @@ import {
 } from "@ai0/storage";
 
 import { createDefaultDaemonRuntime, type Ai0DaemonRuntime } from "./index.js";
+import { registerWebChatRunRoutes } from "./webchat-runs.js";
 import {
   createNewSoulInstance,
   createPrivacyScrubbedReleasePackage,
@@ -296,6 +297,7 @@ export function createUnifiedDaemonHttpApp(
     return c.json({ ok: true, config: saved });
   });
 
+  registerWebChatRunRoutes(app, runtime);
   app.all("/api/studio/*", (c) => c.json({ error: "UNKNOWN_STUDIO_ENDPOINT" }, 404));
 
   // ---------------------------------------------------------------------------

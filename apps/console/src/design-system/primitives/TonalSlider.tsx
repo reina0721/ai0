@@ -1,4 +1,6 @@
-import { useEffect, useState, type CSSProperties, type ChangeEvent, type ReactElement, type ReactNode } from "react";
+import Slider from "@mui/material/Slider";
+import { useId, useState, type ReactElement, type ReactNode } from "react";
+import { dataAttributes } from "./dom-props.js";
 
 export interface TonalSliderInputEvent {
   currentTarget: { value: string };
@@ -19,61 +21,34 @@ export interface TonalSliderProps {
 }
 
 export function TonalSlider(props: TonalSliderProps): ReactElement {
-  const min = props.min ?? 0;
-  const max = props.max ?? 100;
-  const step = props.step ?? 1;
-  const [localValue, setLocalValue] = useState(props.value);
-
-  useEffect(() => {
-    setLocalValue(props.value);
-  }, [props.value]);
-
-  const current = props.onInput ? props.value : localValue;
-  const span = Math.max(max - min, Number.EPSILON);
-  const progress = Math.max(0, Math.min(100, ((current - min) / span) * 100));
-  const unit = props.unit ?? "";
-  const displayValue = `${current}${unit}`;
-  const dataAttrs: Record<string, string | number | boolean | undefined> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith("data-")) dataAttrs[key] = value as string | number | boolean | undefined;
-  }
-
-  const handleChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const nextVal = Number(event.currentTarget.value);
-    setLocalValue(nextVal);
-    props.onInput?.(nextVal, event);
-  };
-
-  const sliderStyle = { "--ai0-slider-progress": `${progress}%` } as CSSProperties;
-
+  const labelId = useId();
+  const [localChange, setLocalChange] = useState<{ initial: number; value: number }>();
+  const value = props.onInput || localChange?.initial !== props.value ? props.value : localChange.value;
+  const display = String(value) + (props.unit ?? "");
   return (
-    <div
-      className={`ai0-slider${props.className ? ` ${props.className}` : ""}`}
-      data-unit={unit}
-      style={sliderStyle}
-    >
+    <div className={"ai0-slider " + (props.className ?? "")} data-unit={props.unit}>
       <div className="ai0-slider__head">
-        {props.label !== undefined ? (
-          <span className="ai0-slider__label">{props.label}</span>
-        ) : (
-          <span className="ai0-slider__label" aria-hidden="true" />
-        )}
-        <output className="ai0-slider__value" aria-live="polite">
-          {displayValue}
-        </output>
+        <span className="ai0-slider__label" id={labelId}>{props.label}</span>
+        <output className="ai0-slider__value">{display}</output>
       </div>
-      <input
-        {...dataAttrs}
-        id={props.id}
-        className="ai0-slider__control"
-        type="range"
-        value={current}
-        min={min}
-        max={max}
-        step={step}
+      <Slider
+        {...dataAttributes(props)}
+        className="ai0-material-slider"
+        size="small"
         disabled={props.disabled}
-        aria-valuetext={displayValue}
-        onChange={handleChange}
+        min={props.min ?? 0}
+        max={props.max ?? 100}
+        step={props.step ?? 1}
+        value={value}
+        aria-labelledby={props.label !== undefined ? labelId : undefined}
+        aria-label={props.label === undefined ? "调整数值" : undefined}
+        getAriaValueText={(next) => String(next) + (props.unit ?? "")}
+        slotProps={{ input: { id: props.id } }}
+        onChange={(_, next) => {
+          if (typeof next !== "number") return;
+          setLocalChange({ initial: props.value, value: next });
+          props.onInput?.(next, { currentTarget: { value: String(next) } });
+        }}
       />
     </div>
   );

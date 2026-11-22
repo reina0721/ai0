@@ -1,3 +1,8 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { Output, streamText } from "ai";
+
 import type { AudienceScope, VenueType } from "@ai0/protocol";
 
 export interface LlmProviderConfig {
@@ -58,7 +63,7 @@ type ValenceImpulse = LlmDialogueSynthesisOutput["valence_impulse"];
 type RemoteProvider = Exclude<
   NonNullable<LlmProviderConfig["provider"]>,
   "local-persona-synthesizer"
->;
+> | "deepseek";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const OUTPUT_FIELDS = [
@@ -398,16 +403,21 @@ export function synthesizeContextAwareResponse(
   };
 }
 
-const remoteProvider = (config: LlmProviderConfig): RemoteProvider => {
-  if (config.provider === "anthropic" || config.provider === "ollama") return config.provider;
-  return "openai-compatible";
-};
-
 const defaultBaseUrl = (provider: RemoteProvider): string => {
   if (provider === "anthropic") return "https://api.anthropic.com/v1";
   if (provider === "ollama") return "http://127.0.0.1:11434/v1";
   return "https://api.openai.com/v1";
 };
+
+function isOfficialDeepSeek(baseURL: string): boolean {
+  try {
+    const url = new URL(baseURL);
+    return url.origin === "https://api.deepseek.com" && !url.username && !url.password
+      && (url.pathname === "/" || url.pathname === "/v1");
+  } catch {
+    return false;
+  }
+}
 
 const jsonInstructions = (input: LlmDialogueSynthesisInput): string =>
   [
@@ -433,36 +443,10 @@ const safeRemoteInput = (input: LlmDialogueSynthesisInput): Record<string, unkno
     socialMaskActive: input.socialMaskActive,
     moodValence: input.moodValence,
     metabolicEnergy: input.metabolicEnergy,
-    unsaidRemainder: input.unsaidRemainder,
+    unsaidRemainder: masked ? undefined : input.unsaidRemainder,
     recalledMemorySnippets: masked ? [] : [...input.recalledMemorySnippets],
     matchedLoreEntries: input.matchedLoreEntries ?? [],
   };
-};
-
-const responseText = (provider: RemoteProvider, payload: unknown): string | undefined => {
-  if (!payload || typeof payload !== "object") return undefined;
-  const record = payload as Record<string, unknown>;
-  if (provider === "anthropic") {
-    const content = record.content;
-    if (!Array.isArray(content)) return undefined;
-    return content
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-      .map((item) => (typeof item.text === "string" ? item.text : ""))
-      .join("");
-  }
-  const choices = record.choices;
-  if (!Array.isArray(choices)) return undefined;
-  const choice = choices[0];
-  if (!choice || typeof choice !== "object") return undefined;
-  const message = (choice as Record<string, unknown>).message;
-  if (!message || typeof message !== "object") return undefined;
-  const content = (message as Record<string, unknown>).content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return undefined;
-  return content
-    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-    .map((item) => (typeof item.text === "string" ? item.text : ""))
-    .join("");
 };
 
 const parseJsonObject = (text: string): Record<string, unknown> | undefined => {
@@ -519,7 +503,9 @@ export class UniversalLlmProviderClient {
 
   async generateDialogue(
     input: LlmDialogueSynthesisInput,
+    signal?: AbortSignal,
   ): Promise<LlmDialogueSynthesisOutput> {
+    signal?.throwIfAborted();
     const effectiveConfig: LlmProviderConfig = {
       ...this.config,
       ...(input.dynamicLlmConfig ?? {}),
@@ -529,61 +515,49 @@ export class UniversalLlmProviderClient {
     if (!effectiveConfig.apiKey && configuredProvider !== "ollama")
       return this.synthesizeContextAwareResponse(input);
 
-    const provider = remoteProvider({ ...effectiveConfig, provider: configuredProvider });
-    const baseUrl = (effectiveConfig.baseUrl ?? defaultBaseUrl(provider)).replace(/\/+$/u, "");
+    if (configuredProvider === "local-persona-synthesizer") return this.synthesizeContextAwareResponse(input);
+    const baseURL = (effectiveConfig.baseUrl ?? defaultBaseUrl(configuredProvider)).replace(/\/+$/u, "");
+    const provider: RemoteProvider = configuredProvider === "openai-compatible" && isOfficialDeepSeek(baseURL)
+      ? "deepseek"
+      : configuredProvider;
     const model = effectiveConfig.model ?? input.routedModelId;
+    const modelId = provider === "deepseek" && /^(deepseek-chat|deepseek-reasoner|deepseek-v4-flash)$/u.test(model)
+      ? "deepseek-flash"
+      : model;
     const timeoutMs =
       Number.isFinite(effectiveConfig.timeoutMs) && (effectiveConfig.timeoutMs ?? 0) > 0
         ? Math.floor(effectiveConfig.timeoutMs as number)
         : DEFAULT_TIMEOUT_MS;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const abortSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
     try {
-      const instructions = jsonInstructions(input);
-      const endpoint = provider === "anthropic" ? `${baseUrl}/messages` : `${baseUrl}/chat/completions`;
-      const headers: Record<string, string> = { "content-type": "application/json" };
-      if (provider === "anthropic") {
-        if (effectiveConfig.apiKey) headers["x-api-key"] = effectiveConfig.apiKey;
-        headers["anthropic-version"] = "2023-06-01";
-      } else if (effectiveConfig.apiKey) {
-        headers.authorization = `Bearer ${effectiveConfig.apiKey}`;
-      }
-
-      const safeInput = safeRemoteInput(input);
-      const body = provider === "anthropic"
-        ? {
-            model,
-            max_tokens: 900,
-            system: instructions,
-            messages: [{ role: "user", content: JSON.stringify(safeInput) }],
-          }
-        : {
-            model,
-            temperature: 0.72,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: instructions },
-              { role: "user", content: JSON.stringify(safeInput) },
-            ],
-          };
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
+      const adapter = provider === "anthropic"
+        ? createAnthropic({ baseURL, apiKey: effectiveConfig.apiKey })
+        : provider === "deepseek"
+          ? createDeepSeek({ baseURL, apiKey: effectiveConfig.apiKey })
+          : createOpenAICompatible({ name: provider, baseURL, apiKey: effectiveConfig.apiKey });
+      const response = streamText({
+        model: adapter(modelId),
+        system: jsonInstructions(input),
+        prompt: JSON.stringify(safeRemoteInput(input)),
+        maxOutputTokens: 900,
+        maxRetries: 0,
+        abortSignal,
+        onError: () => undefined,
+        ...(provider === "deepseek" && /^(deepseek-chat|deepseek-flash|deepseek-v4-flash)$/u.test(model)
+          ? { providerOptions: { deepseek: { thinking: { type: "disabled" } } } }
+          : {}),
+        ...(provider === "anthropic" ? {} : { output: Output.json() })
       });
-      if (!response.ok) return this.synthesizeContextAwareResponse(input);
-      const payload: unknown = await response.json();
-      const text = responseText(provider, payload);
-      const parsed = text ? parseJsonObject(text) : undefined;
+      const parsed = parseJsonObject(await response.text);
+      signal?.throwIfAborted();
       return parsed
-        ? validateRemoteOutput(parsed, provider, model) ?? this.synthesizeContextAwareResponse(input)
+        ? validateRemoteOutput(parsed, provider, modelId) ?? this.synthesizeContextAwareResponse(input)
         : this.synthesizeContextAwareResponse(input);
     } catch {
+      signal?.throwIfAborted();
       return this.synthesizeContextAwareResponse(input);
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }

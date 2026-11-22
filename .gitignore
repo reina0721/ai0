@@ -3,6 +3,7 @@ dist/
 .turbo/
 *.tsbuildinfo
 .vite/
+apps/console/test-results/
 
 # Local environment and runtime artifacts
 .env

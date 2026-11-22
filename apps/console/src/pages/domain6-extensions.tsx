@@ -1,15 +1,18 @@
-import { useEffect, useState, type ReactElement } from "react";
+import {
+  WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspacePage, WorkspaceRow, WorkspaceSection,
+  WorkspaceTable, WorkspaceTableBody, WorkspaceTableCell, WorkspaceTableHead, WorkspaceTableRow
+} from "./workspace-layout.js";
+import { useState, type ReactElement } from "react";
 
 import { useConsole } from "../context/ConsoleContext.js";
-import {
-  CompactInput,
-  RippleButton,
-  JellySwitch
-} from "../design-system/primitives/index.js";
+import { CompactInput, CompactSelect, JellySwitch, RippleButton } from "../design-system/primitives/index.js";
 import { MainRoundedCardOutlet } from "../design-system/shell/index.js";
-import { renderConsoleIcon } from "../design-system/tokens/index.js";
-import type { ConsoleLiveSnapshot, ConsoleStudioState } from "../live-snapshot.js";
-import { type ConsoleRoute } from "../router/routes.js";
+import type { ConsoleLiveSnapshot, ConsoleStudioState, LiveExtensionSnapshot } from "../live-snapshot.js";
+import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
+import {
+  useAdminResource, useWorkspaceDraft, useWorkspaceSave, WorkspaceHeader,
+  WorkspaceReadState, WorkspaceSaveButton
+} from "./workspace.js";
 
 export interface Domain6ExtensionsPageProps {
   pathname: string;
@@ -17,314 +20,352 @@ export interface Domain6ExtensionsPageProps {
   onNavigate?: (path: string, route?: ConsoleRoute) => void;
 }
 
-export function Domain6ExtensionsPage(props: Domain6ExtensionsPageProps): ReactElement {
+type Ecosystem = ConsoleStudioState["ecosystem"];
+type RuntimeExtension = LiveExtensionSnapshot & { config: Record<string, unknown> };
+
+function RuntimeDetails({ extension }: { extension: LiveExtensionSnapshot }) {
+  return (
+    <WorkspaceItem>
+      <WorkspaceRow>
+        <strong>{extension.id}</strong>
+        <small>{extension.carrier} · rev {extension.rev}</small>
+      </WorkspaceRow>
+      <small>{extension.buses.join(" · ")}</small>
+      <small>读取：{extension.readDomains.join("、") || "—"} · 提议：{extension.proposeDomains.join("、") || "—"}</small>
+    </WorkspaceItem>
+  );
+}
+
+function ExtensionList({ snapshot }: { snapshot?: ConsoleLiveSnapshot }) {
   const ctx = useConsole();
-  const snap = props.snapshot ?? ctx?.snapshot;
-  const eco = snap?.studioConfig?.ecosystem;
+  const [filter, setFilter] = useState("");
+  const plugins = snapshot?.studioConfig?.ecosystem.plugins ?? [];
+  const runtime = snapshot?.extensions ?? [];
+  const query = filter.trim().toLocaleLowerCase();
+  const matches = (...parts: string[]) => parts.some((value) => value.toLocaleLowerCase().includes(query));
+  const shownPlugins = plugins.filter((plugin) => matches(plugin.name, plugin.id, plugin.bus));
+  const shownRuntime = runtime.filter((extension) => matches(extension.id, ...extension.buses));
+  return (
+    <WorkspacePage data-ecosystem-page="true">
+      <WorkspaceHeader title="插件与扩展管理">
+        <RippleButton onClick={() => ctx?.navigateConsole("/extensions/configurator")}>配置扩展</RippleButton>
+      </WorkspaceHeader>
+      <CompactInput ariaLabel="过滤扩展" value={filter} type="search" onInput={setFilter} placeholder="搜索名称、标识或总线" />
+      <WorkspaceGrid columns={2}>
+        <WorkspaceSection>
+          <h2>已登记配置</h2>
+          {shownPlugins.length ? shownPlugins.map((plugin) => (
+            <WorkspaceItem key={plugin.id}>
+              <WorkspaceRow>
+                <strong>{plugin.name}</strong><small>v{plugin.version} · {plugin.enabled ? "已启用" : "已停用"}</small>
+              </WorkspaceRow>
+              <p>{plugin.description}</p>
+            </WorkspaceItem>
+          )) : <small>没有匹配的扩展配置。</small>}
+        </WorkspaceSection>
+        <WorkspaceSection>
+          <h2>运行时注册</h2>
+          {shownRuntime.length ? shownRuntime.map((extension) => <RuntimeDetails key={extension.id} extension={extension} />)
+            : <small>没有匹配的运行时扩展。</small>}
+        </WorkspaceSection>
+      </WorkspaceGrid>
+    </WorkspacePage>
+  );
+}
 
-  const [plugins, setPlugins] = useState<ConsoleStudioState["ecosystem"]["plugins"]>(
-    eco?.plugins ?? []
-  );
-  const [commands, setCommands] = useState<ConsoleStudioState["ecosystem"]["commands"]>(
-    eco?.commands ?? []
-  );
-  const [skills, setSkills] = useState<ConsoleStudioState["ecosystem"]["skills"]>(
-    eco?.skills ?? []
-  );
-  const [ecaFlows, setEcaFlows] = useState<ConsoleStudioState["ecosystem"]["ecaFlows"]>(
-    eco?.ecaFlows ?? []
-  );
-  const mcpServers = eco?.mcpServers ?? [];
+function Configurator({ ecosystem }: { ecosystem?: Ecosystem }) {
+  const ctx = useConsole();
+  const plugins = useWorkspaceDraft(ecosystem?.plugins ?? []);
+  const commands = useWorkspaceDraft(ecosystem?.commands ?? []);
+  const runtime = useAdminResource<{ extensions: RuntimeExtension[] }>("extensions");
+  const [reloading, setReloading] = useState<string>();
+  const form = useWorkspaceSave("extensions.configurator", plugins.dirty || commands.dirty,
+    () => { plugins.discard(); commands.discard(); },
+    async () => { await ctx?.postStudio("config", { ecosystem: { plugins: plugins.value, commands: commands.value } }); },
+    "扩展存档配置已保存", () => { plugins.accept(); commands.accept(); });
+  const setPlugin = (id: string, patch: Partial<Ecosystem["plugins"][number]>) =>
+    plugins.setValue((current) => current.map((plugin) => plugin.id === id ? { ...plugin, ...patch } : plugin));
+  const updateField = (plugin: Ecosystem["plugins"][number], key: string, value: string | number | boolean) =>
+    setPlugin(plugin.id, { configFields: plugin.configFields.map((field) => field.key === key ? { ...field, value } : field) });
 
-  useEffect(() => {
-    if (!eco) return;
-    setPlugins(eco.plugins);
-    setCommands(eco.commands);
-    setSkills(eco.skills);
-    setEcaFlows(eco.ecaFlows);
-  }, [eco]);
-
-  const handleSaveEcosystem = async () => {
-    if (!ctx) return;
+  const reload = async (plugin: Ecosystem["plugins"][number], mounted: RuntimeExtension) => {
+    if (!ctx || reloading) return;
+    setReloading(plugin.id);
     try {
-      await ctx.postStudio("/api/studio/config", {
-        ecosystem: { plugins, skills, commands, ecaFlows }
+      const values = Object.fromEntries(plugin.configFields.filter((field) => field.type !== "secret").map((field) => [field.key, field.value]));
+      const reply = await ctx.postAdmin<{ rev: number }>(`extensions/${encodeURIComponent(plugin.id)}/hot-reload`, {
+        config: { ...mounted.config, ...values }, expected_rev: mounted.rev
       });
+      runtime.refresh();
       await ctx.refreshSnapshot();
-      ctx.showToast("扩展、指令与技能配置已热重载");
-    } catch (err) {
-      ctx.showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+      ctx.showToast(`已应用本实例的运行配置 · rev ${reply.rev}`);
+    } catch (error) {
+      runtime.refresh();
+      ctx.showToast(`应用运行配置失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setReloading(undefined);
     }
   };
 
   return (
+    <WorkspacePage>
+      <WorkspaceHeader title="插件配置与指令"><WorkspaceSaveButton form={form} /></WorkspaceHeader>
+      <WorkspaceSection>
+        <h2>扩展字段</h2>
+        {!plugins.value.length ? <small>当前没有可配置扩展。</small> : null}
+        <WorkspaceGrid columns={2}>
+          {plugins.value.map((plugin) => {
+            const mounted = runtime.data?.extensions.find((extension) => extension.id === plugin.id);
+            return (
+              <WorkspaceItem key={plugin.id} as="article" data-plugin-card={plugin.id}>
+                <WorkspaceRow>
+                  <div><strong>{plugin.name}</strong><div><small>{plugin.id} · {plugin.bus}</small></div></div>
+                  <JellySwitch checked={plugin.enabled} disabled={!form.canWrite} ariaLabel={`启用 ${plugin.name}`}
+                    onChange={(enabled) => setPlugin(plugin.id, { enabled })} />
+                </WorkspaceRow>
+                {plugin.configFields.map((field) => field.type === "boolean" ? (
+                  <JellySwitch key={field.key} checked={Boolean(field.value)} label={field.label} disabled={!form.canWrite}
+                    onChange={(value) => updateField(plugin, field.key, value)} />
+                ) : (
+                  <WorkspaceField key={field.key} as="label">{field.label}
+                    <CompactInput type={field.type === "secret" ? "password" : field.type}
+                      value={field.type === "secret" ? "••••••••" : String(field.value)}
+                      disabled={!form.canWrite || field.type === "secret"}
+                      onInput={(value) => updateField(plugin, field.key, field.type === "number" ? Number(value) : value)} />
+                  </WorkspaceField>
+                ))}
+                {mounted ? (
+                  <RippleButton size="sm" loading={reloading === plugin.id}
+                    onClick={() => void reload(plugin, mounted)}>应用运行配置 · rev {mounted.rev}</RippleButton>
+                ) : <small>运行时未注册此配置项。</small>}
+              </WorkspaceItem>
+            );
+          })}
+        </WorkspaceGrid>
+        {runtime.error ? <WorkspaceReadState {...runtime} empty="" onRetry={runtime.refresh} /> : null}
+      </WorkspaceSection>
+      <WorkspaceSection>
+        <h2>斜杠指令与权限</h2>
+        <>
+          <WorkspaceTable>
+            <WorkspaceTableHead><WorkspaceTableRow><WorkspaceTableCell component="th" scope="col">启用</WorkspaceTableCell><WorkspaceTableCell component="th" scope="col">指令与别名</WorkspaceTableCell><WorkspaceTableCell component="th" scope="col">权限</WorkspaceTableCell><WorkspaceTableCell component="th" scope="col">说明</WorkspaceTableCell></WorkspaceTableRow></WorkspaceTableHead>
+            <WorkspaceTableBody>{commands.value.map((command) => (
+              <WorkspaceTableRow key={command.id}>
+                <WorkspaceTableCell><JellySwitch checked={command.enabled} disabled={!form.canWrite} ariaLabel={`启用 ${command.command}`}
+                  onChange={(enabled) => commands.setValue((items) => items.map((item) => item.id === command.id ? { ...item, enabled } : item))} /></WorkspaceTableCell>
+                <WorkspaceTableCell><code>{command.command}</code> <small>{command.aliases.join(" ")}</small></WorkspaceTableCell>
+                <WorkspaceTableCell><code>{command.permission}</code></WorkspaceTableCell>
+                <WorkspaceTableCell>{command.description}</WorkspaceTableCell>
+              </WorkspaceTableRow>
+            ))}</WorkspaceTableBody>
+          </WorkspaceTable>
+        </>
+        {!commands.value.length ? <small>暂无已配置指令。</small> : null}
+      </WorkspaceSection>
+    </WorkspacePage>
+  );
+}
+
+function Skills({ ecosystem }: { ecosystem?: Ecosystem }) {
+  const ctx = useConsole();
+  const skills = useWorkspaceDraft(ecosystem?.skills ?? []);
+  const servers = useWorkspaceDraft(ecosystem?.mcpServers ?? []);
+  const form = useWorkspaceSave("extensions.skills-mcp", skills.dirty || servers.dirty,
+    () => { skills.discard(); servers.discard(); },
+    async () => { await ctx?.postStudio("config", { ecosystem: { skills: skills.value, mcpServers: servers.value } }); },
+    "技能与 MCP 配置已保存", () => { skills.accept(); servers.accept(); });
+  const updateSkill = (id: string, patch: Partial<Ecosystem["skills"][number]>) =>
+    skills.setValue((entries) => entries.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
+  const updateServer = (id: string, patch: Partial<Ecosystem["mcpServers"][number]>) =>
+    servers.setValue((entries) => entries.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
+
+  return (
+    <WorkspacePage>
+      <WorkspaceHeader title="技能与 MCP"><WorkspaceSaveButton form={form} /></WorkspaceHeader>
+      <WorkspaceGrid columns={2}>
+        <WorkspaceSection>
+          <h2>SKILL.md 声明式技能</h2>
+          {skills.value.map((skill) => (
+            <WorkspaceItem key={skill.id} as="article" data-skill-id={skill.id}>
+              <WorkspaceRow>
+                <strong>{skill.name}</strong>
+                <JellySwitch checked={skill.enabled} disabled={!form.canWrite} ariaLabel={`启用 ${skill.name}`}
+                  onChange={(enabled) => updateSkill(skill.id, { enabled })} />
+              </WorkspaceRow>
+              <small>{skill.description}</small>
+              <WorkspaceField as="label">执行姿态<CompactInput value={skill.inCharacterDemeanor} disabled={!form.canWrite}
+                onInput={(inCharacterDemeanor) => updateSkill(skill.id, { inCharacterDemeanor })} /></WorkspaceField>
+              <WorkspaceField as="label">Markdown 正文<CompactInput multiline rows={5} value={skill.bodyMarkdown}
+                disabled={!form.canWrite} onInput={(bodyMarkdown) => updateSkill(skill.id, { bodyMarkdown })} /></WorkspaceField>
+            </WorkspaceItem>
+          ))}
+          {!skills.value.length ? <small>暂无已配置技能。</small> : null}
+        </WorkspaceSection>
+        <WorkspaceSection>
+          <h2>MCP 服务与工具目录</h2>
+          {servers.value.map((server) => (
+            <WorkspaceItem key={server.id} as="article" data-mcp-id={server.id}>
+              <WorkspaceRow>
+                <strong>{server.name}</strong>
+                <JellySwitch checked={server.enabled} disabled={!form.canWrite} ariaLabel={`启用 ${server.name}`}
+                  onChange={(enabled) => updateServer(server.id, { enabled })} />
+              </WorkspaceRow>
+              <WorkspaceGrid columns={2}>
+                <WorkspaceField><span>传输协议</span><CompactSelect ariaLabel={`${server.name} 传输协议`} value={server.transport} disabled={!form.canWrite}
+                  options={[{ value: "stdio", label: "stdio" }, { value: "sse", label: "SSE" }, { value: "http", label: "HTTP" }]}
+                  onChange={(transport) => updateServer(server.id, { transport })} /></WorkspaceField>
+                <WorkspaceField as="label">端点<CompactInput value={server.endpoint} disabled={!form.canWrite}
+                  onInput={(endpoint) => updateServer(server.id, { endpoint })} /></WorkspaceField>
+              </WorkspaceGrid>
+              {server.tools.map((tool) => (
+                <WorkspaceRow key={tool.name}><code>{tool.name}</code><small>{tool.risk}</small></WorkspaceRow>
+              ))}
+            </WorkspaceItem>
+          ))}
+          {!servers.value.length ? <small>暂无 MCP 服务配置。</small> : null}
+        </WorkspaceSection>
+      </WorkspaceGrid>
+    </WorkspacePage>
+  );
+}
+
+function Flows({ ecosystem }: { ecosystem?: Ecosystem }) {
+  const ctx = useConsole();
+  const draft = useWorkspaceDraft(ecosystem?.ecaFlows ?? []);
+  const form = useWorkspaceSave("extensions.flows-eca", draft.dirty, draft.discard, async () => {
+    if (draft.value.some((flow) => !flow.name.trim() || (flow.enabled && (!flow.whenExpr.trim() || !flow.thenAction.trim())))) {
+      throw new Error("已启用的规则需要名称、触发条件和动作。");
+    }
+    await ctx?.postStudio("config", { ecosystem: { ecaFlows: draft.value } });
+  }, "联动流配置已保存", draft.accept);
+  const update = (id: string, patch: Partial<Ecosystem["ecaFlows"][number]>) =>
+    draft.setValue((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
+  return (
+    <WorkspacePage>
+      <WorkspaceHeader title="自动化联动流">
+        <RippleButton disabled={!form.canWrite} onClick={() => draft.setValue((items) => [...items, {
+          id: `eca_${crypto.randomUUID()}`, name: "新建规则", whenExpr: "", ifExpr: "", thenAction: "", enabled: false
+        }])}>新建规则</RippleButton>
+        <WorkspaceSaveButton form={form} />
+      </WorkspaceHeader>
+      <WorkspaceSection>
+        <h2>When → If → Then 配置</h2>
+        <small>此页管理保存到正式存档的声明式联动流。</small>
+        {!draft.value.length ? <small>暂无已保存的联动流。</small> : null}
+        <WorkspaceGrid columns={2}>
+          {draft.value.map((flow) => (
+            <WorkspaceItem key={flow.id} as="article" data-flow-id={flow.id}>
+              <WorkspaceRow>
+                <strong>{flow.name}</strong>
+                <JellySwitch checked={flow.enabled} disabled={!form.canWrite} ariaLabel={`启用 ${flow.name}`}
+                  onChange={(enabled) => update(flow.id, { enabled })} />
+              </WorkspaceRow>
+              <WorkspaceField as="label">名称<CompactInput value={flow.name} disabled={!form.canWrite}
+                onInput={(name) => update(flow.id, { name })} /></WorkspaceField>
+              <WorkspaceField as="label">WHEN · 触发<CompactInput value={flow.whenExpr}
+                disabled={!form.canWrite} onInput={(whenExpr) => update(flow.id, { whenExpr })} /></WorkspaceField>
+              <WorkspaceField as="label">IF · 条件<CompactInput value={flow.ifExpr}
+                disabled={!form.canWrite} onInput={(ifExpr) => update(flow.id, { ifExpr })} /></WorkspaceField>
+              <WorkspaceField as="label">THEN · 动作<CompactInput value={flow.thenAction}
+                disabled={!form.canWrite} onInput={(thenAction) => update(flow.id, { thenAction })} /></WorkspaceField>
+              <RippleButton size="sm" variant="ghost" disabled={!form.canWrite}
+                onClick={() => draft.setValue((items) => items.filter((item) => item.id !== flow.id))}>移除规则</RippleButton>
+            </WorkspaceItem>
+          ))}
+        </WorkspaceGrid>
+      </WorkspaceSection>
+    </WorkspacePage>
+  );
+}
+
+function Organs({ snapshot }: { snapshot?: ConsoleLiveSnapshot }) {
+  const ctx = useConsole();
+  const [pending, setPending] = useState<string>();
+  const organs = snapshot?.extensions.filter((extension) => extension.buses.includes("ext.cognitive_organ")) ?? [];
+  const sandbox = ctx?.mode === "sandbox";
+  const toggle = async (id: string, enabled: boolean) => {
+    if (!ctx || !sandbox || pending) return;
+    setPending(id);
+    try {
+      await ctx.postAdmin("extensions", { extension_id: id, enabled }, "sandbox:console");
+      await ctx.refreshSnapshot("sandbox");
+    } catch (error) {
+      ctx.showToast(`操作失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPending(undefined);
+    }
+  };
+  return (
+    <WorkspacePage>
+      <WorkspaceHeader title="认知器官模块">
+        {!sandbox ? <RippleButton onClick={() => ctx?.setMode("sandbox")}>在沙盒执行消融</RippleButton> : null}
+      </WorkspaceHeader>
+      <WorkspaceSection>
+        <h2>本实例器官注册</h2>
+        {organs.map((organ) => (
+          <WorkspaceItem key={organ.id} as="article">
+            <RuntimeDetails extension={organ} />
+            <JellySwitch label="启用器官" checked={organ.enabled} disabled={!sandbox || Boolean(pending)}
+              onChange={(enabled) => void toggle(organ.id, enabled)} />
+            {organ.id === "community.organ.dream-journal" ? (
+              <RippleButton onClick={() => ctx?.navigateConsole("/extensions/custom/dream-journal")}>查看梦境手记</RippleButton>
+            ) : null}
+          </WorkspaceItem>
+        ))}
+        {!organs.length ? <small>当前实例没有已注册的认知器官。</small> : null}
+      </WorkspaceSection>
+    </WorkspacePage>
+  );
+}
+
+function ExtensionDetail({ snapshot, pluginId }: { snapshot?: ConsoleLiveSnapshot; pluginId?: string }) {
+  const ctx = useConsole();
+  const dream = pluginId === "dream-journal" || pluginId === "community.organ.dream-journal";
+  const id = dream ? "community.organ.dream-journal" : pluginId;
+  const extension = snapshot?.extensions.find((entry) => entry.id === id);
+  const journals = dream ? snapshot?.studioConfig?.evolution.dreamJournal ?? [] : [];
+  return (
+    <WorkspacePage data-custom-extension={id}>
+      <WorkspaceHeader title={dream ? "梦境手记" : "扩展自定义视图"}>
+        <RippleButton onClick={() => ctx?.navigateConsole("/extensions/marketplace")}>查看扩展清单</RippleButton>
+      </WorkspaceHeader>
+      <WorkspaceSection>
+        <h2>{id}</h2>
+        {extension ? <RuntimeDetails extension={extension} /> : <small>当前实例未注册此扩展。</small>}
+        {dream ? (
+          <>
+            {journals.map((entry) => (
+              <WorkspaceItem key={entry.id} as="article">
+                <WorkspaceRow><strong>{entry.title}</strong><small>{entry.date} · {entry.kind === "dream" ? "梦境" : "好奇心笔记"}</small></WorkspaceRow>
+                <p>{entry.content}</p>
+              </WorkspaceItem>
+            ))}
+            {!journals.length ? <small>当前存档暂无梦境手记。</small> : null}
+          </>
+        ) : extension ? <small>此扩展提供运行时注册信息。</small> : null}
+      </WorkspaceSection>
+    </WorkspacePage>
+  );
+}
+
+export function Domain6ExtensionsPage(props: Domain6ExtensionsPageProps): ReactElement {
+  const ctx = useConsole();
+  const snapshot = props.snapshot ?? ctx?.snapshot;
+  const ecosystem = snapshot?.studioConfig?.ecosystem;
+  const route = resolveConsoleRoute(props.pathname);
+  let content: ReactElement;
+
+  switch (route?.id) {
+    case "extensions.configurator": content = <Configurator ecosystem={ecosystem} />; break;
+    case "extensions.skills-mcp": content = <Skills ecosystem={ecosystem} />; break;
+    case "extensions.cognitive-organs": content = <Organs snapshot={snapshot} />; break;
+    case "extensions.flows-eca": content = <Flows ecosystem={ecosystem} />; break;
+    case "extensions.custom": content = <ExtensionDetail snapshot={snapshot} pluginId={route.params.pluginId} />; break;
+    default: content = <ExtensionList snapshot={snapshot} />;
+  }
+  return (
     <MainRoundedCardOutlet domainId="extensions" activePath={props.pathname} onNavigate={props.onNavigate}>
-      <div className="ai0-page" data-ecosystem-page="true">
-        <header className="ai0-page-header">
-          <div className="ai0-page-header__title">
-            <h1>插件与技能</h1>
-          </div>
-          <div className="ai0-page-header__actions">
-            <RippleButton
-              variant="primary"
-              data-save-ecosystem="true"
-              onClick={() => void handleSaveEcosystem()}
-            >
-              {renderConsoleIcon("save", 14)}
-              <span>保存并热重载</span>
-            </RippleButton>
-          </div>
-        </header>
-
-        <section className="ai0-card">
-          <div className="ai0-card__head">
-            <h2>已安装扩展</h2>
-          </div>
-          <div className="ai0-grid-3">
-            {plugins.map((plug) => (
-              <article key={plug.id} className="ai0-card is-elevated" data-plugin-card={plug.id}>
-                <div className="ai0-card__head">
-                  <div>
-                    <strong>{plug.name}</strong>
-                    <div style={{ fontSize: "11.5px", color: "var(--ai0-on-surface-muted)", fontFamily: "var(--ai0-font-mono)" }}>
-                      v{plug.version} · {plug.bus}
-                    </div>
-                  </div>
-                  <JellySwitch
-                    checked={plug.enabled}
-                    data-plugin-enabled={plug.id}
-                    ariaLabel={`启用 ${plug.name}`}
-                    onChange={(enabled) =>
-                      setPlugins((prev) =>
-                        prev.map((p) => (p.id === plug.id ? { ...p, enabled } : p))
-                      )
-                    }
-                  />
-                </div>
-                <p style={{ fontSize: "12.5px", color: "var(--ai0-on-surface-muted)" }}>{plug.description}</p>
-                {plug.configFields.map((field) => (
-                  <div key={field.key} className="ai0-field">
-                    <label>{field.label}</label>
-                    {field.type === "boolean" ? (
-                      <JellySwitch
-                        checked={Boolean(field.value)}
-                        data-plugin-field={`${plug.id}:${field.key}`}
-                        ariaLabel={field.label}
-                        onChange={(val) =>
-                          setPlugins((prev) =>
-                            prev.map((p) =>
-                              p.id === plug.id
-                                ? {
-                                    ...p,
-                                    configFields: p.configFields.map((f) =>
-                                      f.key === field.key ? { ...f, value: val } : f
-                                    )
-                                  }
-                                : p
-                            )
-                          )
-                        }
-                      />
-                    ) : (
-                      <CompactInput
-                        type={field.type === "secret" ? "password" : field.type === "number" ? "number" : "text"}
-                        value={String(field.value)}
-                        data-plugin-field={`${plug.id}:${field.key}`}
-                        onInput={(val) =>
-                          setPlugins((prev) =>
-                            prev.map((p) =>
-                              p.id === plug.id
-                                ? {
-                                    ...p,
-                                    configFields: p.configFields.map((f) =>
-                                      f.key === field.key
-                                        ? { ...f, value: field.type === "number" ? Number(val) : val }
-                                        : f
-                                    )
-                                  }
-                                : p
-                            )
-                          )
-                        }
-                      />
-                    )}
-                  </div>
-                ))}
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <div className="ai0-grid-2">
-          <section className="ai0-card is-elevated">
-            <h2>斜杠指令与权限管理</h2>
-            <table className="ai0-table">
-              <thead>
-                <tr>
-                  <th>启用</th>
-                  <th>指令与别名</th>
-                  <th>权限等级</th>
-                  <th>功能说明</th>
-                </tr>
-              </thead>
-              <tbody>
-                {commands.map((cmd) => (
-                  <tr key={cmd.id}>
-                    <td>
-                      <JellySwitch
-                        checked={cmd.enabled}
-                        data-cmd-enabled={cmd.id}
-                        ariaLabel={`启用 ${cmd.command}`}
-                        onChange={(enabled) =>
-                          setCommands((prev) =>
-                            prev.map((c) => (c.id === cmd.id ? { ...c, enabled } : c))
-                          )
-                        }
-                      />
-                    </td>
-                    <td>
-                      <code>{cmd.command}</code>
-                      <div style={{ fontSize: "11px", color: "var(--ai0-on-surface-muted)" }}>{cmd.aliases.join(" ")}</div>
-                    </td>
-                    <td>
-                      <span className="ai0-badge" data-tone={cmd.permission === "owner" ? "accent" : "info"}>
-                        {cmd.permission === "owner" ? "主账户" : cmd.permission === "admin" ? "管理员" : "公开"}
-                      </span>
-                    </td>
-                    <td><small>{cmd.description}</small></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-
-          <section className="ai0-card is-elevated">
-            <h2>MCP 工具服务连接器 (Model Context Protocol)</h2>
-            {mcpServers.map((srv) => (
-              <article key={srv.id} className="ai0-card" data-mcp-id={srv.id}>
-                <div className="ai0-card__head">
-                  <div>
-                    <strong>{srv.name}</strong>
-                    <div style={{ fontFamily: "var(--ai0-font-mono)", fontSize: "11.5px", color: "var(--ai0-on-surface-muted)" }}>
-                      [{srv.transport}] {srv.endpoint}
-                    </div>
-                  </div>
-                  <span className="ai0-badge" data-tone={srv.enabled ? "live" : "warn"}>{srv.enabled ? "已挂载" : "已停用"}</span>
-                </div>
-                <div style={{ display: "grid", gap: "6px" }}>
-                  {srv.tools.map((tool) => (
-                    <div
-                      key={tool.name}
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderRadius: "8px", background: "var(--ai0-surface-main-card)", border: "var(--ai0-border-subtle)" }}
-                    >
-                      <div>
-                        <code>{tool.name}</code>
-                        <div style={{ fontSize: "11.5px", color: "var(--ai0-on-surface-muted)" }}>{tool.description}</div>
-                      </div>
-                      <span className="ai0-badge" data-tone={tool.risk === "read_only_safe" ? "good" : "warn"}>
-                        {tool.risk === "read_only_safe" ? "只读自动放行" : "需审批确认"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </section>
-        </div>
-
-        <section className="ai0-card is-elevated">
-          <div className="ai0-card__head">
-            <div>
-              <h2>SKILL.md 声明式技能编辑</h2>
-              <small>通过自然语言 Markdown 定义任务步骤及执行时的角色内行为姿态（in_character_demeanor）</small>
-            </div>
-          </div>
-          <div className="ai0-grid-2">
-            {skills.map((skill) => (
-              <article key={skill.id} className="ai0-card" data-skill-id={skill.id}>
-                <div className="ai0-card__head">
-                  <strong>{skill.name}</strong>
-                  <JellySwitch
-                    checked={skill.enabled}
-                    data-skill-enabled={skill.id}
-                    ariaLabel={`启用 ${skill.name}`}
-                    onChange={(enabled) =>
-                      setSkills((prev) =>
-                        prev.map((s) => (s.id === skill.id ? { ...s, enabled } : s))
-                      )
-                    }
-                  />
-                </div>
-                <div className="ai0-field">
-                  <label>角色内执行姿态 (in_character_demeanor)</label>
-                  <CompactInput
-                    type="text"
-                    value={skill.inCharacterDemeanor}
-                    data-skill-demeanor={skill.id}
-                    onInput={(inCharacterDemeanor) =>
-                      setSkills((prev) =>
-                        prev.map((s) => (s.id === skill.id ? { ...s, inCharacterDemeanor } : s))
-                      )
-                    }
-                  />
-                </div>
-                <div className="ai0-field">
-                  <label>SKILL.md 规则正文</label>
-                  <CompactInput
-                    multiline={true}
-                    rows={5}
-                    value={skill.bodyMarkdown}
-                    data-skill-body={skill.id}
-                    style={{ fontFamily: "var(--ai0-font-mono)", fontSize: "12px" }}
-                    onInput={(bodyMarkdown) =>
-                      setSkills((prev) =>
-                        prev.map((s) => (s.id === skill.id ? { ...s, bodyMarkdown } : s))
-                      )
-                    }
-                  />
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="ai0-card is-elevated">
-          <div className="ai0-card__head">
-            <div>
-              <h2>自动化联动流 (ECA · .flow.yaml)</h2>
-              <small>基于 When → If → Then 声明式规则联动感官事件、时间节律与主动交互</small>
-            </div>
-            <RippleButton variant="secondary" size="sm" data-add-eca-flow="true">
-              {renderConsoleIcon("plus", 13)}
-              <span>新建规则</span>
-            </RippleButton>
-          </div>
-          <div className="ai0-grid-2">
-            {ecaFlows.map((flow) => (
-              <article key={flow.id} className="ai0-card" data-flow-id={flow.id}>
-                <div className="ai0-card__head">
-                  <strong>{flow.name}</strong>
-                  <JellySwitch
-                    checked={flow.enabled}
-                    data-flow-enabled={flow.id}
-                    ariaLabel={`启用 ${flow.name}`}
-                    onChange={(enabled) =>
-                      setEcaFlows((prev) =>
-                        prev.map((f) => (f.id === flow.id ? { ...f, enabled } : f))
-                      )
-                    }
-                  />
-                </div>
-                <div style={{ display: "grid", gap: "6px", fontSize: "12.5px" }}>
-                  <div><span className="ai0-badge" data-tone="info">WHEN</span> {flow.whenExpr}</div>
-                  <div><span className="ai0-badge" data-tone="warn">IF</span> {flow.ifExpr}</div>
-                  <div><span className="ai0-badge" data-tone="good">THEN</span> {flow.thenAction}</div>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
+      {content}
     </MainRoundedCardOutlet>
   );
 }

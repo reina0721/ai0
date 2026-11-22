@@ -16,9 +16,9 @@ const lineFor = (samples: readonly AffectSample[], key: keyof Omit<AffectSample,
 
 export function BioRhythmAffectCurveCanvas({ samples, currentHour, onHourSelect }: BioRhythmAffectCurveCanvasProps): ReactElement {
   const markerX = currentHour === undefined ? undefined : 12 + currentHour * 11;
-  return <section style={{ display: "grid", gap: 12, padding: 16, border: "var(--ai0-border-subtle)", borderRadius: 14, background: "var(--ai0-surface-main-card)" }}>
+  return <section style={{ display: "grid", gap: 12, padding: 16, border: "var(--ai0-border-subtle)", borderRadius: 14, background: "var(--ai0-surface-workspace)" }}>
     <header><strong>Bio-rhythm & affect curves</strong><div style={{ fontSize: 12, opacity: 0.68 }}>24-hour circadian baseline coupled to fast and slow affect states.</div></header>
-    <svg viewBox="0 0 288 124" role="img" aria-label="Circadian and affect curves" style={{ width: "100%", overflow: "visible", background: "var(--ai0-surface-container-low)", borderRadius: 8 }}>
+    <svg viewBox="0 0 288 124" role="img" aria-label="Circadian and affect curves" style={{ width: "100%", overflow: "visible", background: "var(--ai0-surface-inset)", borderRadius: 8 }}>
       {[26, 66, 106].map((y) => <path d={`M12 ${y}H276`} stroke="color-mix(in oklch, var(--ai0-accent), transparent 86%)" strokeWidth="1" />)}
       <path d={lineFor(samples, "circadian")} fill="none" stroke="var(--ai0-accent)" strokeWidth="2.4" />
       <path d={lineFor(samples, "fastAffect")} fill="none" stroke="#f59e0b" strokeWidth="1.7" />

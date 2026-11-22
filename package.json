@@ -7,6 +7,11 @@
   "engines": {
     "node": ">=24.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "@upstash/context7-mcp>@opentelemetry/api": "1.9.0"
+    }
+  },
   "scripts": {
     "dev": "concurrently -k -n daemon,console -c cyan,magenta \"pnpm dev:daemon\" \"pnpm dev:console\"",
     "dev:daemon": "node --watch --conditions=development --import tsx apps/daemon/src/cli.ts --port 4174",
@@ -21,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@upstash/context7-mcp": "4.7.3",
     "concurrently": "^10.0.7",
     "tsx": "^4.23.15",
     "typescript": "^5.7.0",

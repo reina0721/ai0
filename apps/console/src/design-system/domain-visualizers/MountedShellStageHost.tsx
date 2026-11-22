@@ -9,6 +9,7 @@ import {
 
 import { StatusBadge } from "../primitives/StatusBadge.js";
 import { RippleButton } from "../primitives/RippleButton.js";
+import { CompactInput, CompactSelect } from "../primitives/index.js";
 
 export interface MountedShellStageHostProps {
   shellPluginId?: string;
@@ -69,14 +70,15 @@ export function MountedShellStageHost(props: MountedShellStageHostProps): ReactE
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <select
+          <CompactSelect
             className="ai0-webchat-venue"
-            aria-label="Chat venue scope"
-            style={{ minHeight: "28px", height: "28px", fontSize: "12px", padding: "0 24px 0 9px" }}
-          >
-            <option value="private_1on1|only_owner">🔒 私密 1v1 · only_owner</option>
-            <option value="public_livestream|public_all">📡 公开直播间 · public_all (70%面具)</option>
-          </select>
+            ariaLabel="Chat venue scope"
+            defaultValue="private_1on1|only_owner"
+            options={[
+              { value: "private_1on1|only_owner", label: "🔒 私密 1v1 · only_owner" },
+              { value: "public_livestream|public_all", label: "📡 公开直播间 · public_all (70%面具)" }
+            ]}
+          />
           <StatusBadge tone="success">WebChat mounted</StatusBadge>
         </div>
       </header>
@@ -121,9 +123,10 @@ export function MountedShellStageHost(props: MountedShellStageHostProps): ReactE
 
       <footer style={{ display: "grid", gap: "8px" }}>
         <div className="mounted-shell-stage-host__composer">
-          <input
+          <CompactInput
             type="text"
             className="ai0-webchat-input"
+            ariaLabel="消息正文"
             placeholder={`和 ${personaName} 说点什么…（回车发送，支持实时写入 SQLite 与 8 步轨迹）`}
           />
           <RippleButton className="is-primary" data-webchat-send="true" onClick={send}>
@@ -136,16 +139,17 @@ export function MountedShellStageHost(props: MountedShellStageHostProps): ReactE
         <div className="mounted-shell-stage-host__sensors">
           <small style={{ marginRight: "4px" }}>快捷感官事件：</small>
           {sensors.map((sensor) => (
-            <button
+            <RippleButton
               key={sensor}
               type="button"
+              size="sm"
               data-quick-sensor={sensor}
               onClick={() => {
                 if (stage) void stage.triggerSensor(sensor);
               }}
             >
               {SENSOR_LABELS[sensor]}
-            </button>
+            </RippleButton>
           ))}
         </div>
       </footer>

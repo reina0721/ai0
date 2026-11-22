@@ -250,10 +250,10 @@
       "id": "prov_deepseek_v3",
       "category": "llm",
       "vendor": "DeepSeek",
-      "name": "DeepSeek V3 · 主力对话",
-      "baseUrl": "https://api.deepseek.com/v1",
+      "name": "DeepSeek Flash · 主力对话",
+      "baseUrl": "https://api.deepseek.com",
       "apiKeyMasked": "sk-••••••a9f2",
-      "modelId": "deepseek-chat",
+      "modelId": "deepseek-flash",
       "temperature": 0.78,
       "maxTokens": 4096,
       "enabled": true,
@@ -886,6 +886,6 @@
     "sb243BreakMinutes": 180,
     "crisisHotlineRegion": "CN-4001619995 / US-988",
     "appearance": "light",
-    "soulTheme": "sakura-pink"
+    "soulTheme": "astral-blue"
   }
 }

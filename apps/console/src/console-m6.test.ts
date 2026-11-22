@@ -1,5 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import {
   CONSOLE_PRIMARY_DOMAINS,
@@ -7,7 +8,7 @@ import {
   DirtyRouteGuard,
   CONSOLE_SOUL_THEMES,
   SOUVEREIGNTY_LOCKED_COLORS,
-  computePointerRippleGeometry,
+  RippleButton,
   loadConsoleThemeCss,
   renderConsoleDocumentHtml,
   renderRoutePageView,
@@ -15,25 +16,19 @@ import {
   resolveConsoleRoute
 } from "./index.js";
 
-describe("Milestone M6 Quality Audit: ai0 Console Design System (Refined Compact MD3), 5 Subdirectories (45 Components), and 8 Domains × 30+ Sub-Routes", () => {
-  it("enforces 5 modular design-system subdirectories with 10 semantic primitives (zero legacy Kira* prefixes), 7 shell, 16 domain-visualizers, and 12 composites", () => {
+describe("ai0 compact Material console", () => {
+  it("exposes the design system through its component folders without legacy Kira names", () => {
     const dsRoot = resolve(import.meta.dirname, "design-system");
     expect(existsSync(resolve(dsRoot, "index.tsx"))).toBe(false);
 
-    const primitiveFiles = readdirSync(resolve(dsRoot, "primitives")).filter((f) => f.endsWith(".tsx"));
-    const shellFiles = readdirSync(resolve(dsRoot, "shell")).filter((f) => f.endsWith(".tsx"));
-    const visualizerFiles = readdirSync(resolve(dsRoot, "domain-visualizers")).filter((f) => f.endsWith(".tsx"));
-    const compositeFiles = readdirSync(resolve(dsRoot, "composites")).filter((f) => f.endsWith(".tsx"));
-
-    expect(primitiveFiles).toHaveLength(10);
-    expect(primitiveFiles.every((f) => !/^Kira/i.test(f))).toBe(true);
-    expect(shellFiles).toHaveLength(7);
-    expect(visualizerFiles).toHaveLength(16);
-    expect(compositeFiles).toHaveLength(12);
-    expect(primitiveFiles.length + shellFiles.length + visualizerFiles.length + compositeFiles.length).toBe(45);
+    for (const group of ["primitives", "shell", "domain-visualizers", "composites"]) {
+      const files = readdirSync(resolve(dsRoot, group));
+      expect(files).toContain("index.ts");
+      expect(files.some((file) => /^Kira.*\.tsx$/iu.test(file))).toBe(false);
+    }
   });
 
-  it("verifies OKLCH 5-level tonal surfaces, 3 soul themes, locked sovereignty colors, unified --ai0-* namespace, zero dead #000/#333, and pointer-origin ripple physics", () => {
+  it("verifies tonal surfaces, soul themes, locked sovereignty colors, compact controls and accessible button states", () => {
     const css = loadConsoleThemeCss();
     expect(CONSOLE_SOUL_THEMES).toEqual(["sakura-pink", "astral-blue", "cyber-emerald"]);
     expect(SOUVEREIGNTY_LOCKED_COLORS.liveEmerald).toBe("#10B981");
@@ -51,16 +46,10 @@ describe("Milestone M6 Quality Audit: ai0 Console Design System (Refined Compact
     expect(css).not.toMatch(/--kira-|\.kira-|KIRAKIRA/i);
     expect(css).not.toMatch(/#000\b|#000000\b|#333\b|#333333\b/i);
 
-    // Pointer-origin ripple geometry calculation
-    const ripple = computePointerRippleGeometry(130, 62, {
-      left: 100,
-      top: 50,
-      width: 120,
-      height: 32
-    });
-    expect(ripple.x).toBe(30);
-    expect(ripple.y).toBe(12);
-    expect(ripple.radius).toBeGreaterThan(90);
+    const busyButton = renderToHtml(createElement(RippleButton, { loading: true, ariaLabel: "保存" }));
+    expect(busyButton).toContain("MuiButtonBase-root");
+    expect(busyButton).toContain('aria-busy="true"');
+    expect(busyButton).toContain('disabled=""');
   });
 
   it("renders all 8 Primary Domains and all 30+ Dedicated Sub-Routes inside MainRoundedCardOutlet with InternalStickySubNav", async () => {

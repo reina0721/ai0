@@ -1,4 +1,6 @@
-import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import Switch from "@mui/material/Switch";
+import { useState, type ReactElement, type ReactNode } from "react";
+import { dataAttributes } from "./dom-props.js";
 
 export interface JellySwitchProps {
   id?: string;
@@ -13,52 +15,29 @@ export interface JellySwitchProps {
 }
 
 export function JellySwitch(props: JellySwitchProps): ReactElement {
-  const [localChecked, setLocalChecked] = useState(props.checked);
-
-  useEffect(() => {
-    setLocalChecked(props.checked);
-  }, [props.checked]);
-
-  const checked = props.onChange ? props.checked : localChecked;
-  const stateClass = checked ? " is-checked" : "";
-  const disabledClass = props.disabled ? " is-disabled" : "";
-  const dataAttrs: Record<string, string | number | boolean | undefined> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith("data-")) dataAttrs[key] = value as string | number | boolean | undefined;
-  }
-
-  const toggle = (): void => {
-    if (props.disabled) return;
-    const next = !checked;
-    setLocalChecked(next);
-    props.onChange?.(next);
-  };
-
+  const [localChange, setLocalChange] = useState<{ initial: boolean; checked: boolean }>();
+  const checked = props.onChange || localChange?.initial !== props.checked ? props.checked : localChange.checked;
   return (
-    <span
-      data-name={props.name}
-      className={`ai0-switch${stateClass}${disabledClass}${props.className ? ` ${props.className}` : ""}`}
-      onClick={toggle}
-    >
-      <button
-        {...dataAttrs}
-        id={props.id}
-        type="button"
-        role="switch"
-        className="ai0-switch__control"
-        aria-checked={checked ? "true" : "false"}
-        aria-label={props.ariaLabel ?? (typeof props.label === "string" ? props.label : "Toggle")}
+    <label className={"ai0-switch " + (props.className ?? "")} data-name={props.name}>
+      <Switch
+        className="ai0-material-switch"
+        size="small"
         disabled={props.disabled}
-        onClick={(e) => {
-          e.stopPropagation();
-          toggle();
+        checked={checked}
+        id={props.id}
+        name={props.name}
+        onChange={(event) => {
+          const next = event.target.checked;
+          setLocalChange({ initial: props.checked, checked: next });
+          props.onChange?.(next);
         }}
-      >
-        <span className="ai0-switch-thumb" aria-hidden="true" />
-      </button>
-      {props.label === undefined ? null : (
-        <span className="ai0-switch__label">{props.label}</span>
-      )}
-    </span>
+        slotProps={{ input: {
+          ...dataAttributes(props),
+          role: "switch",
+          "aria-label": props.ariaLabel ?? (typeof props.label === "string" ? props.label : "切换")
+        } }}
+      />
+      {props.label === undefined ? null : <span className="ai0-switch__label">{props.label}</span>}
+    </label>
   );
 }

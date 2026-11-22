@@ -1,4 +1,8 @@
-import type { FormEvent, ReactElement } from "react";
+import ButtonBase from "@mui/material/ButtonBase";
+import TextField from "@mui/material/TextField";
+import type { ReactElement } from "react";
+
+import { RippleButton } from "../primitives/RippleButton.js";
 
 export type KnowledgePack = { id: string; name: string; mounted: boolean; documents: number };
 
@@ -32,46 +36,47 @@ export function KnowledgeUnmountGistWizard({
       </div>
       <div className="divide-y divide-slate-100 border-y border-slate-100">
         {packs.map((pack) => (
-          <button
+          <ButtonBase
             key={pack.id}
             type="button"
-            className={`flex w-full items-center justify-between px-1 py-2 text-left text-sm ${pack.id === selectedId ? "bg-sky-50" : ""}`}
+            aria-pressed={pack.id === selectedId}
+            sx={{ width: "100%", justifyContent: "space-between", px: 1, py: 0.75, textAlign: "left",
+              background: pack.id === selectedId ? "var(--ai0-accent-tint)" : undefined }}
             onClick={() => onSelect?.(pack.id)}
           >
             <span className="font-medium text-slate-800">{pack.name}</span>
             <span className="text-xs text-slate-500">
               {pack.documents} docs · {pack.mounted ? "mounted" : "unmounted"}
             </span>
-          </button>
+          </ButtonBase>
         ))}
       </div>
-      <label className="mt-3 block text-xs font-semibold text-slate-700">
+      <div className="mt-3 block text-xs font-semibold text-slate-700">
         Pre-unmount gist card <span className="font-normal text-slate-400">{gist.length}/150</span>
-        <textarea
-          className="mt-1 min-h-16 w-full rounded-md border border-slate-200 p-2 text-sm"
-          maxLength={150}
+        <TextField
+          multiline
+          minRows={2}
+          fullWidth
+          size="small"
+          slotProps={{ htmlInput: { maxLength: 150, "aria-label": "Pre-unmount gist card" } }}
           value={gist}
           placeholder="What must survive this unmount?"
-          onChange={(event: FormEvent<HTMLTextAreaElement>) => onGistChange?.(event.currentTarget.value)}
+          onChange={(event) => onGistChange?.(event.currentTarget.value)}
         />
-      </label>
+      </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="rounded-md border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-40"
+        <RippleButton size="sm"
           disabled={!selected || !validGist}
           onClick={() => selected && onExtractGistCardsBeforeUnmount?.(selected.id)}
         >
           extractGistCardsBeforeUnmount
-        </button>
-        <button
-          type="button"
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+        </RippleButton>
+        <RippleButton size="sm" variant="danger"
           disabled={!selected || !validGist || !selected.mounted}
           onClick={() => selected && onUnmount?.(selected.id)}
         >
           Unmount pack
-        </button>
+        </RippleButton>
       </div>
     </section>
   );

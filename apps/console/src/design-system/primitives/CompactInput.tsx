@@ -1,4 +1,6 @@
-import type { CSSProperties, ChangeEvent, KeyboardEvent, ReactElement } from "react";
+import InputBase from "@mui/material/InputBase";
+import { useId, type CSSProperties, type ChangeEvent, type KeyboardEvent, type ReactElement } from "react";
+import { dataAttributes } from "./dom-props.js";
 
 export interface CompactInputEvent {
   currentTarget: { value: string };
@@ -31,81 +33,47 @@ export interface CompactInputProps {
 }
 
 export function CompactInput(props: CompactInputProps): ReactElement {
-  const errorId = props.error && props.name ? `${props.name}-error` : undefined;
-  const dataAttrs: Record<string, string | number | boolean | undefined> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith("data-")) dataAttrs[key] = value as string | number | boolean | undefined;
-  }
-
-  const isControlled = Boolean(props.onInput || props.onChange) && props.value !== undefined;
+  const generatedId = useId();
+  const errorId = props.error ? (props.id ?? generatedId) + "-error" : undefined;
+  const controlled = Boolean(props.onInput || props.onChange) && props.value !== undefined;
+  const wrapperClass = props.multiline ? "ai0-textarea-wrap" : "ai0-compact-input";
+  const fieldClass = props.multiline ? "ai0-textarea-field" : "ai0-compact-input__field";
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
-    const val = event.currentTarget.value;
-    props.onInput?.(val, event);
-    props.onChange?.(val, event);
+    const value = event.currentTarget.value;
+    props.onInput?.(value, event);
+    props.onChange?.(value, event);
   };
 
-  if (props.multiline) {
-    return (
-      <div
-        data-invalid={props.error ? "true" : undefined}
-        className={`ai0-textarea-wrap${props.className ? ` ${props.className}` : ""}`}
-        style={props.style}
-      >
-        <textarea
-          {...dataAttrs}
-          id={props.id}
-          className={`ai0-textarea-field${props.inputClassName ? ` ${props.inputClassName}` : ""}`}
-          name={props.name}
-          rows={props.rows ?? 3}
-          placeholder={props.placeholder}
-          disabled={props.disabled}
-          readOnly={props.readOnly}
-          aria-label={props.ariaLabel}
-          aria-invalid={Boolean(props.error)}
-          aria-describedby={errorId}
-          value={isControlled ? String(props.value ?? "") : undefined}
-          defaultValue={!isControlled ? String(props.value ?? props.defaultValue ?? "") : undefined}
-          onChange={handleChange}
-          onKeyDown={props.onKeyDown}
-        />
-        <span className="ai0-textarea-wrap__ink-bar" aria-hidden="true" />
-      </div>
-    );
-  }
-
   return (
-    <label
-      data-invalid={props.error ? "true" : undefined}
-      className={`ai0-compact-input${props.className ? ` ${props.className}` : ""}`}
-      style={{ height: "32px", ...props.style }}
-    >
-      <input
-        {...dataAttrs}
+    <div data-invalid={Boolean(props.error)} className={wrapperClass + " " + (props.className ?? "")} style={props.style}>
+      <InputBase
+        fullWidth
+        multiline={props.multiline}
+        rows={props.multiline ? (props.rows ?? 3) : undefined}
         id={props.id}
-        className={`ai0-compact-input__field${props.inputClassName ? ` ${props.inputClassName}` : ""}`}
-        type={props.type ?? "text"}
         name={props.name}
-        value={isControlled ? props.value : undefined}
-        defaultValue={!isControlled ? (props.value ?? props.defaultValue) : undefined}
-        min={props.min}
-        max={props.max}
-        step={props.step}
-        placeholder={props.placeholder}
+        type={props.type ?? "text"}
         disabled={props.disabled}
-        readOnly={props.readOnly}
-        aria-label={props.ariaLabel}
-        aria-invalid={Boolean(props.error)}
-        aria-describedby={errorId}
+        readOnly={props.readOnly || (!props.onInput && !props.onChange && props.value !== undefined)}
+        error={Boolean(props.error)}
+        placeholder={props.placeholder}
+        value={controlled || props.value !== undefined ? props.value : undefined}
+        defaultValue={props.value === undefined ? props.defaultValue : undefined}
         onChange={handleChange}
-        onKeyDown={props.onKeyDown}
+        endAdornment={props.unit ? <span className="ai0-compact-input__unit">{props.unit}</span> : undefined}
+        inputProps={{
+          ...dataAttributes(props),
+          className: fieldClass + " " + (props.inputClassName ?? ""),
+          "aria-label": props.ariaLabel,
+          "aria-describedby": errorId,
+          "aria-invalid": Boolean(props.error),
+          min: props.min,
+          max: props.max,
+          step: props.step,
+          onKeyDown: props.onKeyDown
+        }}
       />
-      {props.unit ? <span className="ai0-compact-input__unit">{props.unit}</span> : null}
-      <span className="ai0-compact-input__ink-bar" aria-hidden="true" />
-      {props.error ? (
-        <span id={errorId} role="alert" className="ai0-compact-input__error">
-          {props.error}
-        </span>
-      ) : null}
-    </label>
+      {props.error ? <span role="alert" className="ai0-compact-input__error" id={errorId}>{props.error}</span> : null}
+    </div>
   );
 }

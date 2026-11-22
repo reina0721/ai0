@@ -1,3 +1,4 @@
+import ButtonBase from "@mui/material/ButtonBase";
 import type { ReactElement } from "react";
 import type { AudienceScope } from "@ai0/protocol";
 import { StatusBadge, JellySwitch } from "../primitives/index.js";
@@ -35,20 +36,20 @@ export function EmbodimentStarMapCard(props: EmbodimentStarMapCardProps): ReactE
         border: "var(--ai0-border-subtle)" }} />
       <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)",
         textAlign: "center" }}><strong>.soul</strong><small style={{ display: "block" }}>Protocol v0 core</small></div>
-      {props.shells.map((shell, index) => <button type="button"
+      {props.shells.map((shell, index) => <ButtonBase key={shell.shellId} aria-pressed={shell.shellId === props.activeShellId}
         data-status={shell.status} data-active={shell.shellId === props.activeShellId}
         onClick={() => props.onSelectShell?.(shell.shellId)}
-        style={{ position: "absolute", left: ORBITS[index % ORBITS.length]?.left, top: ORBITS[index % ORBITS.length]?.top,
+        style={{ position: "absolute", display: "grid", left: ORBITS[index % ORBITS.length]?.left, top: ORBITS[index % ORBITS.length]?.top,
           transform: "translate(-50%, -50%)", minWidth: "92px", padding: "7px", borderRadius: "12px",
           border: "var(--ai0-border-subtle)", background: "var(--ai0-surface-container-high)" }}>
         <span aria-hidden="true">{shell.status === "mounted" ? "✦" : shell.status === "standby" ? "◌" : "×"}</span>
         <span style={{ display: "block" }}>{shell.displayName}</span>
         <small>{shell.shellKind}</small>
-      </button>)}
+      </ButtonBase>)}
     </div>
     <aside style={{ padding: "12px", borderLeft: "var(--ai0-border-subtle)" }}>
       <small>MOUNTED PROTOCOL V0 SHELLS</small>
-      {props.shells.map((shell) => <div style={{ padding: "9px 0", borderBottom: "var(--ai0-border-subtle)" }}>
+      {props.shells.map((shell) => <div key={shell.shellId} style={{ padding: "9px 0", borderBottom: "var(--ai0-border-subtle)" }}>
         <strong>{shell.displayName}</strong>
         <StatusBadge tone={shell.status === "mounted" ? "success" : "neutral"}>{shell.status}</StatusBadge>
         <div><StatusBadge tone="taint">ScopedCapabilityToken ≤ {shell.privacyCeiling}</StatusBadge></div>

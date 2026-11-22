@@ -1,3 +1,4 @@
+import ButtonBase from "@mui/material/ButtonBase";
 import type { ReactElement } from "react";
 
 export type OpportunityPoolItem = {
@@ -26,7 +27,7 @@ const priorityTint = (priority: OpportunityPoolItem["priority"]) =>
   priority === "critical"
     ? "color-mix(in oklch, var(--ai0-accent) 82%, var(--ai0-surface-container-high))"
     : priority === "high"
-      ? "color-mix(in oklch, var(--ai0-accent) 56%, var(--ai0-surface-container-low))"
+      ? "color-mix(in oklch, var(--ai0-accent) 56%, var(--ai0-surface-inset))"
       : "var(--ai0-surface-container-high)";
 
 export function OpportunityPoolBubbleStrip({
@@ -37,7 +38,7 @@ export function OpportunityPoolBubbleStrip({
   return (
     <section
       aria-label="Coordinator opportunity pool"
-      style={{ background: "var(--ai0-surface-main-card)", color: "var(--ai0-on-surface)", padding: "16px" }}
+      style={{ background: "var(--ai0-surface-workspace)", color: "var(--ai0-on-surface)", padding: "16px" }}
     >
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "14px" }}>
         <div>
@@ -53,10 +54,9 @@ export function OpportunityPoolBubbleStrip({
           const active = opportunity.id === selectedId;
           const diameter = 54 + Math.round(opportunity.salience * 0.34);
           return (
-            <button
+            <ButtonBase
               key={opportunity.id}
               type="button"
-              className="ai0-ripple-btn"
               aria-pressed={active}
               data-opportunity-id={opportunity.id}
               onClick={() => onSelect?.(opportunity.id)}
@@ -83,7 +83,7 @@ export function OpportunityPoolBubbleStrip({
                 <br />
                 {opportunity.owner}
               </span>
-            </button>
+            </ButtonBase>
           );
         })}
       </div>

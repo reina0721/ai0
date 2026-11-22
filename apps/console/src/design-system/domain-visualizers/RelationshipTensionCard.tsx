@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { RippleButton } from "../primitives/RippleButton.js";
 export interface RelationshipTensionCardProps {
   bondName: string
   closeness: number
@@ -40,9 +41,9 @@ export function RelationshipTensionCard({
       <p className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600">{friction}</p>
       <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
         <span>Repair half-life ≤ 48h · no leverage, no scorekeeping</span>
-        <button className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 font-medium text-white" onClick={onRelease} type="button">
+        <RippleButton variant="primary" className="shrink-0" onClick={onRelease}>
           {releaseLabel}
-        </button>
+        </RippleButton>
       </div>
     </section>
   )

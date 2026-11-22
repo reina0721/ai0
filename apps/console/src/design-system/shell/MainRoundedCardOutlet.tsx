@@ -1,15 +1,11 @@
-import type { ReactElement, ReactNode } from "react";
+import ButtonBase from "@mui/material/ButtonBase";
+import { useAnimate, useReducedMotion } from "motion/react";
+import { useEffect, type MouseEvent, type ReactElement, type ReactNode } from "react";
 
 import { useConsole } from "../../context/ConsoleContext.js";
-import { RippleButton, SegmentedPill } from "../primitives/index.js";
+import { CompactSelect, HoverTooltip, RippleButton } from "../primitives/index.js";
 import { renderConsoleIcon } from "../tokens/index.js";
-import {
-  findSidebarContext,
-  getDomainSubRoutes,
-  resolveConsoleRoute,
-  type ConsoleRoute,
-  type PrimaryDomainId
-} from "../../router/routes.js";
+import { CONSOLE_ROUTES_30, findSidebarContext, resolveConsoleRoute, type ConsoleRoute, type PrimaryDomainId } from "../../router/routes.js";
 
 export interface InternalStickySubNavProps {
   domainId: PrimaryDomainId;
@@ -20,59 +16,73 @@ export interface InternalStickySubNavProps {
 
 export function InternalStickySubNav(props: InternalStickySubNavProps): ReactElement {
   const ctx = useConsole();
-  const sidebarCtx = findSidebarContext(props.activePath);
-  const activeRoute = resolveConsoleRoute(props.activePath);
-  const allDomainRoutes = getDomainSubRoutes(props.domainId);
-  const ownedSubRoutes =
-    sidebarCtx && sidebarCtx.item.matchPaths.length > 1
-      ? allDomainRoutes.filter((r) => sidebarCtx.item.matchPaths.includes(r.defaultConcretePath ?? r.path))
-      : [];
-  const showSubTabs = ownedSubRoutes.length > 1 && props.domainId === "system";
+  const group = findSidebarContext(props.activePath);
+  const active = resolveConsoleRoute(props.activePath);
+  const dedicatedChat = active?.id === "shells.stage" && active.params.shellPluginId === "builtin.webchat";
+  const siblings = group ? CONSOLE_ROUTES_30.filter((route) =>
+    findSidebarContext(route.defaultConcretePath ?? route.path)?.item.id === group.item.id
+  ) : [];
+  const navigate = (route: ConsoleRoute) => {
+    const url = route.defaultConcretePath ?? route.path;
+    if (props.onNavigate) props.onNavigate(url, route);
+    else ctx?.navigateConsole(url);
+  };
 
   return (
-    <nav
-      aria-label={`${props.domainId} context bar`}
-      className="ai0-internal-sticky-sub-nav"
-    >
-      <div className="ai0-breadcrumb">
-        {sidebarCtx ? renderConsoleIcon(sidebarCtx.item.icon, 14) : null}
-        <span>{sidebarCtx?.groupTitle ?? "控制台"}</span>
-        <span className="ai0-breadcrumb__sep">/</span>
-        <span className="ai0-breadcrumb__current">
-          {activeRoute?.label ?? sidebarCtx?.item.label ?? "系统概览"}
-        </span>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-        {showSubTabs ? (
-          <SegmentedPill
-            value={activeRoute?.id ?? ownedSubRoutes[0]!.id}
-            options={ownedSubRoutes.map((r) => ({ value: r.id, label: r.label }))}
-            ariaLabel={`${props.domainId} sub-views`}
-            onChange={(routeId: string) => {
-              const target = ownedSubRoutes.find(({ id }) => id === routeId);
-              if (!target) return;
-              const nextPath = target.defaultConcretePath ?? target.path;
-              if (props.onNavigate) props.onNavigate(nextPath, target);
-              else ctx?.navigateConsole(nextPath);
-            }}
-          />
+    <nav aria-label="当前工作区" className="ai0-internal-sticky-sub-nav" data-chat-navigation={dedicatedChat || undefined}>
+      <div className="ai0-workspace-heading">
+        <div className="ai0-breadcrumb">
+          {group ? renderConsoleIcon(group.item.icon, 14) : null}
+          <span>{group?.groupTitle ?? "控制台"}</span>
+          {siblings.length <= 1 ? <>
+            <span className="ai0-breadcrumb__sep" aria-hidden="true">/</span>
+            <span className="ai0-breadcrumb__current">{active?.label ?? "系统概览"}</span>
+          </> : null}
+        </div>
+        {siblings.length > 1 ? (
+          <>
+            <div className="ai0-workspace-tabs" aria-label="相关页面">
+              {siblings.map((route) => {
+                const url = route.defaultConcretePath ?? route.path;
+                return (
+                  <ButtonBase
+                    key={route.id}
+                    component="a"
+                    href={ctx?.getConsoleHref(url) ?? url}
+                    aria-current={route.id === active?.id ? "page" : undefined}
+                    className="ai0-workspace-tab"
+                    onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                      if ((!props.onNavigate && !ctx) || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      event.preventDefault();
+                      navigate(route);
+                    }}
+                  >
+                    {route.label}
+                  </ButtonBase>
+                );
+              })}
+            </div>
+            <CompactSelect
+              className="ai0-workspace-select"
+              ariaLabel="相关页面"
+              value={active?.id ?? siblings[0]!.id}
+              options={siblings.map((route) => ({ value: route.id, label: route.label }))}
+              onChange={(id) => {
+                const route = siblings.find((item) => item.id === id);
+                if (route) navigate(route);
+              }}
+            />
+          </>
         ) : null}
-
-        <RippleButton
-          variant="ghost"
-          size="sm"
-          data-open-inspector="trace"
-          title="展开或收起右侧思维链路与潜台词抽屉"
-          onClick={() => {
-            if (props.onToggleInspector) props.onToggleInspector();
-            else ctx?.toggleInspector();
-          }}
-        >
-          {renderConsoleIcon("inspector", 14)}
-          <span>思维链路抽屉</span>
-        </RippleButton>
       </div>
+      {!dedicatedChat ? <HoverTooltip content="运行检视" interactiveChild>
+        <RippleButton variant="ghost" size="sm" className="ai0-workspace-inspector-button"
+          data-open-inspector="trace" ariaLabel="打开或关闭运行检视"
+          onClick={props.onToggleInspector ?? ctx?.toggleInspector}>
+          {renderConsoleIcon("inspector", 15)}
+          <span>运行检视</span>
+        </RippleButton>
+      </HoverTooltip> : null}
     </nav>
   );
 }
@@ -80,15 +90,25 @@ export function InternalStickySubNav(props: InternalStickySubNavProps): ReactEle
 export interface MainScrollableBodyProps {
   children?: ReactNode;
   className?: string;
+  pathname?: string;
 }
 
-export function MainScrollableBody(props: MainScrollableBodyProps): ReactElement {
+export function MainScrollableBody({ children, className, pathname }: MainScrollableBodyProps): ReactElement {
+  const [scope, animate] = useAnimate<HTMLElement>();
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    const viewport = scope.current;
+    if (!viewport) return;
+    viewport.scrollTop = 0;
+    if (reduced || !pathname) return;
+    const animation = animate(viewport, { opacity: [0.78, 1], y: [3, 0] }, { duration: 0.18 });
+    return () => { animation.stop(); };
+  }, [animate, pathname, reduced, scope]);
+
   return (
-    <section
-      className={`ai0-main-scrollable-body${props.className ? ` ${props.className}` : ""}`}
-      style={{ flex: 1, minHeight: 0, overflowY: "auto", position: "relative" }}
-    >
-      {props.children}
+    <section ref={scope} className={"ai0-main-scrollable-body " + (className ?? "")}>
+      {children}
     </section>
   );
 }
@@ -100,26 +120,16 @@ export interface MainRoundedCardOutletProps extends InternalStickySubNavProps {
 }
 
 export function MainRoundedCardOutlet(props: MainRoundedCardOutletProps): ReactElement {
+  const route = resolveConsoleRoute(props.activePath);
   return (
     <main
-      className={`ai0-main-rounded-card-outlet${props.className ? ` ${props.className}` : ""}`}
+      className={"ai0-main-rounded-card-outlet " + (props.className ?? "")}
       data-domain-id={props.domainId}
+      data-workspace-id={route?.id}
     >
-      <InternalStickySubNav
-        domainId={props.domainId}
-        activePath={props.activePath}
-        onNavigate={props.onNavigate}
-        onToggleInspector={props.onToggleInspector}
-      />
-      <MainScrollableBody>{props.children}</MainScrollableBody>
-      {props.footer ? (
-        <footer
-          className="ai0-main-rounded-card-outlet__footer"
-          style={{ flexShrink: 0, borderTop: "var(--ai0-border-subtle)" }}
-        >
-          {props.footer}
-        </footer>
-      ) : null}
+      <InternalStickySubNav {...props} />
+      <MainScrollableBody pathname={props.activePath}>{props.children}</MainScrollableBody>
+      {props.footer ? <footer className="ai0-main-rounded-card-outlet__footer">{props.footer}</footer> : null}
     </main>
   );
 }

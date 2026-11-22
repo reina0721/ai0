@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
@@ -104,9 +104,28 @@ function gateView(runtime: DaemonHandlerContext) {
     opportunity_pool: runtime.opportunityPool.list(), sensory_coverage: runtime.sensoryCoverage.list() };
 }
 
+async function listRollbackSnapshots(manager: SoulArchiveManager): Promise<string[]> {
+  try {
+    const entries = await readdir(manager.snapshotsDirectory, { withFileTypes: true });
+    const candidates = entries.filter((entry) => entry.isDirectory() && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(entry.name));
+    const verified = await Promise.all(candidates.map(async ({ name }) => {
+      const stateDir = join(manager.snapshotsDirectory, name, "state");
+      const state = await lstat(stateDir).catch(() => undefined);
+      if (!state?.isDirectory()) return undefined;
+      const file = await lstat(join(stateDir, "soul_core.sqlite")).catch(() => undefined);
+      return file?.isFile() ? name : undefined;
+    }));
+    return verified.filter((name): name is string => name !== undefined).sort().reverse();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
 export function createRealAdminHandlers(
   runtime: DaemonHandlerContext
 ): Partial<Record<AdminOperation, AdminRouteHandler>> {
+  let rollbackInProgress = false;
   return {
     "blackboard.compilePreview": async (request, context) => {
       const body = bodyOf(request.body), backend = selected(runtime, context.target_instance);
@@ -282,17 +301,40 @@ export function createRealAdminHandlers(
         venue_type: venue, audience_scope: audience, modality, summary_text: text });
     },
     "sandbox.scenarios.run": () => runScenarioPlaybook(GOLDEN_REGRESSION_SCENARIO_V1),
-    "system.snapshots.rollback": async (request) => {
+    "system.snapshots.rollback": async (request, context) => {
+      if (context.target_instance !== "live") {
+        return { status: 403, body: { error: "LIVE_SOVEREIGNTY_FENCE_VIOLATION" } };
+      }
+      const snapshots = await listRollbackSnapshots(runtime.soulArchiveManager);
+      if (request.method === "GET") return { snapshot_ids: snapshots };
       const body = bodyOf(request.body);
-      const safety = runtime.soulArchiveManager.createSnapshot(`pre-rollback-${Date.now()}`);
-      const snapshotId = String(body.snapshot_id ?? safety.id);
-      runtime.storage.close();
-      const restored = await runtime.soulArchiveManager.rollbackToSnapshot(snapshotId,
-        body.mode === "dream_bridge" || body.mode === "meta_reconciled" ? body.mode : "silent_hard",
-        runtime.virtualClock.nowMs());
-      runtime.replaceLiveStorage?.(restored);
-      return { rolled_back_to: snapshotId, safety_snapshot: safety,
-        pragma_status: restored.getTablePragmaStatus() };
+      if (body.snapshot_id !== undefined && typeof body.snapshot_id !== "string") {
+        return { status: 400, body: { error: "INVALID_SNAPSHOT_ID" } };
+      }
+      const requested = typeof body.snapshot_id === "string" ? body.snapshot_id : undefined;
+      if (requested !== undefined && !snapshots.includes(requested)) {
+        return { status: 404, body: { error: "SNAPSHOT_NOT_FOUND" } };
+      }
+      if (rollbackInProgress) return { status: 409, body: { error: "SNAPSHOT_ROLLBACK_IN_PROGRESS" } };
+      rollbackInProgress = true;
+      try {
+        const safety = runtime.soulArchiveManager.createSnapshot(`pre-rollback-${Date.now()}`);
+        const snapshotId = requested ?? safety.id;
+        runtime.storage.close();
+        const now = runtime.virtualClock.nowMs();
+        try {
+          const restored = await runtime.soulArchiveManager.rollbackToSnapshot(snapshotId,
+            body.mode === "dream_bridge" || body.mode === "meta_reconciled" ? body.mode : "silent_hard", now);
+          runtime.replaceLiveStorage?.(restored);
+          return { rolled_back_to: snapshotId, safety_snapshot: safety, pragma_status: restored.getTablePragmaStatus() };
+        } catch (error) {
+          const restored = await runtime.soulArchiveManager.rollbackToSnapshot(safety.id, "silent_hard", now);
+          runtime.replaceLiveStorage?.(restored);
+          throw error;
+        }
+      } finally {
+        rollbackInProgress = false;
+      }
     },
     "system.safetySb243": (request, context) => {
       const body = bodyOf(request.body), storage = selected(runtime, context.target_instance).storage;

@@ -1,5 +1,17 @@
-import { useEffect, useState, type ReactElement } from "react";
-import { MemoryRouter, useLocation } from "react-router";
+import Alert from "@mui/material/Alert";
+import ButtonBase from "@mui/material/ButtonBase";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import Drawer from "@mui/material/Drawer";
+import LinearProgress from "@mui/material/LinearProgress";
+import Snackbar from "@mui/material/Snackbar";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
+import { LazyMotion, MotionConfig, domAnimation, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 
 import { ConsoleProvider, useConsole } from "./context/ConsoleContext.js";
 import {
@@ -23,6 +35,7 @@ import {
   type ConsoleSoulTheme
 } from "./design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot } from "./live-snapshot.js";
+import { consoleMaterialThemes } from "./design-system/tokens/material-theme.js";
 import { renderRoutePageView } from "./pages/index.js";
 import { resolveConsoleRoute } from "./router/routes.js";
 
@@ -72,7 +85,7 @@ function OnboardingWizardOverlay(props: {
   const ctx = useConsole();
   const studio = props.snapshot?.studioConfig;
   const [providerId, setProviderId] = useState("prov_deepseek_v3");
-  const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com/v1");
+  const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com");
   const [apiKey, setApiKey] = useState("");
   const [displayName, setDisplayName] = useState(studio?.soulStudio.displayName ?? "Mio");
   const [personaPrompt, setPersonaPrompt] = useState(
@@ -83,7 +96,7 @@ function OnboardingWizardOverlay(props: {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (studio?.soulStudio) {
+    if (!props.open && studio?.soulStudio) {
       setDisplayName(studio.soulStudio.displayName);
       setPersonaPrompt(studio.soulStudio.corePersonalityPrompt);
       setSelectedRole(studio.soulStudio.primaryRole);
@@ -91,7 +104,8 @@ function OnboardingWizardOverlay(props: {
   }, [
     studio?.soulStudio.displayName,
     studio?.soulStudio.corePersonalityPrompt,
-    studio?.soulStudio.primaryRole
+    studio?.soulStudio.primaryRole,
+    props.open
   ]);
 
   const roles: ReadonlyArray<{ id: string; icon: ConsoleIconName; label: string; desc: string }> = [
@@ -103,7 +117,7 @@ function OnboardingWizardOverlay(props: {
   ];
 
   const handleSubmit = async (): Promise<void> => {
-    if (!ctx) return;
+    if (!ctx || saving || ctx.mode !== "live") return;
     setSaving(true);
     try {
       await ctx.postStudio("/api/studio/onboarding", {
@@ -126,17 +140,17 @@ function OnboardingWizardOverlay(props: {
   };
 
   return (
-    <div
-      className="ai0-modal-backdrop"
+    <Dialog
       id="ai0-onboarding-modal"
-      hidden={!props.open}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
-      }}
+      open={props.open}
+      onClose={() => { if (!saving) props.onClose(); }}
+      aria-labelledby="ai0-onboarding-title"
+      fullWidth
+      maxWidth="md"
+      slotProps={{ paper: { className: "ai0-modal-card" } }}
     >
-      <div className="ai0-modal-card" role="dialog" aria-modal="true" aria-label="初始化配置向导">
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h1>初始化配置</h1>
+        <header className="ai0-onboarding-header">
+          <h1 id="ai0-onboarding-title">初始化配置</h1>
           <RippleButton
             variant="ghost"
             size="sm"
@@ -149,28 +163,32 @@ function OnboardingWizardOverlay(props: {
           </RippleButton>
         </header>
 
-        <div className="ai0-grid-2">
-          <section className="ai0-card">
-            <h3>1. 配置主力模型服务</h3>
-            <div className="ai0-field">
-              <label>服务商预设</label>
+        <div className="ai0-onboarding-grid">
+          <section className="ai0-onboarding-section">
+            <h3>主力模型服务</h3>
+            <div className="ai0-onboarding-field">
+              <span id="onb-provider-label">服务商预设</span>
               <CompactSelect
                 id="onb-provider-id"
+                labelId="onb-provider-label"
                 value={providerId}
-                onChange={setProviderId}
+                onChange={(id) => {
+                  setProviderId(id);
+                  setBaseUrl(studio?.providers.find((provider) => provider.id === id)?.baseUrl ?? "");
+                }}
                 options={[
-                  { value: "prov_deepseek_v3", label: "DeepSeek V3 (主力对话)" },
+                  { value: "prov_deepseek_v3", label: "DeepSeek Flash (主力对话)" },
                   { value: "prov_claude_sonnet", label: "Claude 3.7 Sonnet (推理与规划)" },
                   { value: "prov_ollama_local", label: "Ollama 本地模型 (离线运行)" }
                 ]}
               />
             </div>
-            <div className="ai0-field">
-              <label>API Base URL</label>
+            <div className="ai0-onboarding-field">
+              <label htmlFor="onb-base-url">API Base URL</label>
               <CompactInput id="onb-base-url" type="url" value={baseUrl} onInput={setBaseUrl} />
             </div>
-            <div className="ai0-field">
-              <label>API Key（存入本地密钥保险箱，留空将使用本地离线引擎）</label>
+            <div className="ai0-onboarding-field">
+              <label htmlFor="onb-api-key">API Key</label>
               <CompactInput
                 id="onb-api-key"
                 type="password"
@@ -178,13 +196,14 @@ function OnboardingWizardOverlay(props: {
                 value={apiKey}
                 onInput={setApiKey}
               />
+              <small>存入本地密钥保险箱。留空时使用本地离线引擎。</small>
             </div>
           </section>
 
-          <section className="ai0-card">
-            <h3>2. 设定基础角色档案</h3>
-            <div className="ai0-field">
-              <label>角色名称</label>
+          <section className="ai0-onboarding-section">
+            <h3>角色档案</h3>
+            <div className="ai0-onboarding-field">
+              <label htmlFor="onb-display-name">角色名称</label>
               <CompactInput
                 id="onb-display-name"
                 type="text"
@@ -192,8 +211,8 @@ function OnboardingWizardOverlay(props: {
                 onInput={setDisplayName}
               />
             </div>
-            <div className="ai0-field">
-              <label>核心性格定义（稍后支持在角色卡片页导入蒸馏包覆盖）</label>
+            <div className="ai0-onboarding-field">
+              <label htmlFor="onb-persona-prompt">核心性格定义</label>
               <CompactInput
                 id="onb-persona-prompt"
                 multiline={true}
@@ -205,15 +224,16 @@ function OnboardingWizardOverlay(props: {
           </section>
         </div>
 
-        <section className="ai0-card">
-          <h3>3. 选择默认关系契约模板（自动联动主动频率与交互姿态）</h3>
-          <div className="ai0-grid-3" id="onb-role-grid">
+        <section className="ai0-onboarding-section">
+          <h3>默认关系契约</h3>
+          <div className="ai0-onboarding-roles" id="onb-role-grid">
             {roles.map((item) => (
-              <button
+              <ButtonBase
                 key={item.id}
                 type="button"
                 className={`ai0-role-card${item.id === selectedRole ? " is-selected" : ""}`}
                 data-onb-role={item.id}
+                aria-pressed={item.id === selectedRole}
                 onClick={() => setSelectedRole(item.id as typeof selectedRole)}
               >
                 <span className="ai0-role-card__title">
@@ -221,14 +241,14 @@ function OnboardingWizardOverlay(props: {
                   <span>{item.label}</span>
                 </span>
                 <small>{item.desc}</small>
-              </button>
+              </ButtonBase>
             ))}
           </div>
         </section>
 
-        <footer style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+        <footer className="ai0-onboarding-footer">
           <small>数据严格持久化于本地 .soul 目录，零云端强制绑定。</small>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div className="ai0-onboarding-actions">
             <RippleButton variant="secondary" data-close-onboarding="true" onClick={props.onClose}>
               取消
             </RippleButton>
@@ -243,12 +263,11 @@ function OnboardingWizardOverlay(props: {
             </RippleButton>
           </div>
         </footer>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
-export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
+function ConsoleShell(props: ConsoleAppOptions): ReactElement {
   const ctx = useConsole();
   const location = useLocation();
 
@@ -262,26 +281,49 @@ export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
     props.appearance ?? ctx?.appearance ?? studio?.systemSettings.appearance ?? "light";
   const mode = props.mode ?? ctx?.mode ?? "live";
   const navRailMode = props.navRailMode ?? ctx?.navRailMode ?? "expanded";
-  const inspectorMode = props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
-  const activeDomain = resolveConsoleRoute(pathname)?.domainId ?? "dashboard";
+  const route = resolveConsoleRoute(pathname);
+  const dedicatedChat = route?.id === "shells.stage" && route.params.shellPluginId === "builtin.webchat";
+  const inspectorMode = dedicatedChat ? "mini" : props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
+  const activeDomain = route?.domainId ?? "dashboard";
   const targetInstance = mode === "live" ? "live" : "sandbox:console";
+  const smallNav = useMediaQuery("(max-width: 1079px)");
+  const overlayInspector = useMediaQuery(inspectorMode === "sandbox-diff" ? "(max-width: 1450px)" : "(max-width: 1310px)");
+  const reduced = useReducedMotion();
+  const [navOpen, setNavOpen] = useState(false);
+  const [guardSaving, setGuardSaving] = useState(false);
+  const approving = useRef(false);
+  const [approvalPending, setApprovalPending] = useState(false);
+  const [compare, setCompare] = useState<{ live?: ConsoleLiveSnapshot; sandbox?: ConsoleLiveSnapshot }>({});
+  const refreshSnapshot = ctx?.refreshSnapshot;
+
+  useEffect(() => {
+    if (inspectorMode !== "sandbox-diff" || !refreshSnapshot || props.snapshot) return;
+    let active = true;
+    void Promise.all([refreshSnapshot("live"), refreshSnapshot("sandbox")]).then(([live, sandbox]) => {
+      if (active) setCompare({ live, sandbox });
+    });
+    return () => { active = false; };
+  }, [inspectorMode, refreshSnapshot, props.snapshot]);
+
   const approvals = buildPendingApprovals(snapshot);
   const souls = snapshot?.availableSouls?.map((s) => ({
     value: s.id,
     label: s.name
   }));
-  const moodStr = snapshot
-    ? `${snapshot.moodValence >= 0 ? "+" : ""}${snapshot.moodValence.toFixed(2)}`
-    : "+0.48";
-  const bioPct = snapshot ? Math.round(snapshot.circadianEnergy * 100) : 86;
-  const metaPct = snapshot ? Math.round(snapshot.metabolicEnergy * 100) : 91;
+  const vitalSummary = snapshot ? [
+    `心境 ${snapshot.moodValence >= 0 ? "+" : ""}${snapshot.moodValence.toFixed(2)}`,
+    `节律 ${Math.round(snapshot.circadianEnergy * 100)}%`,
+    `预算 ${Math.round(snapshot.metabolicEnergy * 100)}%`
+  ].join(" · ") : undefined;
 
   const handleApproval = async (
     id: string,
     kind: "growth" | "task" | undefined,
     approve: boolean
   ): Promise<void> => {
-    if (!ctx) return;
+    if (!ctx || mode !== "live" || approving.current) return;
+    approving.current = true;
+    setApprovalPending(true);
     try {
       if (kind === "task") {
         await ctx.postStudio("/api/studio/co-work-task", {
@@ -299,8 +341,20 @@ export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
       await ctx.refreshSnapshot();
     } catch (err) {
       ctx.showToast(`操作失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      approving.current = false;
+      setApprovalPending(false);
     }
   };
+
+  const inspector = <PolymorphicContextInspector
+    mode={inspectorMode}
+    trace={snapshot?.latestTrace}
+    baselineTrace={(mode === "live" ? snapshot : compare.live)?.latestTrace}
+    sandboxTrace={(mode === "sandbox" ? snapshot : compare.sandbox)?.latestTrace}
+    onModeChange={ctx?.setInspectorMode}
+  />;
+  const dirty = ctx?.dirtyNavigation;
 
   return (
     <div
@@ -311,6 +365,8 @@ export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
       data-sovereignty-mode={mode}
       data-nav-rail-mode={navRailMode}
       data-inspector-mode={inspectorMode}
+      data-overlay-inspector={overlayInspector}
+      data-compact-navigation={smallNav}
     >
       <SovereigntyViewportFrame
         targetInstance={targetInstance}
@@ -324,50 +380,77 @@ export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
             soulTheme={soulTheme}
             appearance={appearance}
             stateRev={snapshot?.stateRev}
-            vitalSummary={`心境 ${moodStr} · 节律 ${bioPct}% · 预算 ${metaPct}%`}
+            vitalSummary={vitalSummary}
             approvals={approvals}
+            pending={approvalPending}
             approvalsOpen={ctx?.approvalsOpen ?? false}
             onTargetModeChange={(nextMode) => ctx?.setMode(nextMode)}
             onSoulThemeChange={(nextTheme) => void ctx?.setSoulTheme(nextTheme)}
             onToggleAppearance={() => void ctx?.toggleAppearance()}
             onOpenOnboarding={() => ctx?.setOnboardingOpen(true)}
+            onOpenNavigation={() => setNavOpen(true)}
             onOpenCommandPalette={() => ctx?.setPaletteOpen(true)}
             onToggleApprovals={() => ctx?.setApprovalsOpen(!(ctx?.approvalsOpen ?? false))}
             onClose={() => ctx?.setApprovalsOpen(false)}
             onApprove={(id, kind) => void handleApproval(id, kind, true)}
             onReject={(id, kind) => void handleApproval(id, kind, false)}
             onNavigate={(path) => ctx?.navigateConsole(path)}
+            hrefFor={ctx?.getConsoleHref}
           />
         }
         navigationRail={
           <div data-shell-slot="navigation">
             <PolymorphicNavRail
-              mode={navRailMode}
+              mode={smallNav ? "mini" : navRailMode}
               activeDomain={activeDomain}
               activePath={pathname}
               onModeChange={(nextRail) => ctx?.setNavRailMode(nextRail)}
               onNavigate={(path) => ctx?.navigateConsole(path)}
+              hrefFor={ctx?.getConsoleHref}
             />
           </div>
         }
         main={
           <div data-shell-slot="main">
+            {!dedicatedChat && ctx?.loading ? <LinearProgress className="ai0-bootstrap-progress" aria-label="正在连接守护进程" /> : null}
+            {!dedicatedChat && ctx?.error ? (
+              <Alert severity={snapshot ? "warning" : "error"} className="ai0-connection-notice"
+                action={<RippleButton size="sm" onClick={ctx.retryBootstrap}>重新连接</RippleButton>}>
+                {snapshot ? "未能刷新，正在显示最近一次数据。" : "暂时无法连接守护进程。"} {ctx.error}
+              </Alert>
+            ) : null}
             {renderRoutePageView(pathname, snapshot, (path) => ctx?.navigateConsole(path))}
           </div>
         }
         contextInspector={
-          <div data-shell-slot="inspector">
-            <PolymorphicContextInspector
-              mode={inspectorMode}
-              trace={snapshot?.latestTrace}
-              baselineTrace={snapshot?.latestTrace}
-              sandboxTrace={snapshot?.recentTraces[1] ?? snapshot?.latestTrace}
-              onModeChange={(nextInspector) => ctx?.setInspectorMode(nextInspector)}
-            />
-          </div>
+          <div data-shell-slot="inspector">{overlayInspector ? null : inspector}</div>
         }
         overlays={
           <div>
+            <Drawer open={smallNav && navOpen} onClose={() => setNavOpen(false)} transitionDuration={reduced ? 0 : 220}
+              slotProps={{ paper: { className: "ai0-mobile-nav-drawer", "aria-label": "控制台导航" } }}>
+              <header className="ai0-drawer-title"><h2>工作区</h2><RippleButton size="sm" variant="ghost" ariaLabel="关闭导航" onClick={() => setNavOpen(false)}>{renderConsoleIcon("close")}</RippleButton></header>
+              <PolymorphicNavRail mode="expanded" activeDomain={activeDomain} activePath={pathname} hrefFor={ctx?.getConsoleHref}
+                onNavigate={(path) => { setNavOpen(false); ctx?.navigateConsole(path); }} />
+            </Drawer>
+            <Drawer anchor="right" open={overlayInspector && inspectorMode !== "mini"}
+              onClose={() => ctx?.setInspectorMode("mini")} transitionDuration={reduced ? 0 : 220}
+              slotProps={{ paper: { className: "ai0-mobile-inspector-drawer", "aria-label": "运行检视" } }}>
+              {overlayInspector ? inspector : null}
+            </Drawer>
+            <Dialog open={Boolean(dirty)} onClose={() => { if (!guardSaving) dirty?.stay(); }} aria-labelledby="ai0-dirty-title">
+              <DialogTitle id="ai0-dirty-title">有未保存的更改</DialogTitle>
+              <DialogContent>保存当前编辑内容后再切换工作区，或放弃这次更改。</DialogContent>
+              <DialogActions>
+                <RippleButton variant="ghost" disabled={guardSaving} onClick={dirty?.stay}>继续编辑</RippleButton>
+                <RippleButton variant="danger" disabled={guardSaving} onClick={dirty?.discard}>放弃更改</RippleButton>
+                <RippleButton variant="primary" loading={guardSaving} onClick={() => {
+                  if (!dirty || guardSaving) return;
+                  setGuardSaving(true);
+                  void dirty.save().finally(() => setGuardSaving(false));
+                }}>保存并离开</RippleButton>
+              </DialogActions>
+            </Dialog>
             <CommandPaletteModal
               open={ctx?.paletteOpen ?? false}
               onNavigate={(path) => ctx?.navigateConsole(path)}
@@ -378,14 +461,9 @@ export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
               snapshot={snapshot}
               onClose={() => ctx?.setOnboardingOpen(false)}
             />
-            <div
-              id="ai0-toast"
-              className={`ai0-toast${ctx?.toastMessage ? " is-visible" : ""}`}
-              role="status"
-              aria-live="polite"
-            >
-              {ctx?.toastMessage ?? ""}
-            </div>
+            <Snackbar open={Boolean(ctx?.toastMessage)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
+              <div className="ai0-console-notification" role="status" aria-live="polite">{ctx?.toastMessage}</div>
+            </Snackbar>
           </div>
         }
       />
@@ -393,10 +471,25 @@ export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
   );
 }
 
+export function ConsoleApp(props: ConsoleAppOptions = {}): ReactElement {
+  const ctx = useConsole();
+  const appearance = props.appearance ?? ctx?.appearance ?? "light";
+  return (
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={consoleMaterialThemes[appearance]}>
+        <MotionConfig reducedMotion="user">
+          <LazyMotion features={domAnimation}><ConsoleShell {...props} /></LazyMotion>
+        </MotionConfig>
+      </ThemeProvider>
+    </StyledEngineProvider>
+  );
+}
+
 export function renderConsoleApp(options: ConsoleAppOptions = {}): ReactElement {
   const initialPath = options.pathname ?? "/dashboard";
-  return (
-    <MemoryRouter initialEntries={[initialPath]}>
+  const router = createMemoryRouter([{
+    path: "*",
+    element: (
       <ConsoleProvider
         initialSnapshot={options.snapshot}
         initialOwnerToken={options.ownerToken}
@@ -409,6 +502,7 @@ export function renderConsoleApp(options: ConsoleAppOptions = {}): ReactElement 
       >
         <ConsoleApp {...options} />
       </ConsoleProvider>
-    </MemoryRouter>
-  );
+    )
+  }], { initialEntries: [initialPath] });
+  return <RouterProvider router={router} />;
 }

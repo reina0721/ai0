@@ -24,7 +24,7 @@ const ROUTES = [
   { methods: ["POST"], pattern: /^\/api\/admin\/v1\/sandbox\/fork$/, operation: "sandbox.fork" },
   { methods: ["POST"], pattern: /^\/api\/admin\/v1\/sandbox\/inject$/, operation: "sandbox.inject" },
   { methods: ["POST"], pattern: /^\/api\/admin\/v1\/sandbox\/scenarios\/run$/, operation: "sandbox.scenarios.run" },
-  { methods: ["POST"], pattern: /^\/api\/admin\/v1\/system\/snapshots\/rollback$/, operation: "system.snapshots.rollback" },
+  { methods: ["GET", "POST"], pattern: /^\/api\/admin\/v1\/system\/snapshots\/rollback$/, operation: "system.snapshots.rollback" },
   { methods: ["GET", "POST"], pattern: /^\/api\/admin\/v1\/system\/safety-sb243$/, operation: "system.safetySb243" }
 ] as const;
 

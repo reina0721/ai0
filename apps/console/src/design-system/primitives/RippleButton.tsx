@@ -1,24 +1,7 @@
-import type { CSSProperties, PointerEvent, ReactElement, ReactNode } from "react";
-
-export function computePointerRippleGeometry(
-  clientX: number,
-  clientY: number,
-  rect: { left: number; top: number; width: number; height: number }
-): { x: number; y: number; radius: number } {
-  const x = clientX - rect.left;
-  const y = clientY - rect.top;
-  const radius = Math.hypot(Math.max(x, rect.width - x), Math.max(y, rect.height - y));
-  return { x, y, radius };
-}
-
-export interface RipplePointerEvent {
-  clientX: number;
-  clientY: number;
-  currentTarget: {
-    getBoundingClientRect(): { left: number; top: number; width: number; height: number };
-    style?: { setProperty(name: string, value: string): void };
-  };
-}
+import ButtonBase from "@mui/material/ButtonBase";
+import { useReducedMotion } from "motion/react";
+import type { CSSProperties, PointerEvent, ReactElement, ReactNode, Ref } from "react";
+import { dataAttributes } from "./dom-props.js";
 
 export interface RippleButtonProps {
   children?: ReactNode;
@@ -29,53 +12,41 @@ export interface RippleButtonProps {
   loading?: boolean;
   className?: string;
   ariaLabel?: string;
+  ariaExpanded?: boolean;
+  ariaHasPopup?: "menu" | "dialog";
+  autoFocus?: boolean;
   title?: string;
   style?: CSSProperties;
+  ref?: Ref<HTMLButtonElement>;
   onClick?: () => void;
-  onPointerDown?: (event: RipplePointerEvent) => void;
-  onRipple?: (geometry: { x: number; y: number; radius: number }) => void;
+  onPointerDown?: (event: PointerEvent<HTMLButtonElement>) => void;
   [dataAttr: `data-${string}`]: string | number | boolean | undefined;
 }
 
 export function RippleButton(props: RippleButtonProps): ReactElement {
-  const disabled = props.disabled === true || props.loading === true;
-  const dataAttrs: Record<string, string | number | boolean | undefined> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith("data-")) dataAttrs[key] = value as string | number | boolean | undefined;
-  }
-
-  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>): void => {
-    const geometry = computePointerRippleGeometry(
-      event.clientX,
-      event.clientY,
-      event.currentTarget.getBoundingClientRect()
-    );
-    event.currentTarget.style.setProperty("--ai0-ripple-x", `${geometry.x}px`);
-    event.currentTarget.style.setProperty("--ai0-ripple-y", `${geometry.y}px`);
-    event.currentTarget.style.setProperty("--ai0-ripple-radius", `${geometry.radius}px`);
-    props.onRipple?.(geometry);
-    props.onPointerDown?.(event);
-  };
-
+  const reduced = useReducedMotion();
   return (
-    <button
-      {...dataAttrs}
-      data-variant={props.variant}
+    <ButtonBase
+      {...dataAttributes(props)}
+      ref={props.ref}
+      focusRipple
+      disableRipple={reduced === true}
+      data-variant={props.variant ?? "secondary"}
       data-size={props.size ?? "md"}
       type={props.type ?? "button"}
-      disabled={disabled}
+      disabled={props.disabled || props.loading}
       title={props.title}
       aria-label={props.ariaLabel}
+      aria-expanded={props.ariaExpanded}
+      aria-haspopup={props.ariaHasPopup}
+      autoFocus={props.autoFocus}
       aria-busy={props.loading || undefined}
-      className={`ai0-ripple-btn${props.variant === "primary" ? " is-primary" : ""}${props.className ? ` ${props.className}` : ""}`}
-      style={{ height: props.size === "sm" ? "28px" : "32px", ...props.style }}
+      className={"ai0-ripple-btn " + (props.className ?? "")}
+      style={props.style}
       onClick={props.onClick}
-      onPointerDown={handlePointerDown}
+      onPointerDown={props.onPointerDown}
     >
-      <span className="ai0-ripple-btn__ripple" aria-hidden="true" />
-      <span className="ai0-ripple-btn__content">
-        {props.loading ? "处理中…" : props.children}
-      </span>
-    </button>
+      <span className="ai0-ripple-btn__content">{props.loading ? "处理中…" : props.children}</span>
+    </ButtonBase>
   );
 }

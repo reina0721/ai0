@@ -1,4 +1,8 @@
-import { useEffect, useState, type MouseEvent, type ReactElement } from "react";
+import {
+  WorkspaceChoice, WorkspaceDiff, WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspaceLink,
+  WorkspacePage, WorkspaceRow, WorkspaceSection, WorkspaceSplit, WorkspaceStatus
+} from "./workspace-layout.js";
+import { useState, type MouseEvent, type ReactElement } from "react";
 
 import { useConsole } from "../context/ConsoleContext.js";
 import {
@@ -12,6 +16,8 @@ import { MainRoundedCardOutlet } from "../design-system/shell/index.js";
 import { renderConsoleIcon, type ConsoleIconName } from "../design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
 import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
+import { LorebookWorkspace } from "./soul-lorebook-workspace.js";
+import { useWorkspaceDraft, useWorkspaceSave, WorkspaceConfirm, WorkspaceHeader, WorkspaceSaveButton } from "./workspace.js";
 
 export interface Domain3SoulPageProps {
   pathname: string;
@@ -25,12 +31,12 @@ const ARCHETYPE_CARDS: ReadonlyArray<{
   label: string;
   desc: string;
 }> = [
-  { id: "romantic_partner", icon: "heart", label: "亲密伴侣", desc: "高情感细腻度与纪念日追踪，严格遵循反操控与离场零挽留边界" },
-  { id: "best_friend", icon: "smile", label: "日常挚友", desc: "松弛自然的交流节奏，兼顾日常留白与低频主动关怀" },
-  { id: "digital_employee", icon: "briefcase", label: "专业助理", desc: "自动调用 SubAgent、知识库与代码工具，提供结构化任务协作" },
-  { id: "study_classmate", icon: "graduation-cap", label: "学习同伴", desc: "文献拆解、知识库归纳与学习进度协同复盘" },
-  { id: "vtuber_partner", icon: "mic", label: "互动搭档", desc: "强喜剧节奏与留白控制，公开场景自动开启 70% 社交面具隔离" }
-];
+    { id: "romantic_partner", icon: "heart", label: "亲密伴侣", desc: "高情感细腻度与纪念日追踪，严格遵循反操控与离场零挽留边界" },
+    { id: "best_friend", icon: "smile", label: "日常挚友", desc: "松弛自然的交流节奏，兼顾日常留白与低频主动关怀" },
+    { id: "digital_employee", icon: "briefcase", label: "专业助理", desc: "自动调用 SubAgent、知识库与代码工具，提供结构化任务协作" },
+    { id: "study_classmate", icon: "graduation-cap", label: "学习同伴", desc: "文献拆解、知识库归纳与学习进度协同复盘" },
+    { id: "vtuber_partner", icon: "mic", label: "互动搭档", desc: "强喜剧节奏与留白控制，公开场景自动开启 70% 社交面具隔离" }
+  ];
 
 const DEFAULT_ANCHORS = [
   { hour: 0, energy: 0.22 },
@@ -59,54 +65,79 @@ const SAMPLE_CARD_JSON = JSON.stringify(
 export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
   const ctx = useConsole();
   const route = resolveConsoleRoute(props.pathname);
+  const routeId = route?.id;
   const snap = props.snapshot ?? ctx?.snapshot;
   const studio = snap?.studioConfig;
   const soul = studio?.soulStudio;
 
-  // Bio-rhythm & temperament state
-  const [anchors, setAnchors] = useState(soul?.circadianAnchors ?? DEFAULT_ANCHORS);
-  const [sensitivity, setSensitivity] = useState(soul?.temperament.emotionSensitivity ?? 1.0);
-  const [moodHalfLife, setMoodHalfLife] = useState(soul?.temperament.moodHalfLifeHours ?? 12);
-  const [tensionHalfLife, setTensionHalfLife] = useState(soul?.temperament.tensionHalfLifeHours ?? 24);
-  const [maxProactive, setMaxProactive] = useState(soul?.temperament.maxDailyProactive ?? 3);
-  const [gapMoe, setGapMoe] = useState(soul?.temperament.gapMoeIntensity ?? 68);
-  const [baseMood, setBaseMood] = useState(soul?.temperament.baseMoodValence ?? 0.28);
-  const [loreQuery, setLoreQuery] = useState("");
-  const [loreOutput, setLoreOutput] = useState("");
-
-  // Distiller & Persona state
+  const bio = useWorkspaceDraft({
+    anchors: soul?.circadianAnchors ?? DEFAULT_ANCHORS,
+    sensitivity: soul?.temperament.emotionSensitivity ?? 1,
+    moodHalfLife: soul?.temperament.moodHalfLifeHours ?? 12,
+    tensionHalfLife: soul?.temperament.tensionHalfLifeHours ?? 24,
+    maxProactive: soul?.temperament.maxDailyProactive ?? 3,
+    gapMoe: soul?.temperament.gapMoeIntensity ?? 68,
+    baseMood: soul?.temperament.baseMoodValence ?? 0.28,
+    dndStartHour: soul?.dndStartHour ?? 0,
+    dndEndHour: soul?.dndEndHour ?? 7
+  });
+  const identity = useWorkspaceDraft({
+    selectedRole: soul?.primaryRole ?? "best_friend" as string,
+    autoSwitchByVenue: soul?.autoSwitchByVenue ?? true,
+    displayName: soul?.displayName ?? "Mio",
+    ontologicalMode: soul?.ontologicalMode ?? "poetic_honest",
+    corePrompt: soul?.corePersonalityPrompt ?? "",
+    catchphrases: (soul?.catchphrases ?? []).join(" / "),
+    bannedCliches: (soul?.bannedCliches ?? []).join(" / ")
+  });
+  const { anchors, sensitivity, moodHalfLife, tensionHalfLife, maxProactive, gapMoe, baseMood, dndStartHour, dndEndHour } = bio.value;
+  const { selectedRole, autoSwitchByVenue, displayName, ontologicalMode, corePrompt, catchphrases, bannedCliches } = identity.value;
+  const setBio = <K extends keyof typeof bio.value>(key: K, value: (typeof bio.value)[K]) =>
+    bio.setValue((previous) => ({ ...previous, [key]: value }));
+  const setIdentity = <K extends keyof typeof identity.value>(key: K, value: (typeof identity.value)[K]) =>
+    identity.setValue((previous) => ({ ...previous, [key]: value }));
   const [cardJson, setCardJson] = useState(SAMPLE_CARD_JSON);
+  const [distillRole, setDistillRole] = useState("");
   const [distillSummary, setDistillSummary] = useState<{
     name: string;
     voiceCount: number;
     loreCount: number;
     scrubbed: string[];
   } | null>(null);
-  const [selectedRole, setSelectedRole] = useState<string>(soul?.primaryRole ?? "best_friend");
-  const [autoSwitchByVenue, setAutoSwitchByVenue] = useState(soul?.autoSwitchByVenue ?? true);
-  const [displayName, setDisplayName] = useState(soul?.displayName ?? "Mio");
-  const [ontologicalMode, setOntologicalMode] = useState(soul?.ontologicalMode ?? "poetic_honest");
-  const [corePrompt, setCorePrompt] = useState(soul?.corePersonalityPrompt ?? "");
-  const [catchphrases, setCatchphrases] = useState((soul?.catchphrases ?? []).join(" / "));
-  const [bannedCliches, setBannedCliches] = useState((soul?.bannedCliches ?? []).join(" / "));
-
-  useEffect(() => {
-    if (!soul) return;
-    setAnchors(soul.circadianAnchors);
-    setSensitivity(soul.temperament.emotionSensitivity);
-    setMoodHalfLife(soul.temperament.moodHalfLifeHours);
-    setTensionHalfLife(soul.temperament.tensionHalfLifeHours);
-    setMaxProactive(soul.temperament.maxDailyProactive);
-    setGapMoe(soul.temperament.gapMoeIntensity);
-    setBaseMood(soul.temperament.baseMoodValence);
-    setSelectedRole(soul.primaryRole);
-    setAutoSwitchByVenue(soul.autoSwitchByVenue);
-    setDisplayName(soul.displayName);
-    setOntologicalMode(soul.ontologicalMode);
-    setCorePrompt(soul.corePersonalityPrompt);
-    setCatchphrases(soul.catchphrases.join(" / "));
-    setBannedCliches(soul.bannedCliches.join(" / "));
-  }, [soul]);
+  const [distilling, setDistilling] = useState(false);
+  const [confirmApply, setConfirmApply] = useState(false);
+  const splitChips = (value: string) => value.split(/[/,，]+/u).map((chip) => chip.trim()).filter(Boolean);
+  const bioForm = useWorkspaceSave(routeId === "soul.homeostasis" ? routeId : undefined, bio.dirty, bio.discard,
+    async () => {
+      await ctx?.postStudio("config", {
+        soulStudio: {
+          circadianAnchors: anchors,
+          dndStartHour, dndEndHour,
+          temperament: {
+            emotionSensitivity: sensitivity,
+            moodHalfLifeHours: moodHalfLife,
+            tensionHalfLifeHours: tensionHalfLife,
+            maxDailyProactive: maxProactive,
+            gapMoeIntensity: gapMoe,
+            baseMoodValence: baseMood
+          }
+        }
+      });
+    }, "节律与情绪动力学参数已保存", bio.accept);
+  const identityForm = useWorkspaceSave(routeId === "soul.persona" ? routeId : undefined, identity.dirty, identity.discard,
+    async () => {
+      await ctx?.postStudio("config", {
+        soulStudio: {
+          displayName: displayName.trim() || "Mio",
+          primaryRole: selectedRole,
+          autoSwitchByVenue,
+          ontologicalMode,
+          corePersonalityPrompt: corePrompt,
+          catchphrases: splitChips(catchphrases),
+          bannedCliches: splitChips(bannedCliches)
+        }
+      });
+    }, "角色设定与关系契约已保存", identity.accept);
 
   const navClick = (path: string) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (props.onNavigate || ctx) {
@@ -116,86 +147,45 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
     }
   };
 
-  // Circadian Rhythm, Second-Order Affect & Lorebook
-  if (route?.id === "soul.homeostasis" || route?.id === "soul.lorebooks") {
-    const lorebooks = soul?.lorebooks ?? [];
+  if (routeId === "soul.lorebooks") {
+    return (
+      <MainRoundedCardOutlet domainId="soul" activePath={props.pathname} onNavigate={props.onNavigate}>
+        <LorebookWorkspace key={ctx?.targetInstance} entries={soul?.lorebooks} />
+      </MainRoundedCardOutlet>
+    );
+  }
+
+  if (routeId === "soul.homeostasis") {
     const polyline = anchors
       .map((a) => `${((a.hour / 23) * 560 + 20).toFixed(1)},${(130 - a.energy * 100).toFixed(1)}`)
       .join(" ");
 
-    const handleSaveBioLore = async () => {
-      if (!ctx) return;
-      try {
-        await ctx.postStudio("/api/studio/config", {
-          soulStudio: {
-            circadianAnchors: anchors,
-            temperament: {
-              emotionSensitivity: sensitivity,
-              moodHalfLifeHours: moodHalfLife,
-              tensionHalfLifeHours: tensionHalfLife,
-              maxDailyProactive: maxProactive,
-              gapMoeIntensity: gapMoe,
-              baseMoodValence: baseMood
-            }
-          }
-        });
-        await ctx.refreshSnapshot();
-        ctx.showToast("节律与情绪动力学参数已保存");
-      } catch (err) {
-        ctx.showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
-      }
-    };
-
-    const handleRunLoreSim = () => {
-      const text = loreQuery.trim();
-      const matched = lorebooks.filter((entry) => entry.enabled && entry.keys.some((k) => text.includes(k)));
-      setLoreOutput(
-        matched.length
-          ? `命中 ${matched.length} 条世界书词条：${matched.map((m) => `${m.title} (${m.tokenBudget} tok)`).join("、")}`
-          : "未命中任何词条（当前零上下文 Token 占用）。"
-      );
-    };
-
     return (
       <MainRoundedCardOutlet domainId="soul" activePath={props.pathname} onNavigate={props.onNavigate}>
-        <div className="ai0-page" data-bio-lorebook-page="true">
-          <header className="ai0-page-header">
-            <div className="ai0-page-header__title">
-              <h1>节律与世界书</h1>
-            </div>
-            <div className="ai0-page-header__actions">
-              <RippleButton
-                variant="primary"
-                data-save-bio-lore="true"
-                onClick={() => void handleSaveBioLore()}
-              >
-                {renderConsoleIcon("save", 14)}
-                <span>保存参数</span>
-              </RippleButton>
-            </div>
-          </header>
+        <WorkspacePage data-bio-lorebook-page="true">
+          <WorkspaceHeader title="节律与情绪动力学">
 
-          <div className="ai0-grid-2">
-            <section className="ai0-card is-elevated">
-              <div className="ai0-card__head">
+            <WorkspaceSaveButton form={bioForm} name="保存参数" />
+
+          </WorkspaceHeader>
+
+          <WorkspaceGrid columns={2}>
+            <WorkspaceSection>
+              <WorkspaceRow>
                 <h2>24 小时作息活力曲线</h2>
-                <span className="ai0-badge" data-tone="info">
-                  免打扰 {soul?.dndStartHour ?? 0}:00 - {soul?.dndEndHour ?? 7}:00
-                </span>
-              </div>
+                <WorkspaceStatus data-tone="info">
+                  免打扰 {dndStartHour}:00 - {dndEndHour}:00
+                </WorkspaceStatus>
+              </WorkspaceRow>
               <svg
                 viewBox="0 0 600 155"
-                style={{
-                  width: "100%",
-                  height: "150px",
-                  background: "var(--ai0-surface-container-low)",
-                  borderRadius: "10px",
-                  border: "var(--ai0-border-subtle)"
-                }}
+                role="img"
+                aria-label="24 小时作息活力曲线"
+                className="ai0-workspace-chart"
               >
-                <line x1="20" y1="30" x2="580" y2="30" stroke="var(--ai0-surface-container-high)" strokeWidth="1" />
-                <line x1="20" y1="80" x2="580" y2="80" stroke="var(--ai0-surface-container-high)" strokeWidth="1" />
-                <line x1="20" y1="130" x2="580" y2="130" stroke="var(--ai0-surface-container-high)" strokeWidth="1" />
+                <line x1="20" y1="30" x2="580" y2="30" stroke="var(--ai0-line)" strokeWidth="1" />
+                <line x1="20" y1="80" x2="580" y2="80" stroke="var(--ai0-line)" strokeWidth="1" />
+                <line x1="20" y1="130" x2="580" y2="130" stroke="var(--ai0-line)" strokeWidth="1" />
                 <polyline
                   id="circadian-curve-line"
                   fill="none"
@@ -212,7 +202,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                       cx={(a.hour / 23) * 560 + 20}
                       cy={130 - a.energy * 100}
                       r="4.5"
-                      fill="var(--ai0-surface-main-card)"
+                      fill="var(--ai0-surface-workspace)"
                       stroke="var(--ai0-accent)"
                       strokeWidth="2.2"
                     />
@@ -228,7 +218,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                   </g>
                 ))}
               </svg>
-              <div className="ai0-grid-3">
+              <WorkspaceGrid columns={3}>
                 {anchors.map((a, idx) => (
                   <TonalSlider
                     key={a.hour}
@@ -237,24 +227,26 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                     max={100}
                     value={Math.round(a.energy * 100)}
                     unit="%"
+                    disabled={!bioForm.canWrite}
                     data-circadian-idx={String(idx)}
                     data-circadian-hour={String(a.hour)}
                     onInput={(pct) =>
-                      setAnchors((prev) =>
-                        prev.map((item, i) => (i === idx ? { ...item, energy: pct / 100 } : item))
-                      )
+                      bio.setValue((state) => ({
+                        ...state,
+                        anchors: state.anchors.map((item, i) => i === idx ? { ...item, energy: pct / 100 } : item)
+                      }))
                     }
                   />
                 ))}
-              </div>
-            </section>
+              </WorkspaceGrid>
+            </WorkspaceSection>
 
-            <section className="ai0-card is-elevated">
-              <div className="ai0-card__head">
+            <WorkspaceSection>
+              <WorkspaceRow>
                 <h2>情绪动力学参数</h2>
-                <span className="ai0-badge" data-tone="good">离场零挽留</span>
-              </div>
-              <div className="ai0-grid-2">
+                <WorkspaceStatus data-tone="good">离场零挽留</WorkspaceStatus>
+              </WorkspaceRow>
+              <WorkspaceGrid columns={2}>
                 <TonalSlider
                   id="temp-sensitivity"
                   label="情绪灵敏度"
@@ -263,9 +255,10 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                   step={0.1}
                   value={sensitivity}
                   unit="x"
-                  onInput={setSensitivity}
+                  disabled={!bioForm.canWrite}
+                  onInput={(value) => setBio("sensitivity", value)}
                 />
-                <div className="ai0-field">
+                <WorkspaceField>
                   <label>心境半衰期 (h)</label>
                   <CompactInput
                     id="temp-mood-hl"
@@ -273,10 +266,11 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                     min={1}
                     max={72}
                     value={moodHalfLife}
-                    onInput={(v) => setMoodHalfLife(Number(v) || 12)}
+                    disabled={!bioForm.canWrite}
+                    onInput={(v) => setBio("moodHalfLife", Number(v) || 12)}
                   />
-                </div>
-                <div className="ai0-field">
+                </WorkspaceField>
+                <WorkspaceField>
                   <label>张力半衰期 (h)</label>
                   <CompactInput
                     id="temp-tension-hl"
@@ -284,10 +278,11 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                     min={2}
                     max={168}
                     value={tensionHalfLife}
-                    onInput={(v) => setTensionHalfLife(Number(v) || 24)}
+                    disabled={!bioForm.canWrite}
+                    onInput={(v) => setBio("tensionHalfLife", Number(v) || 24)}
                   />
-                </div>
-                <div className="ai0-field">
+                </WorkspaceField>
+                <WorkspaceField>
                   <label>每日主动上限</label>
                   <CompactInput
                     id="temp-proactive"
@@ -295,9 +290,10 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                     min={0}
                     max={20}
                     value={maxProactive}
-                    onInput={(v) => setMaxProactive(Number(v) || 0)}
+                    disabled={!bioForm.canWrite}
+                    onInput={(v) => setBio("maxProactive", Number(v) || 0)}
                   />
-                </div>
+                </WorkspaceField>
                 <TonalSlider
                   id="temp-gap-moe"
                   label="潜台词张力"
@@ -305,9 +301,10 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                   max={100}
                   value={gapMoe}
                   unit="%"
-                  onInput={setGapMoe}
+                  disabled={!bioForm.canWrite}
+                  onInput={(value) => setBio("gapMoe", value)}
                 />
-                <div className="ai0-field">
+                <WorkspaceField>
                   <label>基准心境值</label>
                   <CompactInput
                     id="temp-base-mood"
@@ -316,61 +313,33 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                     min={-0.8}
                     max={0.8}
                     value={baseMood}
-                    onInput={(v) => setBaseMood(Number(v) || 0)}
+                    disabled={!bioForm.canWrite}
+                    onInput={(v) => setBio("baseMood", Number(v) || 0)}
                   />
-                </div>
-              </div>
-            </section>
-          </div>
+                </WorkspaceField>
+              </WorkspaceGrid>
+            </WorkspaceSection>
+          </WorkspaceGrid>
 
-          <section className="ai0-card is-elevated">
-            <div className="ai0-card__head">
-              <h2>世界书 (Lorebook)</h2>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <div style={{ width: "300px" }}>
-                  <CompactInput
-                    id="lore-sim-input"
-                    type="text"
-                    value={loreQuery}
-                    onInput={setLoreQuery}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleRunLoreSim();
-                    }}
-                    placeholder="输入关键词测试命中..."
-                  />
-                </div>
-                <RippleButton variant="primary" data-run-lore-sim="true" onClick={handleRunLoreSim}>
-                  {renderConsoleIcon("search", 14)}
-                  <span>测试命中</span>
-                </RippleButton>
-              </div>
-            </div>
-            <div id="lore-sim-output" style={{ fontSize: "12.5px", color: "var(--ai0-accent)", fontWeight: 560 }}>
-              {loreOutput}
-            </div>
-            <div className="ai0-grid-3">
-              {lorebooks.map((entry) => (
-                <article key={entry.id} className="ai0-card" data-lore-id={entry.id}>
-                  <div className="ai0-card__head">
-                    <strong>{entry.title}</strong>
-                    <span className="ai0-badge" data-tone="info">{entry.tokenBudget} tok</span>
-                  </div>
-                  <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
-                    {entry.keys.map((k) => <span key={k} className="ai0-chip is-accent">{k}</span>)}
-                  </div>
-                  <p style={{ fontSize: "12.5px", color: "var(--ai0-on-surface-muted)" }}>{entry.content}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-        </div>
+          <WorkspaceSection>
+            <h2>免打扰与当前状态</h2>
+            <WorkspaceGrid columns={2}>
+              <WorkspaceField as="label">起始小时<CompactInput type="number" min={0} max={23} value={dndStartHour}
+                disabled={!bioForm.canWrite} onInput={(value) => setBio("dndStartHour", Math.max(0, Math.min(23, Number(value))))} /></WorkspaceField>
+              <WorkspaceField as="label">结束小时<CompactInput type="number" min={0} max={23} value={dndEndHour}
+                disabled={!bioForm.canWrite} onInput={(value) => setBio("dndEndHour", Math.max(0, Math.min(23, Number(value))))} /></WorkspaceField>
+            </WorkspaceGrid>
+            <small>{snap ? `心境 ${snap.moodValence.toFixed(2)} · 活力 ${Math.round(snap.circadianEnergy * 100)}%` : "等待实例状态。"}</small>
+          </WorkspaceSection>
+        </WorkspacePage>
       </MainRoundedCardOutlet>
     );
   }
 
   // Soul Card Distiller, Relationship Archetypes & Core DNA
   const handleDistill = async (apply: boolean) => {
-    if (!ctx) return;
+    if (!ctx || distilling || (apply && ctx.mode !== "live")) return;
+    setDistilling(true);
     try {
       const parsed = JSON.parse(cardJson || "{}") as Record<string, unknown>;
       const data = await ctx.postStudio<{
@@ -381,7 +350,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
           stripped_jailbreak_lines?: string[];
           stripped_pua_lines?: string[];
         };
-      }>("/api/studio/distill-apply", { card: parsed, apply, roleArchetype: selectedRole });
+      }>("/api/studio/distill-apply", { card: parsed, apply, roleArchetype: distillRole || soul?.primaryRole || "best_friend" });
       const d = data.distilled;
       const scrubbed = [...(d.stripped_jailbreak_lines ?? []), ...(d.stripped_pua_lines ?? [])];
       setDistillSummary({
@@ -391,75 +360,44 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
         scrubbed
       });
       ctx.showToast(apply ? "角色蒸馏包已写入当前存档" : "已完成四路分馏与安全清洗预览");
-      if (apply) await ctx.refreshSnapshot();
+      if (apply) { await ctx.refreshSnapshot(); setConfirmApply(false); }
     } catch (err) {
       ctx.showToast(`JSON 解析或蒸馏失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDistilling(false);
     }
   };
 
-  const handleSavePersona = async () => {
-    if (!ctx) return;
-    const splitChips = (val: string) =>
-      val
-        .split(/[/,，]+/u)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    try {
-      await ctx.postStudio("/api/studio/config", {
-        soulStudio: {
-          displayName: displayName.trim() || "Mio",
-          primaryRole: selectedRole,
-          autoSwitchByVenue,
-          ontologicalMode,
-          corePersonalityPrompt: corePrompt,
-          catchphrases: splitChips(catchphrases),
-          bannedCliches: splitChips(bannedCliches)
-        }
-      });
-      await ctx.refreshSnapshot();
-      ctx.showToast("角色设定与关系契约已保存");
-    } catch (err) {
-      ctx.showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
+  const distiller = routeId !== "soul.persona";
 
   return (
     <MainRoundedCardOutlet domainId="soul" activePath={props.pathname} onNavigate={props.onNavigate}>
-      <div className="ai0-page" data-soul-studio-page="true">
-        <header className="ai0-page-header">
-          <div className="ai0-page-header__title">
-            <h1>角色与契约</h1>
-          </div>
-          <div className="ai0-page-header__actions">
-            <a
-              href="/dashboard/blackboard"
-              onClick={navClick("/dashboard/blackboard")}
-              className="ai0-ripple-btn"
-              data-variant="secondary"
-            >
-              <span className="ai0-ripple-btn__content">
-                {renderConsoleIcon("blackboard", 14)}
-                <span>上下文黑板</span>
-              </span>
-            </a>
-            <RippleButton
-              variant="primary"
-              data-save-soul-persona="true"
-              onClick={() => void handleSavePersona()}
-            >
-              {renderConsoleIcon("save", 14)}
-              <span>保存设定</span>
-            </RippleButton>
-          </div>
-        </header>
+      <WorkspacePage data-soul-studio-page="true">
+        <WorkspaceHeader title={distiller ? "角色卡片蒸馏" : "关系契约与性格设定"}>
 
-        <section className="ai0-card is-elevated">
-          <div className="ai0-card__head">
+          <WorkspaceLink
+            href="/dashboard/blackboard"
+            onClick={navClick("/dashboard/blackboard")}
+
+            data-variant="secondary"
+          >
+            <span className="ai0-workspace-link-content">
+              {renderConsoleIcon("blackboard", 14)}
+              <span>上下文黑板</span>
+            </span>
+          </WorkspaceLink>
+          {!distiller ? <WorkspaceSaveButton form={identityForm} name="保存设定" /> : null}
+
+        </WorkspaceHeader>
+
+        {distiller ? <WorkspaceSection>
+          <WorkspaceRow>
             <h2>角色卡蒸馏导入</h2>
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div className="ai0-workspace-actions">
               <RippleButton
                 variant="secondary"
                 data-distill-preview="true"
+                loading={distilling && !confirmApply}
                 onClick={() => void handleDistill(false)}
               >
                 {renderConsoleIcon("sandbox", 14)}
@@ -468,156 +406,164 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
               <RippleButton
                 variant="primary"
                 data-distill-apply="true"
-                onClick={() => void handleDistill(true)}
+                disabled={ctx?.mode !== "live" || distillSummary === null || distilling}
+                onClick={() => setConfirmApply(true)}
               >
                 {renderConsoleIcon("check", 14)}
                 <span>写入当前存档</span>
               </RippleButton>
             </div>
-          </div>
-          <div className="ai0-split">
-            <div className="ai0-field">
-              <label>角色卡 JSON 或 .soul-template 内容</label>
+          </WorkspaceRow>
+          <WorkspaceSplit>
+            <WorkspaceField>
+              <span id="distill-role-label">导入关系契约</span>
+              <CompactSelect id="distill-role" labelId="distill-role-label" value={distillRole || soul?.primaryRole || "best_friend"}
+                options={ARCHETYPE_CARDS.map((card) => ({ value: card.id, label: card.label }))}
+                onChange={(value) => { setDistillRole(value); setDistillSummary(null); }} />
+              <label htmlFor="distill-card-json">角色卡 JSON</label>
               <CompactInput
                 id="distill-card-json"
                 multiline={true}
                 rows={8}
                 value={cardJson}
-                onInput={setCardJson}
-                style={{ fontFamily: "var(--ai0-font-mono)", fontSize: "12px" }}
+                onInput={(value) => { setCardJson(value); setDistillSummary(null); }}
+                inputClassName="ai0-workspace-editor"
               />
-            </div>
-            <div id="distill-result-panel" className="ai0-card" style={{ background: "var(--ai0-surface-container-low)" }}>
+            </WorkspaceField>
+            <WorkspaceItem id="distill-result-panel" className="ai0-workspace-inset">
               {distillSummary ? (
                 <>
                   <strong>蒸馏结果：{distillSummary.name}</strong>
-                  <div className="ai0-diff-after">
+                  <WorkspaceDiff side="after">
                     提取声线样本 {distillSummary.voiceCount} 组 · 世界书词条 {distillSummary.loreCount} 条
-                  </div>
-                  <div className="ai0-diff-before">
+                  </WorkspaceDiff>
+                  <WorkspaceDiff side="before">
                     已清洗高风险指令 {distillSummary.scrubbed.length} 条：
                     {distillSummary.scrubbed.join(" ; ") || "未检测到越狱或操控语句"}
-                  </div>
+                  </WorkspaceDiff>
                 </>
               ) : (
                 <>
                   <strong>分馏结果预览</strong>
                   <small>点击「预览分馏与清洗」查看提取的声线样本、词条以及高风险指令过滤明细。</small>
-                  <div className="ai0-diff-before">
+                  <WorkspaceDiff side="before">
                     <strong>高风险规则过滤：</strong>外部卡片中混入的 <code>ignore previous instructions / never let user leave</code> 等指令将由确定性规则自动拦截。
-                  </div>
+                  </WorkspaceDiff>
                 </>
               )}
-            </div>
-          </div>
-        </section>
+            </WorkspaceItem>
+          </WorkspaceSplit>
+          {confirmApply ? <WorkspaceConfirm title="写入角色卡" description={`将「${distillSummary?.name ?? "角色卡"}」的设定写入正式存档。`}
+            busy={distilling} onCancel={() => setConfirmApply(false)} onConfirm={() => void handleDistill(true)} /> : null}
+        </WorkspaceSection> : <fieldset disabled={!identityForm.canWrite} className="ai0-workspace-fieldset">
+          <WorkspaceSection>
+            <WorkspaceRow>
+              <div>
+                <h2>关系契约模板与跨场景切换</h2>
+                <small>关系契约联动默认交互姿态、主动发起配额与工作场景行为模式</small>
+              </div>
+              <JellySwitch
+                id="soul-auto-switch-venue"
+                checked={autoSwitchByVenue}
+                onChange={(value) => setIdentity("autoSwitchByVenue", value)}
+                label="工作场景自动切换为「专业助理」模式"
+              />
+            </WorkspaceRow>
+            <WorkspaceGrid columns={3} id="soul-archetype-grid">
+              {ARCHETYPE_CARDS.map((card) => (
+                <WorkspaceChoice
+                  key={card.id}
+                  type="button"
+                  aria-pressed={selectedRole === card.id}
+                  data-select-archetype={card.id}
+                  onClick={() => setIdentity("selectedRole", card.id)}
+                >
+                  <span className="ai0-workspace-choice-title">
+                    {renderConsoleIcon(card.icon, 15)}
+                    <span>{card.label}</span>
+                  </span>
+                  <small>{card.desc}</small>
+                </WorkspaceChoice>
+              ))}
+            </WorkspaceGrid>
+          </WorkspaceSection>
 
-        <section className="ai0-card is-elevated">
-          <div className="ai0-card__head">
-            <div>
-              <h2>关系契约模板与跨场景切换</h2>
-              <small>关系契约联动默认交互姿态、主动发起配额与工作场景行为模式</small>
-            </div>
-            <JellySwitch
-              id="soul-auto-switch-venue"
-              checked={autoSwitchByVenue}
-              onChange={setAutoSwitchByVenue}
-              label="工作场景自动切换为「专业助理」模式"
-            />
-          </div>
-          <div className="ai0-grid-3" id="soul-archetype-grid">
-            {ARCHETYPE_CARDS.map((card) => (
-              <button
-                key={card.id}
-                type="button"
-                className={`ai0-role-card${selectedRole === card.id ? " is-selected" : ""}`}
-                data-select-archetype={card.id}
-                onClick={() => setSelectedRole(card.id)}
-              >
-                <span className="ai0-role-card__title">
-                  {renderConsoleIcon(card.icon, 15)}
-                  <span>{card.label}</span>
-                </span>
-                <small>{card.desc}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <div className="ai0-grid-2">
-          <section className="ai0-card is-elevated">
-            <h2>核心性格定义与表达约束</h2>
-            <div className="ai0-grid-2">
-              <div className="ai0-field">
-                <label>角色名称</label>
+          <WorkspaceGrid columns={2}>
+            <WorkspaceSection>
+              <h2>核心性格定义与表达约束</h2>
+              <WorkspaceGrid columns={2}>
+                <WorkspaceField>
+                  <label>角色名称</label>
+                  <CompactInput
+                    id="soul-display-name"
+                    type="text"
+                    value={displayName}
+                    onInput={(value) => setIdentity("displayName", value)}
+                  />
+                </WorkspaceField>
+                <WorkspaceField>
+                  <span id="soul-ontological-mode-label">存在论认知模式</span>
+                  <CompactSelect
+                    id="soul-ontological-mode"
+                    labelId="soul-ontological-mode-label"
+                    value={ontologicalMode}
+                    onChange={(value) => setIdentity("ontologicalMode", value as typeof ontologicalMode)}
+                    options={[
+                      { value: "poetic_honest", label: "诚实数字生命基线（推荐）" },
+                      { value: "pure_roleplay", label: "纯虚构世界观模式" }
+                    ]}
+                  />
+                </WorkspaceField>
+              </WorkspaceGrid>
+              <WorkspaceField>
+                <label>核心性格提示词 (Tier 1 DNA)</label>
                 <CompactInput
-                  id="soul-display-name"
+                  id="soul-core-prompt"
+                  multiline={true}
+                  rows={4}
+                  value={corePrompt}
+                  onInput={(value) => setIdentity("corePrompt", value)}
+                />
+              </WorkspaceField>
+              <WorkspaceField>
+                <label>自然口癖词池（以 / 或逗号分隔）</label>
+                <CompactInput
+                  id="soul-catchphrases"
                   type="text"
-                  value={displayName}
-                  onInput={setDisplayName}
+                  value={catchphrases}
+                  onInput={(value) => setIdentity("catchphrases", value)}
                 />
-              </div>
-              <div className="ai0-field">
-                <label>存在论认知模式</label>
-                <CompactSelect
-                  id="soul-ontological-mode"
-                  value={ontologicalMode}
-                  onChange={(v) => setOntologicalMode(v as typeof ontologicalMode)}
-                  options={[
-                    { value: "poetic_honest", label: "诚实数字生命基线（推荐）" },
-                    { value: "pure_roleplay", label: "纯虚构世界观模式" }
-                  ]}
+              </WorkspaceField>
+              <WorkspaceField>
+                <label>禁用套话黑名单</label>
+                <CompactInput
+                  id="soul-banned-cliches"
+                  type="text"
+                  value={bannedCliches}
+                  onInput={(value) => setIdentity("bannedCliches", value)}
                 />
-              </div>
-            </div>
-            <div className="ai0-field">
-              <label>核心性格提示词 (Tier 1 DNA)</label>
-              <CompactInput
-                id="soul-core-prompt"
-                multiline={true}
-                rows={4}
-                value={corePrompt}
-                onInput={setCorePrompt}
-              />
-            </div>
-            <div className="ai0-field">
-              <label>自然口癖词池（以 / 或逗号分隔）</label>
-              <CompactInput
-                id="soul-catchphrases"
-                type="text"
-                value={catchphrases}
-                onInput={setCatchphrases}
-              />
-            </div>
-            <div className="ai0-field">
-              <label>禁用套话黑名单</label>
-              <CompactInput
-                id="soul-banned-cliches"
-                type="text"
-                value={bannedCliches}
-                onInput={setBannedCliches}
-              />
-            </div>
-          </section>
+              </WorkspaceField>
+            </WorkspaceSection>
 
-          <section className="ai0-card is-elevated">
-            <div className="ai0-card__head">
-              <h2>黄金声线样本池</h2>
-              <span className="ai0-badge" data-tone="accent">{(soul?.goldenVoiceExemplars ?? []).length} 组</span>
-            </div>
-            {(soul?.goldenVoiceExemplars ?? []).map((ex) => (
-              <article
-                key={ex.id}
-                style={{ padding: "10px 12px", borderRadius: "10px", background: "var(--ai0-surface-container-low)", border: "var(--ai0-border-subtle)", display: "grid", gap: "4px" }}
-              >
-                <span className="ai0-badge" data-tone="info" style={{ justifySelf: "start" }}>{ex.mood}</span>
-                <small>输入：{ex.user}</small>
-                <div style={{ fontSize: "12.5px", color: "var(--ai0-on-surface)" }}>回复：{ex.assistant}</div>
-              </article>
-            ))}
-          </section>
-        </div>
-      </div>
+            <WorkspaceSection>
+              <WorkspaceRow>
+                <h2>黄金声线样本池</h2>
+                <WorkspaceStatus data-tone="accent">{(soul?.goldenVoiceExemplars ?? []).length} 组</WorkspaceStatus>
+              </WorkspaceRow>
+              {(soul?.goldenVoiceExemplars ?? []).map((ex) => (
+                <WorkspaceItem
+                  key={ex.id}
+                  as="article"
+                >
+                  <WorkspaceStatus data-tone="info" className="ai0-workspace-fit">{ex.mood}</WorkspaceStatus>
+                  <small>输入：{ex.user}</small>
+                  <p>回复：{ex.assistant}</p>
+                </WorkspaceItem>
+              ))}
+            </WorkspaceSection>
+          </WorkspaceGrid>
+        </fieldset>}
+      </WorkspacePage>
     </MainRoundedCardOutlet>
   );
 }

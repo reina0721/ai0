@@ -5,7 +5,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { renderConsoleApp, type ConsoleAppOptions } from "./app-shell.js";
 
 export function loadConsoleThemeCss(): string {
-  return readFileSync(new URL("./design-system/tokens/console-theme.css", import.meta.url), "utf8");
+  return [
+    "./design-system/tokens/console-theme.css",
+    "./design-system/primitives/controls.css",
+    "./design-system/domain-surfaces.css",
+    "./console-layout.css",
+    "./pages/workspaces.css",
+    "./webchat/webchat.css"
+  ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
 }
 
 export function renderToHtml(element: ReactElement): string {

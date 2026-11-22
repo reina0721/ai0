@@ -17,6 +17,7 @@
     "@ai0/sdk": "workspace:*",
     "@ai0/storage": "workspace:*",
     "@hono/node-server": "^2.1.11",
-    "hono": "^4.13.20"
+    "hono": "^4.13.20",
+    "ai": "7.0.179"
   }
 }

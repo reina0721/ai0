@@ -38,7 +38,7 @@ export function LineageDagGraphCanvas({
         gap: "10px",
         padding: "12px",
         borderBottom: "var(--ai0-border-subtle)",
-        background: "var(--ai0-surface-container-low)"
+        background: "var(--ai0-surface-inset)"
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
@@ -50,16 +50,18 @@ export function LineageDagGraphCanvas({
         </div>
         <StatusBadge tone="danger">5-Table Blast Radius</StatusBadge>
       </div>
+      <div className="ai0-lineage-viewport">
       <svg
         viewBox={`0 0 ${width} 170`}
-        role="img"
-        aria-label="Memory lineage DAG"
+        role="group"
+        aria-label="记忆血缘图谱"
         style={{
           width: "100%",
+          minWidth: width,
           height: "170px",
           borderRadius: "10px",
           border: "var(--ai0-border-subtle)",
-          background: "var(--ai0-surface-main-card)"
+          background: "var(--ai0-surface-workspace)"
         }}
       >
         {nodes.flatMap((node, index) =>
@@ -67,6 +69,7 @@ export function LineageDagGraphCanvas({
             const parentIndex = nodes.findIndex((item) => item.id === parentId);
             return parentIndex < 0 ? null : (
               <line
+                key={JSON.stringify([parentId, node.id])}
                 x1={parentIndex * 136 + 64}
                 y1={56}
                 x2={index * 136 + 64}
@@ -82,7 +85,20 @@ export function LineageDagGraphCanvas({
           const active = node.id === selectedId || node.id === hardForgetId;
           const y = index % 2 ? 108 : 24;
           return (
-            <g style={{ cursor: "pointer" }} onClick={() => onSelect?.(node.id)}>
+            <g
+              key={node.id}
+              role={onSelect ? "button" : undefined}
+              tabIndex={onSelect ? 0 : undefined}
+              aria-label={node.label}
+              aria-pressed={onSelect ? active : undefined}
+              style={{ cursor: onSelect ? "pointer" : undefined }}
+              onClick={() => onSelect?.(node.id)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                onSelect?.(node.id);
+              }}
+            >
               <rect
                 x={index * 136 + 10}
                 y={y}
@@ -106,6 +122,7 @@ export function LineageDagGraphCanvas({
           );
         })}
       </svg>
+      </div>
       <div
         style={{
           display: "flex",

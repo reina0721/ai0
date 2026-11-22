@@ -607,10 +607,10 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         id: "prov_deepseek_v3",
         category: "llm",
         vendor: "DeepSeek",
-        name: "DeepSeek V3 · 主力对话",
-        baseUrl: "https://api.deepseek.com/v1",
+        name: "DeepSeek Flash · 主力对话",
+        baseUrl: "https://api.deepseek.com",
         apiKeyMasked: "sk-••••••a9f2",
-        modelId: "deepseek-chat",
+        modelId: "deepseek-flash",
         temperature: 0.78,
         maxTokens: 4096,
         enabled: true,
@@ -1100,6 +1100,22 @@ export function getConsoleStudioConfigPath(soulDirPath: string): string {
   return join(resolve(soulDirPath), "config", "console_studio.json");
 }
 
+function normalizeDeepSeekModels(config: SoulConsoleStudioConfig): SoulConsoleStudioConfig {
+  return {
+    ...config,
+    providers: config.providers.map((provider) => {
+      const officialEndpoint = /^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/iu.test(provider.baseUrl);
+      const retiredModel = /^(deepseek-chat|deepseek-reasoner|deepseek-v4-flash)$/u.test(provider.modelId);
+      if (!officialEndpoint || !retiredModel) return provider;
+      return {
+        ...provider,
+        modelId: "deepseek-flash",
+        name: provider.name === "DeepSeek V3 · 主力对话" ? "DeepSeek Flash · 主力对话" : provider.name
+      };
+    })
+  };
+}
+
 export function readConsoleStudioConfig(
   soulDirPath: string,
   fallbackDisplayName = "Mio"
@@ -1130,7 +1146,7 @@ export function readConsoleStudioConfig(
       writeConsoleStudioConfig(soulDirPath, parsed);
       return parsed;
     }
-    return SoulConsoleStudioConfigSchema.parse(raw);
+    return normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse(raw));
   } catch {
     const seeded = createDefaultConsoleStudioConfig(fallbackDisplayName);
     writeConsoleStudioConfig(soulDirPath, seeded);
@@ -1142,7 +1158,7 @@ export function writeConsoleStudioConfig(
   soulDirPath: string,
   config: SoulConsoleStudioConfig
 ): SoulConsoleStudioConfig {
-  const validated = SoulConsoleStudioConfigSchema.parse({ ...config, version: 5 });
+  const validated = normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse({ ...config, version: 5 }));
   const filePath = getConsoleStudioConfigPath(soulDirPath);
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(validated, null, 2)}\n`, "utf8");

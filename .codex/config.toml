@@ -1,0 +1,4 @@
+[mcp_servers.context7]
+command = "pnpm"
+args = ["exec", "context7-mcp"]
+enabled_tools = ["resolve-library-id", "query-docs"]
