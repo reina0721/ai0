@@ -1,0 +1,22 @@
+{
+  "name": "@ai0/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ai0/console-webui": "workspace:*",
+    "@ai0/gateway": "workspace:*",
+    "@ai0/kernel": "workspace:*",
+    "@ai0/protocol": "workspace:*",
+    "@ai0/sdk": "workspace:*",
+    "@ai0/storage": "workspace:*",
+    "@hono/node-server": "^2.1.11",
+    "hono": "^4.13.20"
+  }
+}

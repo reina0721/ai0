@@ -1,12 +1,12 @@
-# 06. `WebUI 控制台` 常驻多态外壳、`<main>` 一体式圆角卡片路由视口、30 条专职路由树、1:1 后端无损投射与 KIRAKIRA-MD3 组件体系规范
+# 06. `WebUI 控制台` 常驻多态外壳、`<main>` 一体式圆角卡片路由视口、30 条专职路由树、1:1 后端无损投射与第一方紧凑 MD3 设计系统规范
 
-> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
+> **项目阶段**：工程规格与控制平面架构规范（解法域工程规格）
 >
 > 本文档定义 `@ai0/console-webui` 的完整前端系统架构、多级嵌套路由树与 UI/UX 工程设计规范。由于 `ai0` 剥离了重型桌宠/Live2D/3D 客户端外壳包袱、采用**无头（Headless）认知微内核**架构，`WebUI 控制台` 作为系统唯一标配的**内建实体控制平面（Control Plane）、主权配置中枢、五阶多态扩展工作坊与认知科学观测天文台**，严格遵循以下四大架构铁律：
 > 1. **正本清源 `Shell（具身运行环境）` 的一等架构地位，剥离 `plugins/shells/webchat` 的越位层级**：系统的顶层交互架构层是 **`Shell（具身运行环境，ext.shell）`**；`plugins/shells/webchat` 绝不是控制台的一个顶层架构层面或顶栏模式，它**仅仅是一个默认预装的普通 `ext.shell` + `ext.console_ui` 插件**，在控制台中仅表现为一个挂载在 `/shells/stage/builtin.webchat` 路由下的普通插件页面（与社区开发的 Web Live2D/VRM/Galgame 躯壳插件 100% 平权，可随时替换或禁用，绝不绑架控制台本身架构）。
-> 2. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）+ 8 大域 30 条专职子路由**：外围由**混合顶栏 + 左右双侧可折叠功能栏/迷你栏**构成常驻不闪烁的多态布局外壳；中央 **`<main>` 主内容区本身被整体包裹为一张完整、统一的大圆角悬浮卡片盒子（`border-radius: 16px`）作为 `<RouterOutlet />` 路由视图出口**。在任意路由下，`<main>` 圆角卡片大盒子内部**仅专职渲染当前 URL 对应的那 1 个页面**（默认根首屏为 `/dashboard` 全景态势大盘，**严禁将所有功能塞到首屏主页，也严禁把 `<main>` 拆碎成满屏零散漂浮的小卡片**）。
+> 2. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）+ 8 大域 30 条专职子路由**：外围由**无边框环境底板混合顶栏 + 左右双侧可折叠功能栏/迷你栏**构成常驻不闪烁的多态布局外壳；中央 **`<main>` 主内容区本身被整体包裹为一张完整、统一的大圆角悬浮卡片盒子（`border-radius: 16px`）作为 `<RouterOutlet />` 路由视图出口**。在任意路由下，`<main>` 圆角卡片大盒子内部**仅专职渲染当前 URL 对应的那 1 个页面**（默认根首屏为 `/dashboard` 全景态势大盘，**严禁将所有功能塞到首屏主页，也严禁把 `<main>` 拆碎成满屏零散漂浮的小卡片**）。
 > 3. **后端全量设计（`01~05`）100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/料理流水线层` $\rightarrow$ `Tier-V2 结构化紧凑表单层` $\rightarrow$ `Tier-V3 权威源码与确定性证据层`）**：后端每一项认知机制、五阶多态扩展载体、配置结构体、数学动力学参数与防火墙规则在前端均拥有 1:1 的专职路由与可视化控制入口。
-> 4. **借鉴 `AstrBot / NapCat / Koishi` 成熟面板体验，融合 `kirakira.moe (KIRAKIRA-Cerasus)` 的 Material Design 3 二次个性组件封装（4 层 45 项组件库），并向数字生命终局愿景跨代升维**。
+> 4. **建立服务于数字生命愿景的第一方自包含设计语言（`ai0` Console Design System）**：以**“科研级白盒认知治理的高密度精密感 × 数字生命长期陪伴的通透呼吸感”**为视觉核心，基于 Material Design 3 交互原语进行桌面高密度二次封装（5 子目录 45 项纯语义模块化组件、5 级动态灵魂色调表面、单色矢量符号学与弹簧/水波纹触觉微交互），不依赖任何外部小众视觉参考先验知识即可独立复现与验收。
 
 ---
 
@@ -17,11 +17,11 @@
 > **`WebUI 控制台（@ai0/console-webui）` 是官方随项目提供的浏览器管理、配置、创作、观测与实验操作系统界面（独立于后台 `@ai0/daemon` 内核守护进程运行；关闭浏览器后，数字生命及其已启用的后台扩展依然持续运转）。**
 
 1. **剥离 `plugins/shells/webchat` 的架构越位，全面凸显 `Shell（具身运行环境层）`**：
-   * **`@ai0/console-webui`（特权控制平面）**：通过仅供所有者访问的 `Kernel Admin & Audit Telemetry Bus`（`/api/admin/v1/*` & `ws://.../telemetry`）管理内核全量状态；控制台拥有统一、纯粹的 **`KIRAKIRA-MD3 × NapCat/AstrBot` 紧凑多态视觉体系**，默认根路由首屏为 **`/dashboard`（数字生命全景态势与具身 `Shells` 总览大盘）**。
+   * **`@ai0/console-webui`（特权控制平面）**：通过仅供所有者访问的 `Kernel Admin & Audit Telemetry Bus`（`/api/admin/v1/*` & `ws://.../telemetry`）管理内核全量状态；控制台拥有统一、自洽的 **第一方紧凑二次封装 MD3 多态视觉体系**，默认根路由首屏为 **`/dashboard`（数字生命全景态势与具身 `Shells` 总览大盘）**。
    * **`Shell（具身运行环境，ext.shell）`**：作为系统第 2 大核心一级导航域（`/shells/*`），统一治理所有外部与内置具身运行环境（桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord IM、游戏 Mod、Web 交互舞台）的双向连接、三平面能力（`Sensors` 视神经感官覆盖桶 / `Realizers` 动态表现力词典 / `Actuators` 端侧执行器热增删）、多 `Shell` 注意力焦点仲裁、丘脑门控与媒体管线。
    * **`plugins/shells/webchat` 的真实定位——仅为一个普通的挂载插件页面**：`plugins/shells/webchat` 只是使用 `@ai0/protocol` 编写的一个零特权参考 `Shell` 插件（100% 走公开标准协议 `ws://.../protocol/v0/shell`）。当它处于启用状态时，它通过 `ext.console_ui` 的舞台挂载槽在控制台侧栏动态挂载一个普通子路由页面 `/shells/stage/builtin.webchat`（社区编写的 `community.live2d.webstage` 等插件亦平权挂载于 `/shells/stage/:shellPluginId`）。
 2. **混合顶栏中央的全局实例环境状态机（`🟢 LIVE` vs. `🧪 SANDBOX:<fork_id>` 二元主权隔离）**：
-   为了防止破坏性的认知实验（如将时间拨快 7 天或消融情绪脑区）污染陪伴了使用者数年的正式个体（`live`）的真实承诺与记忆时间线，混合顶栏中央驻留一个带弹簧滑块的**二元实例环境胶囊切换器（`KiraSegmentedPill`）**，驱动全局 `target_instance` 参数与视口外缘主权防呆围栏：
+   为了防止破坏性的认知实验（如将时间拨快 7 天或消融情绪脑区）污染陪伴了使用者数年的正式个体（`live`）的真实承诺与记忆时间线，混合顶栏中央驻留一个带弹簧滑块的**二元实例环境胶囊切换器（`SegmentedPill`）**，驱动全局 `target_instance` 参数与视口外缘主权防呆围栏：
    * **环境态 A：`🟢 LIVE 正式运行实例（target_instance: "live"）`**：
      视口外框与顶栏亮起 **主权翡翠绿（`Emerald #10B981`）** 指示灯，固定标识 `LIVE SOUL INSTANCE · 1x Physical Clock Locked`；在 `live` 环境下，虚拟时钟拨快、虚假感官注入与核心脑区消融在 UI 层与后端 API 层（`403 Forbidden`）双重硬锁死。
    * **环境态 B：`🧪 SANDBOX 隔离实验沙盒副本（target_instance: "sandbox:<fork_id>"）`**：
@@ -54,7 +54,7 @@ flowchart TB
         subgraph TopBar["1. 混合顶栏 (HybridTopBar — h: 48px, 常驻外围顶栏)"]
             direction LR
             T_Left["[🧬 灵魂实例切换: default.soul ▾]<br/>[当前路由面包屑: /shells/topology]"]
-            T_Center["[全局实例环境切换胶囊 (KiraSegmentedPill)]<br/>🟢 LIVE 正式运行实例 (1x 物理时钟)   ⇄   🧪 SANDBOX:<fork_id> 隔离实验副本"]
+            T_Center["[全局实例环境切换胶囊 (SegmentedPill)]<br/>🟢 LIVE 正式运行实例 (1x 物理时钟)   ⇄   🧪 SANDBOX:<fork_id> 隔离实验副本"]
             T_Right["[💓 脉搏微环: 心境 +0.42 · 生理精力 82% · 代谢预算 91%]<br/>[🔔 待审批: 2]  [⌘K 全局命令面板]  [🛑 全局急停 Kill Switch]"]
         end
 
@@ -116,10 +116,10 @@ flowchart TB
 | 视图结构母版 | 在 `<main>` 圆角卡片大盒子内部的结构形态 (Internal Layout Morphology) | 核心交互方式 (Interaction Paradigm) | 典型适用的路由页面 |
 | :--- | :--- | :--- | :--- |
 | **母版 I：插件挂载互动舞台与伴生白盒检视态**<br/>*(Mounted Shell Stage & Companion Inspector Archetype)* | `<main>` 圆角卡片盒子内部为全幅互动舞台画布（支持一键收拢外围左右侧栏进入全屏态）；当点击右上角或某条话轮时，联动展开右侧 `400px` 伴生检视副栏 | 实时流式交互、情绪 VAD 微光晕、流式打断精确上报 `spoken_char_offset` 并渲染 `unsaid_remainder` 腹稿印记、联动右侧副栏逐帧查证 **8 步可验证决策轨迹** 与潜台词剧透遮罩 | • `/shells/stage/:shellPluginId`（如挂载 `builtin.webchat` 或社区 Live2D/3D 网页舞台）<br/>• `/shells/simulator`（内置虚拟躯壳调试模拟器） |
-| **母版 II：高密度态势指标带与多轨实时流监控态**<br/>*(Telemetry Strip, Topology & Multi-Stream Terminal Archetype)*<br/>`[借鉴 NapCat WebUI 并升维]` | `<main>` 圆角卡片盒子内部上方为紧凑水平态势指标带或拓扑连接矩阵，下方通过 `1px` 分割线无缝衔接高对比暗色等宽多轨实时流终端/状态机看板 | WebSocket 毫秒级遥测流式推送、多维胶囊组合过滤（`Principal / Venue / StateDomain`）、流暂停/帧级 JSON Diff 比对、运行中任务就地暂停或急停 | • `/dashboard`（数字生命全景态势总览首屏）<br/>• `/shells/topology`（双向具身网关与在线 `Shell` 三平面星图）<br/>• `/runtime/coordinator-agency`（MVCC 五域水位、机会池与 `W2` 8步行动看板）<br/>• `/runtime/terminal`（四轨融合实时遥测与协议抓包终端） |
-| **母版 III：主从分节 Schema 配置器、降维曲线与版本 Diff 审批态**<br/>*(Master-Detail Configurator, Visual Curve & Diff Approval Archetype)*<br/>`[借鉴 AstrBot WebUI 并升维]` | `<main>` 圆角卡片盒子内部左侧为二级分类/Profile 锚点分栏（`190px`），右侧为主配置画布（顶部 `Tier-V1` 交互拖拽曲线/积木矩阵 + 中部 `Tier-V2` 紧凑 `32px` Schema 表单 + 右上角 `Tier-V3` YAML/JSON 源码切换），底部内嵌粘性 `FloatingDirtyDiffBar` | 零手写 JSON 的可视化拖拽与胶囊选择、确定性表单生命周期（`idle -> editing_dirty -> validating -> saving(expected_rev) -> saved_confirmed`）、路由离开脏状态拦截守卫（`beforeRouteLeave`）、待审批提案左右双栏 Diff `Approve / Reject`、一键在线拨测与试听 | • `/dashboard/blackboard`（认知黑板 `<2500 Token` 槽位积木编排器）<br/>• `/soul/persona` & `/soul/lorebooks` & `/soul/homeostasis`<br/>• `/models/providers` & `/models/routing`（五脑区算力代谢）<br/>• `/shells/attention-arbitration` & `/shells/thalamic-gate` & `/shells/media-pipeline`<br/>• `/extensions/configurator` & `/extensions/cognitive-organs`<br/>• `/memory/retrieval-sleep` & `/system/safety-sb243` & `/system/settings-security` |
+| **母版 II：高密度态势指标带与多轨实时流监控态**<br/>*(Telemetry Strip, Topology & Multi-Stream Terminal Archetype)* | `<main>` 圆角卡片盒子内部上方为紧凑水平态势指标带或拓扑连接矩阵，下方通过 `1px` 分割线无缝衔接高对比暗色等宽多轨实时流终端/状态机看板 | WebSocket 毫秒级遥测流式推送、多维胶囊组合过滤（`Principal / Venue / StateDomain`）、流暂停/帧级 JSON Diff 比对、运行中任务就地暂停或急停 | • `/dashboard`（数字生命全景态势总览首屏）<br/>• `/shells/topology`（双向具身网关与在线 `Shell` 三平面星图）<br/>• `/runtime/coordinator-agency`（MVCC 五域水位、机会池与 `W2` 8步行动看板）<br/>• `/runtime/terminal`（四轨融合实时遥测与协议抓包终端） |
+| **母版 III：主从分节 Schema 配置器、降维曲线与版本 Diff 审批态**<br/>*(Master-Detail Configurator, Visual Curve & Diff Approval Archetype)* | `<main>` 圆角卡片盒子内部左侧为二级分类/Profile 锚点分栏（`190px`），右侧为主配置画布（顶部 `Tier-V1` 交互拖拽曲线/积木矩阵 + 中部 `Tier-V2` 紧凑 `32px` Schema 表单 + 右上角 `Tier-V3` YAML/JSON 源码切换），底部内嵌粘性 `FloatingDirtyDiffBar` | 零手写 JSON 的可视化拖拽与胶囊选择、确定性表单生命周期（`idle -> editing_dirty -> validating -> saving(expected_rev) -> saved_confirmed`）、路由离开脏状态拦截守卫（`beforeRouteLeave`）、待审批提案左右双栏 Diff `Approve / Reject`、一键在线拨测与试听 | • `/dashboard/blackboard`（认知黑板 `<2500 Token` 槽位积木编排器）<br/>• `/soul/persona` & `/soul/lorebooks` & `/soul/homeostasis`<br/>• `/models/providers` & `/models/routing`（五脑区算力代谢）<br/>• `/shells/attention-arbitration` & `/shells/thalamic-gate` & `/shells/media-pipeline`<br/>• `/extensions/configurator` & `/extensions/cognitive-organs`<br/>• `/memory/retrieval-sleep` & `/system/safety-sb243` & `/system/settings-security` |
 | **母版 IV：交互式全幅拓扑画布与时间线资产治理态**<br/>*(Interactive Graph Canvas & Timeline Governance Archetype)* | `<main>` 圆角卡片盒子内部上方为多维检索、四级溯源筛选胶囊与视图模式切换栏，中央为全幅可无级缩放平移的 DAG 拓扑图谱画布（或时间轴/规则连线画布），右侧内嵌节点手术台抽屉 | 节点上下游血缘高亮追踪、双时态更替链（`supersedes`）折叠展开、可视化预览 **`Hard Forget`（五表级联擦除 + 拓扑序局部微重算 + `redaction_ledger` 墓碑写入）** 影响半径、拖拽积木拼装跨插件 ECA 规则流 | • `/memory/lineage`（四级溯源记忆血缘 DAG 与真遗忘手术台）<br/>• `/memory/relationship`（关系雷达、心结48h一键释怀、里程碑画廊与身份绑定图谱）<br/>• `/extensions/flows-eca`（跨插件 ECA 联动蓝图与后台认知流编排器）<br/>• `/system/instances-storage`（多 `.soul` 实例与 Git 快照回档时间线） |
-| **母版 V：多态扩展市场网格、四步料理流水线与沙盒消融实验室态**<br/>*(Polymorphic Registry Grid, Distiller Wizard & Sandbox Lab Archetype)*<br/>`[借鉴 AstrBot/Koishi 并升维]` | `<main>` 圆角卡片盒子内部上方为五阶载体/八大总线分类胶囊栏（或沙盒时间拨快控制条），主区为紧凑平铺网格（Flat Tile Grid）、四步可视化分馏向导或 A/B 双轨消融对比矩阵 | 拖拽上传角色卡执行四路分馏与越狱清洗对比、在线编写 `SKILL.md` 并单步测试、插件“三段式安装—授权—启用/故障热重载”、一键脱敏导出 `.ai0pack` 社区分享包、沙盒副本虚拟时间拨快与 `.scenario.yaml` Fail-Closed 断言回放 | • `/soul/distiller`（可食用蒸馏角色四步料理工坊与脱敏打包台）<br/>• `/extensions/marketplace`（五阶多态扩展市场与打包中心）<br/>• `/extensions/skills-mcp`（`SKILL.md` 自然语言技能工坊与 MCP 调试台）<br/>• `/memory/knowledge-rag` & `/memory/events-media`<br/>• `/sandbox/lab`（隔离认知实验沙盒与消融回放实验室） |
+| **母版 V：多态扩展市场网格、四步料理流水线与沙盒消融实验室态**<br/>*(Polymorphic Registry Grid, Distiller Wizard & Sandbox Lab Archetype)* | `<main>` 圆角卡片盒子内部上方为五阶载体/八大总线分类胶囊栏（或沙盒时间拨快控制条），主区为紧凑平铺网格（Flat Tile Grid）、四步可视化分馏向导或 A/B 双轨消融对比矩阵 | 拖拽上传角色卡执行四路分馏与越狱清洗对比、在线编写 `SKILL.md` 并单步测试、插件“三段式安装—授权—启用/故障热重载”、一键脱敏导出 `.ai0pack` 社区分享包、沙盒副本虚拟时间拨快与 `.scenario.yaml` Fail-Closed 断言回放 | • `/soul/distiller`（可食用蒸馏角色四步料理工坊与脱敏打包台）<br/>• `/extensions/marketplace`（五阶多态扩展市场与打包中心）<br/>• `/extensions/skills-mcp`（`SKILL.md` 自然语言技能工坊与 MCP 调试台）<br/>• `/memory/knowledge-rag` & `/memory/events-media`<br/>• `/sandbox/lab`（隔离认知实验沙盒与消融回放实验室） |
 
 ---
 
@@ -131,7 +131,7 @@ flowchart TB
 | :--- | :--- | :--- | :--- | :--- |
 | **1. 全景态势与认知黑板**<br/>*(Overview & Blackboard)* | **`/dashboard`**<br/>*(控制台默认根首屏)* | **数字生命全景态势、活跃 `Shells` 星图摘要与系统健康总览首页**：展示当前 `.soul` 核心生命体征（心境波形/双轨精力水位/下次阈值唤醒倒计时）、当前在线具身 `Shells` 连接摘要与焦点所在躯壳、MVCC `state_rev` 与运行中 `W2` 行动任务、近期解锁里程碑、待审批人格/权限提醒快捷路由跳转入口 | **母版 II** | 全系统聚合遥测快照 |
 | | **`/dashboard/blackboard`** | **认知状态黑板（`<2500 Tokens`）槽位积木编排器、语境预设与 70% 社交面具模拟器页**：可视化拖拽编排黑板各认知槽位（Tier 0[锁死]/1/2、感官覆盖桶、情绪体感、Top-K 记忆、前瞻承诺、Lorebook、自定义认知器官槽）的 Token 预算上限与显著性门槛，切换场景语境预设；实时检视当前 `state_rev` 编译出的黑板全文，并一键对比 `only_owner` 私聊态 vs `public_all` 公开场合态（直观验证 `Social Mask Damper` 剥离私密叙事并衰减 70% 情绪） | **母版 III & II** | `01/02/03` 声明式黑板槽位编译器 (`blackboard_policy.yaml`) |
-| **2. 具身躯壳 (`Shells`) 与感官媒体中枢**<br/>*(Embodied Shells & Media)*<br/>`[正本清源的一等架构域]` | **`/shells/topology`** | **双向具身协议网关（`Protocol v0`）与在线 `Shell` 三平面能力星图页**（对齐并升维 NapCat 连接管理）：统一管理所有外部与内置具身运行环境（桌宠、Live2D/3D 客户端、QQ/TG/Discord IM 躯壳、游戏 Mod、Web 躯壳）的 Inbound 入站与 Outbound 反向拨号 WebSocket 连接、RTT 心跳延迟与 `Scoped Capability Token` 签发；点开任意 `Shell` 透视其 **`Sensors`（视神经感官覆盖桶 `live_foveal / ambient_peripheral / stale / disconnected` 四态与防幻觉 TTL 倒计时、单帧 `frame_span_ms=0` 锁、预测编码竞争假设）**、**`Realizers`（支持的扩展与动态注册的 `expression_vocabulary` 表现力词典）** 与 **`Actuators`（运行期 `capabilities_updated` 动态动作热增删流）** | **母版 II** | `01` 公理一、`03`、`04-protocol` 1~4 |
+| **2. 具身躯壳 (`Shells`) 与感官媒体中枢**<br/>*(Embodied Shells & Media)*<br/>`[正本清源的一等架构域]` | **`/shells/topology`** | **双向具身协议网关（`Protocol v0`）与在线 `Shell` 三平面能力星图页**：统一管理所有外部与内置具身运行环境（桌宠、Live2D/3D 客户端、QQ/TG/Discord IM 躯壳、游戏 Mod、Web 躯壳）的 Inbound 入站与 Outbound 反向拨号 WebSocket 连接、RTT 心跳延迟与 `Scoped Capability Token` 签发；点开任意 `Shell` 透视其 **`Sensors`（视神经感官覆盖桶 `live_foveal / ambient_peripheral / stale / disconnected` 四态与防幻觉 TTL 倒计时、单帧 `frame_span_ms=0` 锁、预测编码竞争假设）**、**`Realizers`（支持的扩展与动态注册的 `expression_vocabulary` 表现力词典）** 与 **`Actuators`（运行期 `capabilities_updated` 动态动作热增删流）** | **母版 II** | `01` 公理一、`03`、`04-protocol` 1~4 |
 | | **`/shells/attention-arbitration`** | **多 `Shell` 注意力焦点仲裁与主动搭话出口躯壳路由策略页**：专门配置当用户同时挂载多个 `Shell`（如桌面萌宠 + 手机 IM + 直播间）时的前台注意力焦点保持惯性窗口（`focus_hysteresis_window_ms: 4000` 防焦点高频横跳）、多端紧急度与场合优先级权重排序，以及主动搭话出口躯壳选择降级链（锁死 `never_broadcast_to_all_shells: true` 严禁全端同时弹窗广播铁律） | **母版 III** | `05-extension` 4 多端注意力仲裁引擎 |
 | | **`/shells/thalamic-gate`** | **L0 丘脑显著性门控、视神经感官习惯化（$\gamma_{\text{hab}}$）与话轮防抖聚合调校页**：可视化配置上行输入聚合防抖窗口（`1200ms` 连续短句合并、`lifecycle: "retract"` 欲言又止草稿感知）、视神经时空梯度习惯化衰减率 $\gamma_{\text{hab}}$（防静态 IDE 窗口焦点刷屏）、边缘视觉/表情最低置信度 `confidence` 与持续时长 `sustained_ms` 门控、瞬态生物特征 `ephemeral_blackboard` 15 分钟滑动窗口策略 | **母版 III** | `02-cognitive` 1.2/1.3 & `04-protocol` 4.2 |
 | | **`/shells/media-pipeline`** | **多模态音视频媒体管线编排与三锚点具身演出调音台页（`ext.media_pipeline`）**：DAW 式可视化串联上行流式 ASR/视觉语义提取中间件与下行情感 TTS（GPT-SoVITS / FishAudio 等）+ 口型同步 `Visemes`；管理动态表情/动作/声线情绪词典映射表；内置 **`EmbodiedKeyframeTimeline`（`pre_speech` 视线先行 $\rightarrow$ `on_substring` 词中高潮 $\rightarrow$ `on_utterance_end` 余韵 `linger_ms`）三锚点关键帧排练舞台** 与音频回路试听器 | **母版 III** | `05` 总线 2 & `04-protocol` 2 |
@@ -146,20 +146,20 @@ flowchart TB
 | | **`/memory/knowledge-rag`** | **内建混合 RAG 知识库与外部活体知识连接器（`ext.memory_knowledge`）中心页**：开箱即用上传解析 PDF/MD/代码文档（可视化分块 Chunking、`sqlite-vec` 稠密向量 + FTS5 BM25 稀疏混合检索 + Reranker 配置）或热插拔挂载 Obsidian/Notion/Wiki 插件（强制 `taint_level='untrusted_external'` 防投毒隔离）；卸载时自动弹出 **`extractGistCardsBeforeUnmount` 百字常识卡（`CrystallizedGistCard`）提炼向导** | **母版 V & III** | `02-storage` 2.6 & `05` 总线 5 内建混合 RAG |
 | | **`/memory/relationship`** | **关系羁绊、心结一键释怀、里程碑/纪念日仪式与跨平台身份绑定页**：关系雷达 vs 用户可打扰度仪表、未解心结 48h 半衰期与 **`[🕊️ 一键温柔释怀]`** 主权卡、前瞻承诺五态看板、**共同经历里程碑画廊与纪念日/正向剧情事件触发器（`milestones_and_rituals.yaml`）**、跨平台账号一次性配对码显式绑定图谱 | **母版 IV** | `02-cognitive` 2.4 & `03` 关系里程碑引擎 |
 | | **`/memory/events-media`** | **原始事件日志（`event_log`）审计、共同经历多媒体库（`attachments/`）与微调语料精炼页**：多维过滤检索不可变事件日志（含 `active_modules_mask` 位图）、浏览共同经历多媒体快照画廊，以及提炼导出黄金声线样本与角色专属 SFT/LoRA 微调数据集 | **母版 II & V** | `02-storage` 1/2.1 |
-| **5. 大模型与五脑区算力代谢**<br/>*(Models & Compute)* | **`/models/providers`** | **大模型提供商（`ext.model_provider`）、本地推理引擎与角色 LoRA 中心页**（对齐并升维 AstrBot）：管理 OpenAI / Anthropic / Gemini / DeepSeek / 本地 Ollama / vLLM / llama.cpp / Embedding / Reranker / L0 本地分类器提供商；内置一键 Ping & 流式 TTFT 测速、角色 LoRA 适配器热绑定 | **母版 III** | `05` 总线 6 |
+| **5. 大模型与五脑区算力代谢**<br/>*(Models & Compute)* | **`/models/providers`** | **大模型提供商（`ext.model_provider`）、本地推理引擎与角色 LoRA 中心页**：管理 OpenAI / Anthropic / Gemini / DeepSeek / 本地 Ollama / vLLM / llama.cpp / Embedding / Reranker / L0 本地分类器提供商；内置一键 Ping & 流式 TTFT 测速、角色 LoRA 适配器热绑定 | **母版 III** | `05` 总线 6 |
 | | **`/models/routing`** | **五脑区异构算力路由矩阵、双轨精力“犯困降级”与声线漂移校准页**：五脑区（`W1` 快对话 / `W2` 8步行动 / `W3` 睡眠与好奇心 / `W4` 多模态 / `L0` 危机分类器）独立连线路由矩阵 + 算力代谢活力环 $E_{\text{metabolic}}$（`<25%` 自动降级至 Flash/本地模型 + `5%` L0 危机豁免备用金锁）+ 换模型 5 场景声线漂移五维雷达图 | **母版 III** | `02-cognitive` 2.1.2/2.3.2 & `01` 路由器 |
-| **6. 五阶多态扩展生态与编排**<br/>*(Polymorphic Ecosystem)* | **`/extensions/marketplace`** | **五阶多态扩展生态市场、多源安装器与创作者打包发布中心页**（对齐并升维 Koishi/AstrBot 市场）：支持按 **“五阶扩展载体形态（零代码资产包 / `SKILL.md` 技能 / MCP·协议连接器 / `.flow.yaml` 认知蓝图 / 原生代码插件）”** 与 **“八大功能总线”** 双维度交叉浏览与安装（Registry / Git / NPM / 本地拖拽）；管理三段式生命周期与 `faulted_isolated` 报错一键热重载；内置 **Creator Asset Bundler 一键脱敏打包器** | **母版 V** | `05` 五阶多态扩展载体 × 八大总线 |
+| **6. 五阶多态扩展生态与编排**<br/>*(Polymorphic Ecosystem)* | **`/extensions/marketplace`** | **五阶多态扩展生态市场、多源安装器与创作者打包发布中心页**：支持按 **“五阶扩展载体形态（零代码资产包 / `SKILL.md` 技能 / MCP·协议连接器 / `.flow.yaml` 认知蓝图 / 原生代码插件）”** 与 **“八大功能总线”** 双维度交叉浏览与安装（Registry / Git / NPM / 本地拖拽）；管理三段式生命周期与 `faulted_isolated` 报错一键热重载；内置 **Creator Asset Bundler 一键脱敏打包器** | **母版 V** | `05` 五阶多态扩展载体 × 八大总线 |
 | | **`/extensions/configurator`** | **已安装扩展动态 Schema 配置中心与双层权限围栏矩阵页**：自动解析任何已安装扩展的 `config_schema` 渲染 `Tier-V1/V2/V3` 专属配置表单（支持多 Profile、绑定 Vault 密钥、保存即触发单插件热重载）；提供 **双层权限围栏矩阵**（外部 `Shell` 的 `Scoped Capability Token` + 内部扩展对 `D1~D5` 五大黑板状态域的读写提案权限与网络开关） | **母版 III** | `05` `ai0.extension.json` & `04` 4.1 |
-| | **`/extensions/skills-mcp`** | **载体形态 II & III 专属：Agent `SKILL.md` 自然语言技能工坊与 MCP / Webhook 工具中心页**（对齐并升维 AstrBot Skills & MCP）：左栏管理挂载的 `stdio / SSE / Streamable HTTP` MCP Servers 与 HTTP Webhook/OpenAPI 桥接器；右栏提供 **在线 `SKILL.md` 技能手册可视化创作台**（直接编写任务步骤 Markdown、角色内执行姿态提示 `in_character_demeanor`、勾选绑定的工具与沙盒脚本），并提供**在线单步 Tool / Skill 调试沙盒** | **母版 III & V** | `05` 载体 II (`SKILL.md`) & 载体 III (MCP/Webhook) |
+| | **`/extensions/skills-mcp`** | **载体形态 II & III 专属：Agent `SKILL.md` 自然语言技能工坊与 MCP / Webhook 工具中心页**：左栏管理挂载的 `stdio / SSE / Streamable HTTP` MCP Servers 与 HTTP Webhook/OpenAPI 桥接器；右栏提供 **在线 `SKILL.md` 技能手册可视化创作台**（直接编写任务步骤 Markdown、角色内执行姿态提示 `in_character_demeanor`、勾选绑定的工具与沙盒脚本），并提供**在线单步 Tool / Skill 调试沙盒** | **母版 III & V** | `05` 载体 II (`SKILL.md`) & 载体 III (MCP/Webhook) |
 | | **`/extensions/cognitive-organs`** | **载体形态 V（总线 3）专属：大脑认知器官（`ext.cognitive_organ`）三钩子工作台与消融实验页**：管理插入大脑内部的认知器官插件（如做梦日记器、塔罗心境器、自定义情绪模型）；独立配置三大生命周期钩子（`contributeToBlackboard` 黑板 Token 配额滑块 `maxTokens` / `onTurnCompleted` 提案开关 / `onSleepCycleWakeup` 睡眠唤醒开关）、一键消融开关，并实时预览该器官注入黑板的文本切片与提交的 `StateMutationProposal` | **母版 III & II** | `05` 3.3 `ICognitiveOrganExtension` |
 | | **`/extensions/flows-eca`** | **载体形态 IV 专属：跨插件 ECA 联动蓝图与后台 Sub-Agent 认知管线编排器页（`.flow.yaml` & `orchestration_rules.yaml`）**：以 `When (来源 Shell & 语义事件) -> If (条件表达式) -> Then (目标脑区器官 / 触发 SKILL.md / 注入情境提示)` 可视化积木编排跨插件协同（如桌面 Shell 检测到深夜写代码超 2 小时自动触发内稳态劝睡关怀）与后台反思子代理流，支持一键导出 `.flow.yaml` 分享 | **母版 IV & III** | `05` 4 & 载体 IV 可视化认知流 |
 | | **`/extensions/custom/:pluginId`** | **载体形态 V（总线 8）专属：第三方插件动态 UI 视图宿主与前端开发者沙盒页（`ext.console_ui`）**：按需渲染插件通过 `ui_slots` 注册的声明式 JSON Schema 页面或无凭据 `<iframe sandbox="allow-scripts">` 自定义画布；内置供插件作者实时预览 Schema 小部件与调试 `postMessage` 桥接器的开发者工具栏 | **母版 III / V** | `05` 3.8 & `06` 5.1 |
 | **7. 并发监控、四轨终端与沙盒**<br/>*(Runtime, Terminal & Lab)* | **`/runtime/coordinator-agency`** | **MVCC 五域（`D1~D5`）并发水位、有界发言机会池与 8 步行动任务（`W2`）看板页**：实时监控全局 `state_rev`、五域独立 `domain_rev` 与四路 Worker（`W1~W4`）队列；通过 `OpportunityPoolBubbleStrip` 实时展示有界发言机会池（`InteractionOpportunity` 候选气口倒计时与过期作废动画）及 `unsaid_remainder` 未说完腹稿；监控运行中 `W2` 8 步行动认知状态机进度，支持就地审批、暂停或急停 | **母版 II** | `03-coordinator` 1~4 & `02-cognitive` 2.5.2/2.6 |
-| | **`/runtime/terminal`** | **四轨融合实时遥测与协议抓包终端页**（对齐并升维 NapCat 日志终端）：`<main>` 圆角卡片盒子内全幅展示高对比暗色等宽四轨终端（① Protocol v0 信封与打断回执抓包轨 / ② MVCC 五域提案与李群 $\tanh$ 冲量合成轨 / ③ 睡眠写入防火墙与玩笑语用结界拦截轨 / ④ SQL `WHERE audience_scope` 物理隔离证明与守护进程日志轨） | **母版 II** | `03-coordinator` 2.2 & `04-protocol` 1~4 |
+| | **`/runtime/terminal`** | **四轨融合实时遥测与协议抓包终端页**：`<main>` 圆角卡片盒子内全幅展示高对比暗色等宽四轨终端（① Protocol v0 信封与打断回执抓包轨 / ② MVCC 五域提案与李群 $\tanh$ 冲量合成轨 / ③ 睡眠写入防火墙与玩笑语用结界拦截轨 / ④ SQL `WHERE audience_scope` 物理隔离证明与守护进程日志轨） | **母版 II** | `03-coordinator` 2.2 & `04-protocol` 1~4 |
 | | **`/sandbox/lab`**<br/>*(沙盒环境核心路由)* | **隔离认知实验沙盒与 `.scenario.yaml` 消融评测实验室页**：当顶栏切换至 `🧪 SANDBOX` 环境时，从任意快照秒级派生 `sandbox:<fork_id>`、提供 `SandboxTimeWarpLabBar`（`+30m/+6h/+24h/+7d` 虚拟时间拨快与静默/冬眠模式切换）、四元组感官事件模拟注入器、认知器官 A/B 消融对比矩阵与 `.scenario.yaml` Fail-Closed 断言回放报告 | **母版 V** | `03-coordinator` 3.1 & `06` 5.2 |
 | **8. 系统运维、安全合规与实例底座**<br/>*(System, Security & Daemon)* | **`/system/instances-storage`** | **多 `.soul` 灵魂存档实例生命周期、Git 快照时间线与 SQLite 存储健康中心页**：管理同一 `@ai0/daemon` 下的多个 `.soul` 实例（新建/切换/克隆/归档）、浏览 `.soul` 物理目录树、执行 Git 快照回档与三种断层弥合模式（强制自动重放 `redaction_ledger.json` 永久遗忘账本）、监控 SQLite WAL / `sqlite-vec` / FTS5 / `PRAGMA secure_delete` 状态、导出 `.soul.tar.zst` 迁移包 | **母版 IV & III** | `02-storage` 1~3 & `04-blindspots` 1.1 |
 | | **`/system/safety-sb243`** | **三维权限审批矩阵、公私隐私墙、SB 243 合规与反操控宪章中心页**：配置 `Principal × Audience × CapabilityRisk` 三维授权矩阵、L0 危机拦截器本地词典与地区求助热线卡片（988 等）、3 小时连续陪伴休息提醒定时器、一键导出 `sb243_annual_metrics` 匿名年度报告，以及内置 `/safety-protocol` 公开协议声明页预览 | **母版 III** | `05-ethics-sb243` 1~3 & `02-cognitive` 2.6.2 |
-| | **`/system/settings-security`** | **控制台访问认证、密钥保险箱（Secrets Vault）、网络代理与 KIRAKIRA-MD3 外观中心页**：Owner 登录密码 / Passkey / TOTP 双因素认证与 `Owner Master Session Token` 会话管理；集中式 API Keys 与插件凭据加密保险箱（Secrets Vault）；全局与分插件 HTTP/SOCKS5 网络代理配置；KIRAKIRA-MD3 动态灵魂主题色提取、暗/亮色切换、快捷键与 CLI 接入凭据生成 | **母版 III** | `01-overview` 控制面安全 & 工业级控制台基建 |
+| | **`/system/settings-security`** | **控制台访问认证、密钥保险箱（Secrets Vault）、网络代理与动态灵魂外观中心页**：Owner 登录密码 / Passkey / TOTP 双因素认证与 `Owner Master Session Token` 会话管理；集中式 API Keys 与插件凭据加密保险箱（Secrets Vault）；全局与分插件 HTTP/SOCKS5 网络代理配置；动态灵魂主题色（`sakura-pink` / `astral-blue` / `cyber-emerald`）、浅/深色外观切换、快捷键与 CLI 接入凭据生成 | **母版 III** | `01-overview` 控制面安全 & 工业级控制台基建 |
 
 ---
 
@@ -224,7 +224,7 @@ flowchart LR
 
 1. **三层人格设定与双轨演化 Diff 审批（`/soul/persona` — `DualColumnNarrativeApproval`）**：
    * **Tier 0（安全与反操控宪法徽章栏）**：只读带锁徽章展示 SB 243 危机硬拦截与反操控五原则；
-   * **Tier 1（核心 DNA `identity.yaml`）**：提供存在论契约三选一图文卡、口癖与禁用 AI 客服词交互式 `KiraChipPool` 胶囊池，以及当后台 `W3` 提议微调核心 DNA 时的 **左右双栏高亮 Diff 审批卡（附带可点击溯源的共同经历源事件证据链胶囊）**；
+   * **Tier 1（核心 DNA `identity.yaml`）**：提供存在论契约三选一图文卡、口癖与禁用 AI 客服词交互式 `ChipPool` 胶囊池，以及当后台 `W3` 提议微调核心 DNA 时的 **左右双栏高亮 Diff 审批卡（附带可点击溯源的共同经历源事件证据链胶囊）**；
    * **Tier 2（可演化自我叙事 `narrative.md`）**：每个段落块右上角带有醒目的**受众隐私染色徽标（`🔒 only_owner 翡翠私密章` vs `🌐 public_all 蔚蓝公开章`）**；底部提供 `routine_append` 日常自动演进时间轴（支持任意节点 `[⏪ 一键回退]`）与 `high_impact_shift` 高冲突变更挂起审批卡。
 2. **动态世界观词库编排与激活模拟器（`/soul/lorebooks` — `LorebookActivationSimulator`）**：
    * 支持管理多本世界观设定集，并提供一个实时测试沙盒——输入一句模拟对话，立即高亮展示哪些词条因命中 `keys / secondary_keys` 或递归链而被激活、以及它们将占用认知黑板多少 Token。
@@ -276,7 +276,7 @@ flowchart LR
 
 ### 3.8 子系统八：大模型接入、五脑区异构算力路由、双轨精力“犯困降级”与声线漂移雷达（`/models/*`）
 
-1. **模型提供商卡片池与角色 LoRA 绑定（`/models/providers` — 对齐并升维 AstrBot）**：可视化管理云端 API 与本地 Ollama / vLLM / llama.cpp / Embedding / Reranker / L0 分类器，内置 `[⚡ 一键 Ping & 流式 TTFT 首字延迟实测]` 与角色专属 LoRA 权重热绑定。
+1. **模型提供商卡片池与角色 LoRA 绑定（`/models/providers`）**：可视化管理云端 API 与本地 Ollama / vLLM / llama.cpp / Embedding / Reranker / L0 分类器，内置 `[⚡ 一键 Ping & 流式 TTFT 首字延迟实测]` 与角色专属 LoRA 权重热绑定。
 2. **五脑区异构算力路由矩阵、算力代谢液位环与声线漂移校准仪（`/models/routing` — `BrainRegionRoutingMatrix`）**：
    * 为 **`W1` 快对话 / `W2` 8步行动规划 / `W3` 睡眠整理与好奇心冲浪 / `W4` 多模态感知 / `L0` 本地危机分类器** 独立连线绑定主模型与降级备用模型；
    * **算力代谢活力环 $E_{\text{metabolic}}$**：直观展示 Token 预算消耗如何映射为算力代谢活力——`<25%` 进入琥珀色犯困预警区自动热切换至轻量 Flash/本地模型并在黑板注入“动脑太久有点犯迷糊撒娇”体感；底部锁定不可挪用的 **`5% L0 危机豁免紧急备用金`**；
@@ -316,7 +316,7 @@ flowchart LR
 4. **工业级控制台系统运维、多 `.soul` 实例、密钥保险箱（Secrets Vault）与 SB 243 合规底座（`/system/*`）**：
    * **`/system/instances-storage`**：管理同一 `@ai0/daemon` 下的多个 `.soul` 实例（新建/切换/克隆/归档）、浏览 `.soul` 物理目录文件树、管理 Git 快照分支与三种回档断层弥合模式（`silent_hard | meta_reconciled | dream_bridge`，恢复时**强制自动重放 `redaction_ledger.json` 永久遗忘墓碑账本**）、监控 SQLite WAL / `sqlite-vec` / FTS5 / `PRAGMA secure_delete` 状态并导出 `.soul.tar.zst` 整包；
    * **`/system/safety-sb243`**：配置 `Principal × Audience × CapabilityRisk` 三维权限矩阵、SB 243 本地危机词典与 988 求助热线卡片、3 小时连续陪伴休息提醒阈值、一键导出 `sb243_annual_metrics` 匿名年度报告、预览内置 `/safety-protocol` 公开合规声明页；
-   * **`/system/settings-security`**：Owner 强密码 / Passkey / TOTP 双因素认证与 `Owner Master Session Token` 会话管理、集中式 API Keys 与插件凭据加密保险箱（**Secrets Vault**）、全局与分插件 **HTTP/SOCKS5 网络代理配置**、KIRAKIRA-MD3 动态灵魂主题色提取与全局快捷键设置。
+   * **`/system/settings-security`**：Owner 强密码 / Passkey / TOTP 双因素认证与 `Owner Master Session Token` 会话管理、集中式 API Keys 与插件凭据加密保险箱（**Secrets Vault**）、全局与分插件 **HTTP/SOCKS5 网络代理配置**、动态灵魂主题色（`sakura-pink` / `astral-blue` / `cyber-emerald`）与全局快捷键设置。
 
 ---
 
@@ -422,7 +422,7 @@ flowchart LR
    * `slot.ecosystem.plugin_config`：在 `/extensions/configurator` 中由 `ExtensionDynamicSchemaDrawer` 自动渲染该插件的 `Tier-V1/V2/V3` 配置表单；
    * `slot.studio.voice_tuner`：在 `/shells/media-pipeline` 多模态媒体管线调音台中挂载专属声线试听控件。
 2. **安全渲染机制**：
-   * **模式 A（推荐，90% 插件配置与监控适用：声明式 Schema 原生渲染）**：插件在 `ai0.extension.json` 中仅声明 JSON Schema 与数据绑定端点（支持 `timeseries_chart`、`kv_badges`、`markdown_card_list`、`json_schema_form`），由控制台原生 KIRAKIRA-MD3 组件安全渲染；
+   * **模式 A（推荐，90% 插件配置与监控适用：声明式 Schema 原生渲染）**：插件在 `ai0.extension.json` 中仅声明 JSON Schema 与数据绑定端点（支持 `timeseries_chart`、`kv_badges`、`markdown_card_list`、`json_schema_form`），由控制台第一方紧凑 MD3 组件安全渲染；
    * **模式 B（高阶自定义画布与 Web 躯壳舞台：无凭据沙盒 Iframe）**：对于需要复杂 2D/3D/WebGL 画布的插件，运行在 `<iframe sandbox="allow-scripts">` 隔离域中，仅通过受控 `postMessage` 桥接器或公开 `Scoped Capability Token` WebSocket 通信，物理隔离宿主 Cookie 与 `Owner Master Session Token`。
 
 ### 5.2 可脚本化场景回归回放与消融评测引擎（`.scenario.yaml`）
@@ -536,36 +536,46 @@ steps:
 
 ---
 
-## 七、融合 `kirakira.moe (KIRAKIRA-Cerasus)` 的 Material Design 3 二次个性风格封装与四层 45 项前端组件库规范
+## 七、`ai0` 控制台第一方设计语言（Refined Compact MD3）与四层 45 项组件体系规范
 
-### 7.1 动态灵魂色调、桌面紧凑尺寸令牌与 `<main>` 一体式圆角卡片容器美学
+### 7.1 五大自包含设计支柱（零外部先验知识可独立复现）
 
-1. **KIRAKIRA-MD3 动态灵魂色调与一体式 `<main>` 圆角卡片层次（Soul-Driven Tonal Palette & Unified `<main>` Rounded Sheet）**：
-   * 萃取 **`kirakira.moe (KIRAKIRA-Cerasus)`** 对 Material Design 3 与 Fluent UI 的二次元个性化重塑精髓：
-     * **灵魂主题色动态派生**：支持从当前活跃 `.soul` 实例的角色主色调（如樱花粉 `#F472B6`、星穹蓝 `#38BDF8`、薄荷青 `#34D399`）在 OKLCH / HCT 色彩空间自动派生出克制的表面阶梯——外围常驻多态壳层（混合顶栏 + 左右可折叠栏）坐落于深邃底布（`Surface-Frame-Base #080A0F` 或亮色 `#EEF1F7`），而中央 **`<main>` 路由视口容器盒子（`MainRoundedCardOutlet`）** 则作为一张完整抬升的大圆角卡片盒子（`Surface-Main-Card #111520` 或亮色 `#FFFFFF`，`border-radius: 16px`，`1px solid rgba(255,255,255,0.08)` 细腻高光描边與柔和内聚阴影）被清晰包裹起来！
-     * **物理弹性与水波纹微交互（Ripple & Spring Physics）**：所有按钮、胶囊分段滑块、路由过渡与左右功能栏折叠均内置 `KIRAKIRA` 标志性的细腻水波纹扩散（Subtle Material Ripple）与弹簧阻尼曲线（`cubic-bezier(0.22, 1, 0.36, 1)`）。
-2. **桌面高密度紧凑化尺寸令牌（Compact Desktop Density Tokens）**：
-   * 外围多态栏与 `<main>` 圆角卡片大盒子之间保持 **`6px~8px` 紧密咬合间距**；
-   * 标准输入框/下拉框/按钮高度严格锁定 **`32px`**（迷你工具按钮 `26px`、胶囊标签 `22px`、表头 `36px`、行高 `34px`）；管理区正文 `12.5px~13px`，所有 `ULID`、`state_rev`、时间戳、公式参数与 SQL/JSON 强制使用等宽字体（`JetBrains Mono` / `Geist Mono`）。
+传统企业后台虽信息密度高但冰冷机械，消费级原生 Material Design 3 虽具亲和力但留白松散、难以承载科研级参数观测。`ai0` 控制台第一方设计系统（**`ai0` Console Design System / Refined Compact MD3**，统一收口于 `apps/console/src/design-system/tokens/console-theme.css` 与 `--ai0-*` / `.ai0-*` 命名空间）以**“科研级白盒认知治理的高密度精密感 × 数字生命长期陪伴的通透呼吸感”**为设计哲学，确立以下五大可量化、可验证的自包含设计支柱：
+
+1. **空间拓扑文法（Frameless L-Chrome + Single Elevated Canvas）**：
+   * 混合顶栏（`HybridTopBar`，`48px`）与左侧导航栏（`PolymorphicNavRail`）直接融入全局底板环境色（`--ai0-surface-frame-base`），**无独立外围卡片边框与冗余背景框**；
+   * 中央 `<main>` 路由视口容器（`MainRoundedCardOutlet`）作为全屏唯一一张完整抬升的大圆角画布卡片（`--ai0-surface-main-card`，`--ai0-main-card-radius: 16px`，`1px` 柔和边界描边与轻柔环境阴影，`overflow: hidden`），外围功能栏与主画布保持紧凑咬合间距；页面内部采用高内聚平铺分栏，严禁把 `<main>` 拆成满屏碎卡片套娃。
+2. **灵魂驱动的 5 级动态色调表面与主权安全硬锁色（Soul-Driven 5-Level Tonal Surfaces & Locked Sovereignty Colors）**：
+   * 支持**浅色通透默认态**与**深色模式（`[data-appearance="dark"]`）**双态完备；默认内置三套由当前 `.soul` 灵魂主色派生的语义主题预设——**樱粉（`sakura-pink`）**、**星蓝（`astral-blue`）**与**翠绿（`cyber-emerald`）**（在感知均匀色彩空间中平滑派生五级低饱和带色相表面阶梯：`--ai0-surface-frame-base`、`--ai0-surface-main-card`、`--ai0-surface-container-low`、`--ai0-surface-container-high`、`--ai0-accent-tint`），**代码级严禁死黑 `#000` / `#000000` 与死灰 `#333` / `#333333`**；
+   * **主权安全语义硬锁色**：`🟢 LIVE` 正式实例围栏锁定翡翠绿（`--sovereignty-live-emerald: #10B981`），`🧪 SANDBOX` 隔离实验沙盒围栏锁定琥珀/紫罗兰（`--sovereignty-sandbox-amber: #F59E0B` / `--sovereignty-sandbox-violet: #8B5CF6`），绝不随灵魂换肤妥协安全辨识度。
+3. **桌面高密度紧凑标尺与克制单色符号学（Compact Desktop Density & Monochrome Iconography）**：
+   * 标准输入框/下拉框/按钮高度严格锁定 `--ai0-ctrl-height-md: 32px`（迷你态 `28px` / `26px`、胶囊 `22px~24px`、正文 `12.5px~13px`）；所有 `ULID`、`state_rev`、时间戳、公式参数、表格数值与 SQL/JSON 强制使用等宽字族（`--ai0-font-mono`）与等宽数字对齐（`tabular-nums`）；
+   * 控制台 UI Chrome（顶栏、导航栏、按钮、面板标题、徽标）**全面禁用彩色系统 Emoji 噪音**，统一采用继承 `currentColor` 的单色 SVG 矢量图标系统（`tokens/icons.ts` → `renderConsoleIcon`）。
+4. **二次封装 MD3 触觉与物理微交互文法（Refined MD3 Tactile & Spring Physics）**：
+   * **指针坐标真实水波纹（Pointer-Origin Ripple）**：按钮点击时依据真实指针坐标计算扩散原点与最大半径（`--ai0-ripple-x / y / radius`），配合细腻低透明扩散反馈；
+   * **居中展开底部聚焦墨水线（Bottom Ink Bar）**：填充式输入框与下拉框在聚焦时自底边中央平滑展开 `2px` 主题色墨水线，替代生硬的原生外发光框；
+   * **左侧激活竖条与果冻弹性反馈（Left Active Indicator & Spring/Jelly Easing）**：左侧导航激活项配备 `3px × 16px` 主题色圆角竖条指示器；开关、滑块、胶囊分段与抽屉折叠统一由弹簧阻尼（`--ai0-spring-easing: cubic-bezier(0.22, 1, 0.36, 1)`）与果冻回弹曲线（`--ai0-jelly-easing: cubic-bezier(0.34, 1.56, 0.64, 1)`）驱动；内心潜台词使用毛玻璃剧透遮罩层（`backdrop-filter: blur(8px)`）按点击平滑揭开。
+5. **五子目录 45 项纯语义模块化架构（5-Subdirectory Modularity）**：
+   * `apps/console/src/design-system/` 严格拆分为 `tokens/`、`primitives/`（10 项）、`shell/`（7 项）、`domain-visualizers/`（16 项）与 `composites/`（12 项），全部 45 项组件统一采用无外部前缀的纯语义自描述命名，受编译期边界守卫（Invariant 5）禁止单体文件堆砌。
 
 ---
 
 ### 7.2 四层 45 项前端基础与领域组件库完整契约（4-Layer 45-Component Architecture）
 
-`@ai0/console-webui/src/design-system/` 完整实现以下 **4 层 45 项标准化组件**，确保前端基础组件零缺失、功能层次极度清晰：
+`@ai0/console-webui/src/design-system/` 完整实现以下 **4 层 45 项标准化纯语义组件**，确保前端基础组件零缺失、命名正交一致、功能层次清晰：
 
 | 组件分层 | 组件编号与名称 | 核心视觉特征与交互职责契约 |
 | :--- | :--- | :--- |
-| **Layer 1**<br/>**KIRAKIRA-MD3 紧凑基础原子组件**<br/>*(10 项)* | **1. `KiraRippleButton` & `KiraIconButton`** | 紧凑 `32px` 高度（迷你态 `26px`），内置 MD3 指针坐标水波纹（Ripple）扩散、悬停微抬升与异步事务锁防重放态 |
-| | **2. `KiraSegmentedPill`** | 带弹簧物理滑块过渡的胶囊分段切换器，用于顶栏 `LIVE / SANDBOX` 环境切换、`Tier-V1/V2/V3` 层级切换及终端四轨切换 |
-| | **3. `KiraCompactInput` & `KiraSecretInput`** | `32px` 高密度文本/数值输入框，支持内嵌等宽单位前缀、Vault 密钥引用选择器、字段级 Dirty 高亮边框与即时 Zod 错误提示 |
-| | **4. `KiraSelect` & `KiraModelCombobox`** | 支持按提供商/脑区分组搜索、内嵌模型延迟徽标（`TTFT ms`）、上下文窗口大小与成本等级标签的紧凑下拉组件 |
-| | **5. `KiraSwitch` & `KiraAblationToggle`** | 带弹簧滑动与权威 `state_rev` 确认态的开关；认知器官消融开关在关闭时自动浮现 `[已向黑板注入中性常数]` 胶囊提示 |
-| | **6. `KiraSlider` & `KiraDualRangeSlider`** | 紧凑单/双滑块，支持阈值颜色分段（如 `<25%` 算力代谢犯困黄色预警区、`5%` 红色危机豁免区）与默认值刻度吸附 |
-| | **7. `KiraChipPool` & `KiraEditableTagList`** | 支持回车快速添加、拖拽排序与颜色分类的胶囊标签池，用于管理口癖词、禁用 AI 客服词、`Lorebook` 触发词与受众白名单 |
-| | **8. `KiraBadge` & `KiraProvenancePill`** | 统一状态徽标系统：四级认知溯源章（亲历/传闻/揣测48h沙漏/白日梦）、受众隐私锁（`only_owner / public_all`）、污染级别章，均同时包含图标+色彩+文字 |
-| | **9. `KiraSpoilerMask`** | 二次元风格毛玻璃剧透遮罩层（`backdrop-filter: blur(8px)` + 微光边框），用于包裹 `theatrical_subtext` 内心潜台词，点击以水波纹平滑揭开 |
-| | **10. `KiraTooltip` & `KiraPopoverCard`** | 弹簧渐显悬浮解释卡，鼠标悬停在任何专业参数上即可查看其通俗陪伴作用与底层数学公式（如李群 $\tanh$ 软饱和说明） |
+| **Layer 1**<br/>**紧凑二次封装 MD3 基础原子组件**<br/>*(10 项，`primitives/`)* | **1. `RippleButton`** | 紧凑 `32px` 高度（迷你态 `28px`/`26px`），内置 MD3 指针坐标水波纹（Ripple）扩散、悬停微抬升与异步事务锁防重放态 |
+| | **2. `SegmentedPill`** | 带弹簧物理滑块过渡的胶囊分段切换器，用于顶栏 `LIVE / SANDBOX` 环境切换、`Tier-V1/V2/V3` 层级切换及终端四轨切换 |
+| | **3. `CompactInput`** | `32px` 高密度填充式文本/数值输入框，内置底部居中展开 `2px` 聚焦墨水线、等宽单位后缀、字段级 Dirty 态与即时 Zod 错误提示 |
+| | **4. `CompactSelect`** | `32px` 紧凑二次封装下拉组件（清除原生浏览器箭头样式，统一单色 SVG 指示符与底部聚焦墨水线），支持提供商/脑区/主题选择 |
+| | **5. `JellySwitch`** | 带果冻弹性滑动轨迹与权威 `state_rev` 确认态的开关（全面替代原生 Checkbox）；支持认知器官消融与规则启停 |
+| | **6. `TonalSlider`** | 紧凑色调进度滑块，支持阈值颜色分段（如 `<25%` 算力代谢犯困预警区、`5%` 危机豁免区）、等宽实时读数与刻度吸附 |
+| | **7. `ChipPool`** | 支持回车快速添加、删除与语义色分类的胶囊标签池，用于管理口癖词、禁用 AI 客服词、`Lorebook` 触发词与受众白名单 |
+| | **8. `StatusBadge`** | 克制色调状态徽标系统：四级认知溯源章（亲历/传闻/揣测48h沙漏/白日梦）、受众隐私锁（`only_owner / public_all`）、污染级别章，均同时包含单色图标+语义色+文字 |
+| | **9. `SpoilerMask`** | 毛玻璃剧透遮罩层（`backdrop-filter: blur(8px)` + 主题色虚线微光边框），用于包裹 `theatrical_subtext` 内心潜台词，点击平滑揭开 |
+| | **10. `HoverTooltip`** | 弹簧渐显悬浮解释卡，鼠标悬停在任何专业参数上即可查看其通俗陪伴作用与底层数学公式（如李群 $\tanh$ 软饱和说明） |
 | **Layer 2**<br/>**常驻多态外壳与 `<main>` 一体式圆角卡片视口容器**<br/>*(7 项)* | **11. `SovereigntyViewportFrame`** | 全屏固定视口根容器，根据 `target_instance` 切换全局 `🟢 LIVE` 主权翡翠绿或 `🧪 SANDBOX` 实验琥珀/紫防呆警示边框 |
 | | **12. `HybridTopBar` & `GlobalPendingApprovalDrawer`** | `48px` 常驻混合顶栏（含 `.soul` 实例切换、面包屑、`LIVE / SANDBOX` 切换胶囊、生命脉搏微环、全局急停）+ 点击 `[🔔 待审批]` 直接滑出的非阻塞 Tier 1/2 人格 Diff 与 `W2` 工具授权快捷审批抽屉 |
 | | **13. `PolymorphicNavRail`** | 左侧三态可折叠路由导航栏容器（`56px` 迷你图标栏 $\leftrightarrow$ `220px` 精炼 8 大一级域零滚动条导航栏 $\leftrightarrow$ `56px+190px` 一二级双轨），支持 `Ctrl+B` 切换 |
@@ -598,6 +608,6 @@ steps:
 | | **40. `CompactSchemaConfigurator`** | 通用 `@ai0/protocol` Zod Schema 驱动的 `Tier-V1/V2/V3` 渐进式配置器，右上角支持一键在“图形表单”与“YAML/JSON 权威源码”间无损切换 |
 | | **41. `FloatingDirtyDiffBar` & `DirtyRouteGuard`** | `<main>` 盒子底部内嵌粘性脏状态事务栏（展示与当前 `state_rev` 的字段级 Diff、一键撤销、携带 `expected_rev` 原子提交）及未保存切换路由拦截弹窗 |
 | | **42. `DualColumnNarrativeApproval`** | Tier 1 核心 DNA 提案与 Tier 2 自我叙事（`narrative.md` 带受众隐私染色段落）左右双栏高亮 Diff 审批器，附带源事件证据链点击溯源与 `routine_append` 一键回退 |
-| | **43. `VerifiableTraceAccordion`** | 8 步可验证系统决策轨迹手风琴组件：严格映射 `step1` 至 `step8`，内置 `[模型自述推演 · 非权威记录]` 警示章、`KiraSpoilerMask` 潜台词遮罩与打断字符偏移标尺 |
+| | **43. `VerifiableTraceAccordion`** | 8 步可验证系统决策轨迹手风琴组件：严格映射 `step1` 至 `step8`，内置 `[模型自述推演 · 非权威记录]` 警示章、`SpoilerMask` 潜台词遮罩与打断字符偏移标尺 |
 | | **44. `MultiTrackTelemetryTerminal`** | 四轨融合实时遥测终端：支持在 **① Protocol v0 帧与打断腹稿抓包轨、② MVCC 五域版本与 $\tanh$ 冲量轨、③ 睡眠防火墙与玩笑语用拦截轨、④ SQL 隐私过滤证明轨** 之间切换或分屏 |
 | | **45. `SandboxTimeWarpLabBar` & `SecretsVaultManager`** | 沙盒专用时间拨快（`+30m/+6h/+24h/+7d`）、脑区消融矩阵与 `.scenario.yaml` 断言报告条；以及系统级 API Key 加密保险箱（Secrets Vault）与多 `.soul` 实例存储健康管理器 |

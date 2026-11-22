@@ -1,0 +1,18 @@
+services:
+  ai0:
+    build: .
+    container_name: ai0-cyber-life
+    restart: unless-stopped
+    ports:
+      - "${AI0_PORT:-4173}:4173"
+    environment:
+      - AI0_HOST=0.0.0.0
+      - AI0_PORT=4173
+      - AI0_SOUL_DIR=/data/souls/default.soul
+      - AI0_OWNER_TOKEN=${AI0_OWNER_TOKEN:-change-me-in-production}
+      - AI0_LLM_PROVIDER=${AI0_LLM_PROVIDER:-openai-compatible}
+      - AI0_LLM_BASE_URL=${AI0_LLM_BASE_URL:-}
+      - AI0_LLM_API_KEY=${AI0_LLM_API_KEY:-}
+      - AI0_LLM_MODEL=${AI0_LLM_MODEL:-}
+    volumes:
+      - ./souls:/data/souls

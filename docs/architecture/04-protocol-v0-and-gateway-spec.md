@@ -143,7 +143,7 @@ export interface ControlSignal {
   signal_type:
     | "barge_in_cancel"                      // 通知对方立即中止当前流式输出或音频播放
     | "audience_changed"                     // Shell 动态上报在场受众变更 (如有人加入房间)
-    | "capabilities_updated"                 // Shell 运行期随场景变化动态热注册/注销 actuators 或 sensors (对齐并超越 neuro-sdk)
+    | "capabilities_updated"                 // Shell 运行期随场景变化动态热注册/注销 actuators 或 sensors
     | "focus_shifted"                        // Kernel 通知各 Shell 当前前台注意力焦点已切换至哪个 Shell
     | "sb243_break_reminder"                 // Kernel 下发连续交互满 3 小时休息提醒
     | "crisis_intervention_card";            // Kernel L0 危机拦截器下发的强制危机援助热线卡片

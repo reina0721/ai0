@@ -237,7 +237,7 @@ CREATE TABLE turn_decision_traces (
 
 ### 2.6 表 6：内建开箱即用混合 RAG 知识库切片与 FTS5 稀疏索引表 (`knowledge_chunks`)
 
-为了在内核底座原生提供对齐并超越 `AstrBot` 的混合 RAG 知识库能力（同时与外部 `ext.memory_knowledge` 连接器无缝协同），`soul_core.sqlite` 内建文档切片表、向量虚拟表与 `FTS5` 稀疏全文检索表，并**在表结构级强制锁死 `taint_level = 'untrusted_external'` 防间接 Prompt 注入投毒**，同时记录被真实对话引用的次数 `citation_count`（供卸载知识集时自动触发 `extractGistCardsBeforeUnmount` 浓缩生成 `<150` 字的 `kb_crystallized_gist` 常识卡）：
+为了在内核底座原生提供开箱即用的本地混合 RAG 知识库能力（同时与外部 `ext.memory_knowledge` 连接器无缝协同），`soul_core.sqlite` 内建文档切片表、向量虚拟表与 `FTS5` 稀疏全文检索表，并**在表结构级强制锁死 `taint_level = 'untrusted_external'` 防间接 Prompt 注入投毒**，同时记录被真实对话引用的次数 `citation_count`（供卸载知识集时自动触发 `extractGistCardsBeforeUnmount` 浓缩生成 `<150` 字的 `kb_crystallized_gist` 常识卡）：
 
 ```sql
 CREATE TABLE knowledge_chunks (

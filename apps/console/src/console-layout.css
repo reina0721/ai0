@@ -1,0 +1,71 @@
+[data-console-root] {
+  height: 100%;
+  background: var(--ai0-surface-frame-base);
+  color: var(--ai0-on-surface);
+}
+[data-console-root] [data-shell-slot="navigation"] {
+  height: 100%;
+  overflow: hidden;
+  transition: width 220ms var(--ai0-spring-easing);
+}
+[data-console-root] [data-shell-slot="main"] {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+[data-console-root] [data-shell-slot="inspector"] {
+  height: 100%;
+  overflow: hidden;
+  transition: width 220ms var(--ai0-spring-easing);
+}
+[data-nav-rail-mode="mini"] [data-shell-slot="navigation"] {
+  width: 58px;
+}
+[data-nav-rail-mode="expanded"] [data-shell-slot="navigation"] {
+  width: 228px;
+}
+[data-nav-rail-mode="dual"] [data-shell-slot="navigation"] {
+  width: 244px;
+}
+[data-inspector-mode="mini"] [data-shell-slot="inspector"] {
+  width: 0;
+  display: none;
+}
+[data-inspector-mode="trace"] [data-shell-slot="inspector"] {
+  width: 368px;
+  display: block;
+}
+[data-inspector-mode="sandbox-diff"] [data-shell-slot="inspector"] {
+  width: 502px;
+  display: block;
+}
+.ai0-hybrid-top-bar {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ai0-hybrid-top-bar::-webkit-scrollbar {
+  display: none;
+}
+@media (max-width: 1240px) {
+  .ai0-hybrid-top-bar [data-state-rev-badge] {
+    display: none;
+  }
+  [data-inspector-mode="trace"] [data-shell-slot="navigation"] {
+    width: 58px;
+  }
+  [data-inspector-mode="trace"] .ai0-polymorphic-nav-rail {
+    width: 58px !important;
+  }
+  [data-inspector-mode="trace"] .ai0-client-nav-label,
+  [data-inspector-mode="trace"] .ai0-nav-group__label {
+    display: none;
+  }
+}
+@media (max-width: 960px) {
+  [data-shell-slot="inspector"] {
+    display: none !important;
+  }
+  [data-nav-rail-mode] [data-shell-slot="navigation"] {
+    width: 58px;
+  }
+}

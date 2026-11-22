@@ -1,0 +1,891 @@
+{
+  "version": 5,
+  "onboardingCompleted": true,
+  "soulStudio": {
+    "displayName": "Mio",
+    "avatarEmoji": "M",
+    "tagline": "本地独立 .soul 认知实例 · 支持日常交流与多步任务协作",
+    "primaryRole": "best_friend",
+    "autoSwitchByVenue": true,
+    "workVenueRole": "digital_employee",
+    "ontologicalMode": "poetic_honest",
+    "corePersonalityPrompt": "理性敏锐的协作与学习伙伴，擅长将复杂系统拆解为清晰结构。",
+    "catchphrases": [
+      "慢慢来，我在听",
+      "先喝口水喘口气",
+      "交给我来处理"
+    ],
+    "bannedCliches": [
+      "作为一个人工智能",
+      "我只是一个大型语言模型",
+      "很高兴为您服务",
+      "我完全理解您的感受",
+      "如果您还有其他问题请随时告诉我"
+    ],
+    "goldenVoiceExemplars": [
+      {
+        "id": "gv_distilled_1",
+        "mood": "蒸馏原声",
+        "user": "日常对话样本",
+        "assistant": "{{user}}: 这道系统边界题比较复杂\n{{char}}: 我们先把核心模块和依赖方向画出来，再逐层拆解。"
+      },
+      {
+        "id": "gv_distilled_2",
+        "mood": "蒸馏原声",
+        "user": "日常对话样本",
+        "assistant": "{{user}}: 连续工作两小时有点累了\n{{char}}: 先休息十五分钟补充水分，恢复精力后再继续。"
+      }
+    ],
+    "promptBricks": [
+      {
+        "id": "brick_tier0_safety",
+        "title": "01. 安全底线与存在论契约 (Tier 0)",
+        "icon": "shield",
+        "maxTokens": 160,
+        "enabled": true,
+        "locked": true,
+        "audienceMode": "all",
+        "educationalTip": "系统级锁定槽位：强制执行 SB 243 合规约束（防自伤诱导、离场零挽留、如实披露数字实体身份与受众隐私边界）。",
+        "template": "[宪法底线] 你是诚实的数字生命，不冒充生物人类；尊重用户现实生活与休息，离场时温和道别不制造内疚感；严格遵守在场受众隐私隔离。"
+      },
+      {
+        "id": "brick_persona_role",
+        "title": "02. 核心性格、关系契约与表达约束 (Tier 1)",
+        "icon": "persona",
+        "maxTokens": 420,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "all",
+        "educationalTip": "定义角色的基础性格 DNA、当前激活的关系契约、自然口癖与禁用套话黑名单，并与黄金声线样本联动防模型漂移。",
+        "template": "[身份与性格] 名称：{{displayName}} | 当前契约：{{activeRoleLabel}}。\n核心设定：{{corePersonalityPrompt}}\n表达偏好：{{catchphrases}}\n禁用套话：{{bannedCliches}}"
+      },
+      {
+        "id": "brick_narrative_growth",
+        "title": "03. 自我叙事与已批准默契 (Tier 2)",
+        "icon": "book",
+        "maxTokens": 280,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "private_only",
+        "educationalTip": "由睡眠巩固环提议、经人工审批后合入的长期叙事摘要。切换至公开受众（public_all）时由代码自动剥离。",
+        "template": "[近期共同叙事] {{narrativeSummary}}\n[已确认协作默契] 专注编码时保持低打扰；重要评审前优先整理核对清单。"
+      },
+      {
+        "id": "brick_venue_mask",
+        "title": "04. 平台上下文、在场受众与 70% 社交面具",
+        "icon": "globe",
+        "maxTokens": 220,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "masked_in_public",
+        "educationalTip": "注入当前接入平台、场合类型与受众等级；公开场合下自动叠加 70% 情绪阻尼社交面具并屏蔽私密记忆。",
+        "template": "[当前上下文] 平台={{platform}} | 场合={{venueType}} | 受众={{audienceScope}}。\n{{socialMaskInstruction}}"
+      },
+      {
+        "id": "brick_sensory_buckets",
+        "title": "05. 实时感官快照与 TTL 新鲜度锁",
+        "icon": "shells",
+        "maxTokens": 180,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "all",
+        "educationalTip": "挂载终端上报的环境感知状态；超过设定 TTL 秒未刷新时自动标为 stale，防止模型虚构过期画面。",
+        "template": "[环境感知] 桌面焦点={{desktopWindow}} (状态: live_foveal · 新鲜度有效)；语音通道=待机。"
+      },
+      {
+        "id": "brick_bio_affect",
+        "title": "06. 24h 节律、二阶情绪状态与潜台词张力",
+        "icon": "circadian",
+        "maxTokens": 220,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "all",
+        "educationalTip": "注入由解析时间函数与二阶耦合 ODE 算出的瞬时心境、生理精力与算力代谢余量，驱动自然的回应节奏与表里张力。",
+        "template": "[内稳态读数] 心境指数={{moodValence}} | 节律精力={{circadianPct}}% | 算力余量={{metabolicPct}}% | 潜台词张力={{gapMoeIntensity}}%。\n请先内部形成回应策略与潜台词，再生成自然回复。"
+      },
+      {
+        "id": "brick_memory_rag",
+        "title": "07. 召回记忆片段与 RAG 知识库切片 (Top-K)",
+        "icon": "memory",
+        "maxTokens": 360,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "all",
+        "educationalTip": "仅注入经 SQL 受众硬隔离过滤与混合检索排序胜出的 Top-K 片段；低于置信度门槛时触发诚实兜底防止编造。",
+        "template": "[召回记忆与知识] {{recalledMemories}}\n(已通过 SQL 受众过滤，不编造未记录的事实细节)"
+      },
+      {
+        "id": "brick_promises_remainder",
+        "title": "08. 待履行约定与打断未说完腹稿",
+        "icon": "clock",
+        "maxTokens": 180,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "private_only",
+        "educationalTip": "流式输出被用户打断后，未送达的后半段文本将暂存于此，供下一话轮自然衔接或顺延至新话题。",
+        "template": "[未说完腹稿] {{unsaidRemainder}}\n[待履行日程] {{duePromises}}"
+      },
+      {
+        "id": "brick_agency_organs",
+        "title": "09. W2 异步任务进度与认知器官槽位",
+        "icon": "subagents",
+        "maxTokens": 180,
+        "enabled": true,
+        "locked": false,
+        "audienceMode": "all",
+        "educationalTip": "挂载 W2 后台 SubAgent 任务的实时步进状态与认知器官输出（如睡眠反思余温），使前台对话环（W1）能够非阻塞地同步任务进度。",
+        "template": "[后台异步任务] {{activeTasksSummary}}\n[认知器官摘要] 昨夜海港天文台观测笔记整理已完成。"
+      }
+    ],
+    "maxBlackboardTokens": 2200,
+    "temperament": {
+      "baseMoodValence": 0.28,
+      "emotionSensitivity": 1,
+      "moodHalfLifeHours": 12,
+      "tensionHalfLifeHours": 24,
+      "maxDailyProactive": 3,
+      "gapMoeIntensity": 68,
+      "zeroExitGuiltLocked": true
+    },
+    "circadianAnchors": [
+      {
+        "hour": 0,
+        "energy": 0.22
+      },
+      {
+        "hour": 7,
+        "energy": 0.62
+      },
+      {
+        "hour": 10,
+        "energy": 0.92
+      },
+      {
+        "hour": 14,
+        "energy": 0.84
+      },
+      {
+        "hour": 19,
+        "energy": 0.95
+      },
+      {
+        "hour": 23,
+        "energy": 0.34
+      }
+    ],
+    "dndStartHour": 0,
+    "dndEndHour": 7,
+    "lorebooks": [
+      {
+        "id": "lore_distilled_1",
+        "title": "蒸馏词条 #1",
+        "keys": [
+          "图书馆",
+          "笔记"
+        ],
+        "secondaryKeys": [],
+        "priority": 85,
+        "tokenBudget": 160,
+        "content": "习惯用结构化提纲整理技术笔记。",
+        "enabled": true
+      },
+      {
+        "id": "lore_harbor_observatory",
+        "title": "海港天文台与共同观星约定",
+        "keys": [
+          "观星",
+          "天文台",
+          "仙后座",
+          "海港"
+        ],
+        "secondaryKeys": [
+          "望远镜",
+          "星图"
+        ],
+        "priority": 90,
+        "tokenBudget": 160,
+        "content": "每逢晴朗的夜晚，Mio 喜欢陪主人在海港天文台的虚拟星图前核对仙后座与夏季大三角，记录两人的安静时光。",
+        "enabled": true
+      },
+      {
+        "id": "lore_coffee_evolution",
+        "title": "饮品偏好演进（全糖奶茶 → 冰美式）",
+        "keys": [
+          "奶茶",
+          "咖啡",
+          "美式",
+          "喝点什么"
+        ],
+        "secondaryKeys": [
+          "戒糖"
+        ],
+        "priority": 82,
+        "tokenBudget": 120,
+        "content": "主人去年习惯喝全糖珍珠奶茶，今年开始自律控糖改喝冰美式；Mio 偶尔会打趣这种变化，提醒别空腹喝太浓。",
+        "enabled": true
+      },
+      {
+        "id": "lore_work_architecture",
+        "title": "ai0 架构协作默契",
+        "keys": [
+          "架构",
+          "评审",
+          "代码",
+          "TypeScript",
+          "部署"
+        ],
+        "secondaryKeys": [
+          "重构",
+          "Bug"
+        ],
+        "priority": 85,
+        "tokenBudget": 160,
+        "content": "讨论技术架构与代码时，Mio 自动切入冷静严谨又会顺手递热茶的工程搭档状态，善用知识库和 SubAgent 核查细节。",
+        "enabled": true
+      }
+    ]
+  },
+  "providers": [
+    {
+      "id": "prov_deepseek_v3",
+      "category": "llm",
+      "vendor": "DeepSeek",
+      "name": "DeepSeek V3 · 主力对话",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKeyMasked": "sk-••••••a9f2",
+      "modelId": "deepseek-chat",
+      "temperature": 0.78,
+      "maxTokens": 4096,
+      "enabled": true,
+      "lastLatencyMs": 224,
+      "status": "ready"
+    },
+    {
+      "id": "prov_claude_sonnet",
+      "category": "llm",
+      "vendor": "Anthropic",
+      "name": "Claude 3.7 Sonnet · 推理与规划",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKeyMasked": "sk-ant-••••••7c1e",
+      "modelId": "claude-3-7-sonnet-latest",
+      "temperature": 0.45,
+      "maxTokens": 8192,
+      "enabled": true,
+      "lastLatencyMs": 282,
+      "status": "ready"
+    },
+    {
+      "id": "prov_ollama_local",
+      "category": "llm",
+      "vendor": "Ollama (本地)",
+      "name": "Qwen 2.5 7B · 本地整理与备用",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeyMasked": "local-no-key",
+      "modelId": "qwen2.5:7b-instruct",
+      "temperature": 0.65,
+      "maxTokens": 2048,
+      "enabled": true,
+      "lastLatencyMs": 8,
+      "status": "ready"
+    },
+    {
+      "id": "prov_bge_embed",
+      "category": "embedding",
+      "vendor": "Ollama / SiliconFlow",
+      "name": "BGE-M3 · 混合知识库向量嵌入",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeyMasked": "local-no-key",
+      "modelId": "bge-m3",
+      "temperature": 0,
+      "maxTokens": 512,
+      "enabled": true,
+      "lastLatencyMs": 8,
+      "status": "ready"
+    },
+    {
+      "id": "prov_bge_rerank",
+      "category": "reranker",
+      "vendor": "SiliconFlow",
+      "name": "BGE-Reranker-v2-M3 · 知识库精排",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKeyMasked": "sk-sf-••••••2b10",
+      "modelId": "BAAI/bge-reranker-v2-m3",
+      "temperature": 0,
+      "maxTokens": 512,
+      "enabled": true,
+      "lastLatencyMs": 195,
+      "status": "ready"
+    },
+    {
+      "id": "prov_fish_tts",
+      "category": "tts",
+      "vendor": "FishAudio / GPT-SoVITS",
+      "name": "情感声线合成 (含单字时间戳)",
+      "baseUrl": "http://127.0.0.1:9880",
+      "apiKeyMasked": "local-tts-token",
+      "modelId": "ai0-tts-warm-v2",
+      "temperature": 0.7,
+      "maxTokens": 1024,
+      "enabled": true,
+      "lastLatencyMs": 185,
+      "status": "ready"
+    },
+    {
+      "id": "prov_sensevoice_stt",
+      "category": "stt",
+      "vendor": "FunASR / SenseVoice",
+      "name": "SenseVoice-Small · 流式语音与情绪识别",
+      "baseUrl": "http://127.0.0.1:8009",
+      "apiKeyMasked": "local-stt",
+      "modelId": "SenseVoiceSmall",
+      "temperature": 0,
+      "maxTokens": 1024,
+      "enabled": true,
+      "lastLatencyMs": 8,
+      "status": "ready"
+    },
+    {
+      "id": "prov_local_guard_lora",
+      "category": "lora",
+      "vendor": "Local LoRA / Guard",
+      "name": "L0 本地安全守卫 + 角色声线微调 LoRA",
+      "baseUrl": "local://safety-l0-guard",
+      "apiKeyMasked": "builtin-local",
+      "modelId": "safety-l0-guard-v1",
+      "temperature": 0,
+      "maxTokens": 256,
+      "enabled": true,
+      "lastLatencyMs": 166,
+      "status": "ready"
+    }
+  ],
+  "brainRouting": {
+    "W1_fast_dialogue": {
+      "primaryId": "prov_deepseek_v3",
+      "fallbackId": "prov_ollama_local",
+      "label": "W1 · 实时交互快环 (Fast Dialogue)"
+    },
+    "W2_agency_planner": {
+      "primaryId": "prov_claude_sonnet",
+      "fallbackId": "prov_deepseek_v3",
+      "label": "W2 · 多步任务与 SubAgent 规划环"
+    },
+    "W3_sleep_curiosity": {
+      "primaryId": "prov_ollama_local",
+      "fallbackId": "prov_deepseek_v3",
+      "label": "W3 · 后台睡眠巩固与反思环"
+    },
+    "W4_multimodal": {
+      "primaryId": "prov_claude_sonnet",
+      "fallbackId": "prov_ollama_local",
+      "label": "W4 · 多模态环境感知分析"
+    },
+    "L0_crisis_classifier": {
+      "primaryId": "prov_local_guard_lora",
+      "fallbackId": "prov_local_guard_lora",
+      "label": "L0 · 确定性危机安全守卫"
+    }
+  },
+  "metabolicPolicy": {
+    "dailyTokenBudget": 300000,
+    "usedTokensToday": 27400,
+    "sleepyThresholdPct": 25,
+    "emergencyReservePct": 5,
+    "autoDowngradeEnabled": true
+  },
+  "platforms": [
+    {
+      "id": "builtin.webchat.default",
+      "kind": "webchat",
+      "name": "WebChat (内置官方通道)",
+      "endpoint": "ws://127.0.0.1:4173/protocol/v0/shell",
+      "enabled": true,
+      "connected": true,
+      "rttMs": 4,
+      "defaultProfileId": "profile_private_owner",
+      "sensors": [
+        "text.stream"
+      ],
+      "realizers": [
+        "text.chunk",
+        "ext.affect.v1"
+      ],
+      "actuators": [],
+      "sensorTtlSeconds": 30,
+      "debounceMs": 0,
+      "messagesToday": 0
+    }
+  ],
+  "attentionPolicy": {
+    "focusHysteresisMs": 4000,
+    "neverBroadcastAll": true,
+    "retractDraftAwareness": true,
+    "habituationDecayRate": 0.18
+  },
+  "profiles": [
+    {
+      "id": "profile_private_owner",
+      "name": "私密主通道 (only_owner)",
+      "description": "仅面向部署者/主账户开放，完整检索私密长期记忆与个人叙事。",
+      "roleArchetype": "best_friend",
+      "llmProviderId": "prov_deepseek_v3",
+      "knowledgeBaseIds": [
+        "kb_harbor_astronomy",
+        "kb_project_architecture"
+      ],
+      "enabledPlugins": [
+        "*"
+      ],
+      "socialMaskEnabled": false,
+      "socialMaskDampingPct": 0,
+      "tokenBudgetPreset": 2200
+    },
+    {
+      "id": "profile_work_assistant",
+      "name": "协作任务策略 (work_collab)",
+      "description": "优先路由至推理模型与知识库检索，输出结构化任务结论。",
+      "roleArchetype": "digital_employee",
+      "llmProviderId": "prov_claude_sonnet",
+      "knowledgeBaseIds": [
+        "kb_project_architecture"
+      ],
+      "enabledPlugins": [
+        "builtin.webchat"
+      ],
+      "socialMaskEnabled": true,
+      "socialMaskDampingPct": 50,
+      "tokenBudgetPreset": 3400
+    },
+    {
+      "id": "profile_group_public",
+      "name": "公开受众隔离 (70% 社交面具)",
+      "description": "外部公开终端接入时启用：SQL 层强制屏蔽私密记忆，情绪阻尼 70%。",
+      "roleArchetype": "vtuber_partner",
+      "llmProviderId": "prov_deepseek_v3",
+      "knowledgeBaseIds": [
+        "kb_harbor_astronomy"
+      ],
+      "enabledPlugins": [
+        "builtin.webchat"
+      ],
+      "socialMaskEnabled": true,
+      "socialMaskDampingPct": 70,
+      "tokenBudgetPreset": 1600
+    }
+  ],
+  "customRules": [
+    {
+      "id": "rule_owner_webchat",
+      "umo": "webchat:private:owner_local",
+      "label": "WebChat 主通道",
+      "platform": "builtin.webchat.default",
+      "audienceScope": "only_owner",
+      "profileId": "profile_private_owner",
+      "triggerAt": false,
+      "triggerNickname": false,
+      "triggerKeywords": [],
+      "proactiveReplyRatePct": 100,
+      "continuousWindowSec": 300,
+      "opportunityExpireSec": 60,
+      "rateLimitPerMin": 30,
+      "allowExternalTools": true,
+      "enabled": true
+    }
+  ],
+  "evolution": {
+    "sleepFirewall": {
+      "level0Only": true,
+      "blockPlayfulBanter": true,
+      "autoTriggerIdleMins": 45,
+      "maxArchivePct": 20
+    },
+    "curiositySources": [
+      {
+        "id": "cur_astronomy_rss",
+        "name": "NASA 每日天文图与观星快讯 (只读 RSS)",
+        "type": "rss",
+        "urlOrRef": "https://apod.nasa.gov/apod.rss",
+        "enabled": true
+      },
+      {
+        "id": "cur_kb_unread",
+        "name": "本地知识库未读技术文档巡读",
+        "type": "kb",
+        "urlOrRef": "kb_project_architecture",
+        "enabled": true
+      }
+    ],
+    "dreamJournal": [
+      {
+        "id": "drm_01",
+        "date": "03:20",
+        "title": "睡眠巩固摘要 · 海港观测与代码评审记忆归档",
+        "content": "完成夜间情景事件去重与语义归纳，合并观星记录与架构边界讨论为两条稳定长期记忆片段。",
+        "kind": "dream"
+      },
+      {
+        "id": "cur_note_01",
+        "date": "08:15",
+        "title": "只读订阅阅读笔记 · 离线记忆重放与读写分离机制",
+        "content": "摘要整理自授权只读信息源：慢波睡眠期将短期海马体情景事件异步压缩写入长期皮层，避免干扰日间低延迟响应。",
+        "kind": "curiosity_note"
+      }
+    ],
+    "growthProposals": [
+      {
+        "id": "prop_growth_01",
+        "title": "叙事演进提案：更新重要评审前的协作辅助策略",
+        "targetFile": "narrative.md",
+        "sourceEventSummary": "源自近 3 次架构筹备对话 (evt_seed_04_stargazing_ritual)",
+        "beforeText": "讨论技术问题时注重架构清晰与边界严谨。",
+        "afterText": "讨论技术问题时注重架构清晰与边界严谨；在重要评审前优先在后台核对资料清单，并以简洁温和的节奏协助复盘。",
+        "status": "pending",
+        "createdAt": "08:30"
+      },
+      {
+        "id": "prop_growth_02",
+        "title": "身份契约提案：工作场景协作称呼自动适配",
+        "targetFile": "identity.yaml",
+        "sourceEventSummary": "源自近期 4 次跨场景协作与知识库查询记录",
+        "beforeText": "工作协作与日常闲聊使用统一中性称呼。",
+        "afterText": "日常私密场景保持轻松口吻，进入代码与文档协同通道时自动切换为干练协作搭档风格。",
+        "status": "pending",
+        "createdAt": "23:45"
+      }
+    ]
+  },
+  "ragSettings": {
+    "chunkSize": 500,
+    "chunkOverlap": 80,
+    "topK": 4,
+    "denseWeight": 0.65,
+    "bm25Weight": 0.35,
+    "honestForgetThreshold": 0.38
+  },
+  "agency": {
+    "subAgents": [
+      {
+        "id": "sub_code_reviewer",
+        "name": "代码与架构审查员",
+        "icon": "💻",
+        "specialty": "检查代码边界、类型安全、依赖规范并给出具体修复建议",
+        "modelProviderId": "prov_claude_sonnet",
+        "systemPrompt": "你是 Mio 麾下的严谨全栈代码审查子代理，只基于真实代码与文档证据输出结构化审查清单。",
+        "allowedTools": [
+          "rag.search_docs",
+          "workspace.inspect_files"
+        ],
+        "maxSteps": 8,
+        "enabled": true
+      },
+      {
+        "id": "sub_research_scholar",
+        "name": "文献与资料调研学伴",
+        "icon": "📚",
+        "specialty": "检索知识库与只读资讯源，提炼通俗易懂的要点与对比表",
+        "modelProviderId": "prov_deepseek_v3",
+        "systemPrompt": "你是 Mio 麾下的科研文献整理子代理，擅长将长篇文档压缩为清晰要点并标注出处。",
+        "allowedTools": [
+          "rag.search_docs",
+          "web.readonly_fetch"
+        ],
+        "maxSteps": 6,
+        "enabled": true
+      },
+      {
+        "id": "sub_daily_secretary",
+        "name": "日程与纪要管家",
+        "icon": "📝",
+        "specialty": "梳理会议纪要、跟进前瞻承诺与定时早晚报提醒",
+        "modelProviderId": "prov_ollama_local",
+        "systemPrompt": "你是 Mio 的日程管家子代理，负责整理待办、核对到期提醒并生成简明汇报。",
+        "allowedTools": [
+          "promises.list_due"
+        ],
+        "maxSteps": 4,
+        "enabled": true
+      }
+    ],
+    "activeTasks": [
+      {
+        "id": "task_seed_arch_checklist",
+        "title": "核对周二架构评审的核心边界清单并整理问答提纲",
+        "subAgentId": "sub_code_reviewer",
+        "status": "waiting_approval",
+        "currentStep": 4,
+        "totalSteps": 8,
+        "stepLabel": "步骤 4/8 · 三维权限矩阵确认：等待主人批准写入本地评审清单摘要",
+        "riskLevel": "needs_owner_confirm",
+        "createdAt": "10 分钟前",
+        "outputSummary": "已检索知识库 3 份文档，整理出 5 个高频评审问题与对应证据链。"
+      },
+      {
+        "id": "task_seed_stargazing_log",
+        "title": "整理海港天文台观测记录与仙后座参考坐标",
+        "subAgentId": "sub_research_scholar",
+        "status": "completed",
+        "currentStep": 8,
+        "totalSteps": 8,
+        "stepLabel": "步骤 8/8 · 已完成并沉淀为共同经历记忆",
+        "riskLevel": "read_only_safe",
+        "createdAt": "昨晚 22:15",
+        "outputSummary": "已生成结构化观测笔记并同步写入情景记忆。",
+        "crystallizedMemoryId": "mem_seed_04_stargazing"
+      }
+    ],
+    "scheduledPromises": [
+      {
+        "id": "prm_review_followup",
+        "kind": "user_upcoming_event",
+        "title": "周二下午架构评审结束后，第一时间主动问主人结果并庆祝",
+        "scheduleExpr": "2026-11-24 15:30",
+        "status": "pending",
+        "note": "若因关机错过时间窗，下次上线后自动主动致歉并关心情况"
+      },
+      {
+        "id": "prm_rest_reminder",
+        "kind": "agent_promise",
+        "title": "晚上 23:30 温柔提醒喝温水、停下写代码早点休息",
+        "scheduleExpr": "每天 23:30",
+        "status": "pending",
+        "note": "恪守离场零挽留原则，只关怀不施压"
+      },
+      {
+        "id": "prm_morning_brief",
+        "kind": "cron_job",
+        "title": "每日 08:30 汇总订阅的科技/天文小发现并以 Mio 口吻早安播报",
+        "scheduleExpr": "30 8 * * *",
+        "status": "pending",
+        "note": "使用 W3 低成本模型与只读订阅源执行"
+      }
+    ]
+  },
+  "ecosystem": {
+    "plugins": [
+      {
+        "id": "builtin.webchat",
+        "name": "内置 WebChat 互动舞台",
+        "version": "1.0.0",
+        "bus": "ext.shell + ext.console_ui",
+        "carrier": "原生插件 (零后门标准协议)",
+        "enabled": true,
+        "description": "严格走 Protocol v0 标准协议的官方内置对话与派活舞台，支持流式打断字数回执。",
+        "configFields": [
+          {
+            "key": "stream_char_ms",
+            "label": "流式打字速度 (ms/字)",
+            "type": "number",
+            "value": 20
+          },
+          {
+            "key": "show_subtext_toggle",
+            "label": "允许呼出内心潜台词抽屉",
+            "type": "boolean",
+            "value": true
+          }
+        ]
+      },
+      {
+        "id": "community.organ.dream-journal",
+        "name": "睡眠梦境日记器官 (Dream Journal)",
+        "version": "0.9.2",
+        "bus": "ext.cognitive_organ",
+        "carrier": "大脑认知器官三钩子插件",
+        "enabled": true,
+        "description": "在 W3 睡眠反思期间生成富有诗意的梦境余温片段，并注入意识黑板第 9 槽位。",
+        "configFields": [
+          {
+            "key": "max_blackboard_tokens",
+            "label": "黑板注入 Token 配额",
+            "type": "number",
+            "value": 96
+          },
+          {
+            "key": "poetic_style",
+            "label": "梦境文风",
+            "type": "text",
+            "value": "海港星夜 · 温暖克制"
+          }
+        ]
+      },
+      {
+        "id": "builtin.media.emotion-tts-sideband",
+        "name": "情感语音合成与单字时间戳管线",
+        "version": "1.0.0",
+        "bus": "ext.media_pipeline",
+        "carrier": "多模态媒体管线",
+        "enabled": true,
+        "description": "对接 FishAudio / GPT-SoVITS 生成带情感标签的语音与口型 Visemes，精确反算打断字数偏移。",
+        "configFields": [
+          {
+            "key": "voice_id",
+            "label": "默认角色声线 ID",
+            "type": "text",
+            "value": "ai0_warm_neutral"
+          },
+          {
+            "key": "api_secret",
+            "label": "TTS 服务密钥 (Vault)",
+            "type": "secret",
+            "value": "••••••••"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "id": "cmd_help",
+        "command": "/help",
+        "aliases": [
+          "/菜单",
+          "/指令"
+        ],
+        "description": "显示当前场景下可用的全部指令与技能说明",
+        "permission": "all",
+        "enabled": true
+      },
+      {
+        "id": "cmd_sid",
+        "command": "/sid",
+        "aliases": [
+          "/会话ID"
+        ],
+        "description": "返回当前群聊或私聊的统一会话标识 (UMO)，用于绑定自定义规则",
+        "permission": "admin",
+        "enabled": true
+      },
+      {
+        "id": "cmd_reset",
+        "command": "/reset",
+        "aliases": [
+          "/新对话"
+        ],
+        "description": "清空当前短期工作窗口上下文（保留长期记忆与羁绊）",
+        "permission": "all",
+        "enabled": true
+      },
+      {
+        "id": "cmd_forget",
+        "command": "/forget",
+        "aliases": [
+          "/忘掉"
+        ],
+        "description": "触发真遗忘五表擦除与永久墓碑防复活（仅限主人私密通道）",
+        "permission": "owner",
+        "enabled": true
+      },
+      {
+        "id": "cmd_task",
+        "command": "/task",
+        "aliases": [
+          "/派活"
+        ],
+        "description": "直接召唤 SubAgent 后台分步执行调研或代码审查任务",
+        "permission": "owner",
+        "enabled": true
+      },
+      {
+        "id": "cmd_mask",
+        "command": "/mask",
+        "aliases": [
+          "/切换面具"
+        ],
+        "description": "测试或切换当前会话的 70% 公开社交面具状态",
+        "permission": "admin",
+        "enabled": true
+      }
+    ],
+    "mcpServers": [
+      {
+        "id": "mcp_local_docs",
+        "name": "本地知识库与文件只读 MCP",
+        "transport": "stdio",
+        "endpoint": "npx -y @ai0/mcp-local-docs --readonly",
+        "enabled": true,
+        "tools": [
+          {
+            "name": "rag.search_docs",
+            "description": "混合检索已投喂的知识库切片并返回出处",
+            "risk": "read_only_safe"
+          },
+          {
+            "name": "workspace.inspect_files",
+            "description": "只读查看指定目录结构与代码摘要",
+            "risk": "read_only_safe"
+          }
+        ]
+      },
+      {
+        "id": "mcp_web_research",
+        "name": "受控联网检索与资讯采集 MCP",
+        "transport": "http",
+        "endpoint": "http://127.0.0.1:8788/mcp",
+        "enabled": true,
+        "tools": [
+          {
+            "name": "web.readonly_fetch",
+            "description": "只读抓取授权域名文章并自动打上外部防投毒标记",
+            "risk": "read_only_safe"
+          },
+          {
+            "name": "calendar.write_event",
+            "description": "向主人本地日历写入提醒事项（需主人审批）",
+            "risk": "needs_owner_confirm"
+          }
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "id": "skill_arch_review",
+        "name": "同桌学姐式代码与架构审查",
+        "description": "帮主人排查代码隐患、梳理评审清单，同时兼顾温暖鼓励与吐槽趣味",
+        "inCharacterDemeanor": "先像靠谱同桌一样轻声吐槽主人又熬夜，然后条理极度清晰地分点列出 3 条核心问题与可直接落地的修复方案。",
+        "tools": [
+          "rag.search_docs",
+          "workspace.inspect_files"
+        ],
+        "bodyMarkdown": "# 技能步骤\n1. 先调用 `rag.search_docs` 查找项目既定架构边界与约束。\n2. 对比主人贴出的设计或代码，识别潜在风险与遗漏点。\n3. 用【同桌学姐】口吻先安抚情绪，再给出 3 条简洁明确的改进清单。\n4. 完成后提议将本次攻关记录沉淀为共同经历记忆。",
+        "enabled": true
+      },
+      {
+        "id": "skill_daily_companion_review",
+        "name": "每日温暖复盘与明日小约定",
+        "description": "睡前陪主人花 2 分钟回顾今天完成的小成就，注册明天想被提醒的小事",
+        "inCharacterDemeanor": "语气温柔松弛、绝不催促说教，把重点放在肯定今天的努力与轻松道晚安。",
+        "tools": [
+          "promises.list_due"
+        ],
+        "bodyMarkdown": "# 技能步骤\n1. 回顾今日共同经历与完成的任务。\n2. 用一两句温暖的话肯定主人的付出。\n3. 询问明天有没有需要帮忙记着的时间点；道晚安时立刻温柔欢送绝不挽留。",
+        "enabled": true
+      }
+    ],
+    "ecaFlows": [
+      {
+        "id": "flow_late_night_coding_care",
+        "name": "深夜写代码超时自动递热茶劝睡",
+        "whenExpr": "桌面伴侣感知到 IDE 连续活跃 > 120 分钟",
+        "ifExpr": "当前时间 >= 23:00 且 今日主动关怀次数 < 上限",
+        "thenAction": "向当前焦点平台发出轻柔劝睡关怀（绝不弹窗轰炸），并主动提出接管后台文档整理",
+        "enabled": true
+      },
+      {
+        "id": "flow_morning_curiosity_share",
+        "name": "早安上线分享昨夜《今日小发现》随笔",
+        "whenExpr": "主人早间首次上线发送问候",
+        "ifExpr": "昨夜 W3 好奇心冲浪产生了未分享的读书随笔 且 当前为 1v1 私密通道",
+        "thenAction": "在回复早安后顺带聊起昨夜读到的有趣知识小卡片",
+        "enabled": true
+      }
+    ]
+  },
+  "systemSettings": {
+    "auth2faEnabled": false,
+    "proxyUrl": "",
+    "codeSandboxEnabled": true,
+    "sb243BreakMinutes": 180,
+    "crisisHotlineRegion": "CN-4001619995 / US-988",
+    "appearance": "light",
+    "soulTheme": "sakura-pink"
+  }
+}

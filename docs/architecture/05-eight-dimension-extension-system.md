@@ -27,7 +27,7 @@
 ### 1.2 五阶多态异构扩展载体（The 5 Polymorphic Extension Carriers —— 破除“只有一种代码插件类型”的生态瓶颈）
 
 **核心生态公理**：如果要求写一份世界观、配一个日常技能、接一个外部工具或编排一条跨端规则都必须编写并编译 TypeScript 代码包（`dist/index.js`），90% 的社区创作者将被挡在门外。
-为此，参照并升维 **AstrBot v4（Stars 代码插件 / MCP / `SKILL.md` / 内置 RAG / Sub-Agent 编排 / Platform Adapter）**、**SillyTavern（角色卡 / Lorebook）** 与 **ComfyUI（可分享工作流蓝图）** 的成功生态经验，`@ai0/kernel` 内置 **五种异构多态扩展加载器（5 Polymorphic Loaders）**：
+为此，面向从零代码角色创作者、自然语言技能编写者、跨语言协议开发者、可视化流编排玩家到微内核源码开发者的全谱系创作者群体（同时原生兼容 **SillyTavern 角色卡 / Lorebook**、**MCP** 与 **`SKILL.md`** 等开放互操作格式），`@ai0/kernel` 内置 **五种异构多态扩展加载器（5 Polymorphic Loaders）**：
 
 | 扩展载体形态 | 载体文件格式与开发门槛 | 核心运作机制与可玩性场景 | 覆盖的功能总线维度 |
 | :--- | :--- | :--- | :--- |
@@ -181,7 +181,7 @@ config_schema:
 ### 总线 5：内建混合 RAG 知识库与外部活体知识连接器扩展 (`ext.memory_knowledge`)
 
 * **架构升维：开箱即用内建混合 RAG 引擎 + 可插拔外部知识连接器**：
-  为了确保使用者无需依赖第三方插件即可拥有顶级知识库体验（对齐并超越 AstrBot 内置 RAG），同时保留连接外部知识生态的自由度，本总线采用**“内建底座 + 扩展连接器”**双层设计：
+  为了确保使用者无需依赖第三方插件即可开箱即用高质量的本地知识库检索体验，同时保留连接外部知识生态的自由度，本总线采用**“内建底座 + 扩展连接器”**双层设计：
   1. **内建混合 RAG 知识库引擎（Built-in Hybrid Knowledge Engine in `@ai0/storage`）**：
      * 原生支持在控制台上传或同步本地文档（Markdown / PDF / DOCX / 代码文件 / 设定集），提供可视化分块（Chunking）预览；
      * 检索层采用 **`sqlite-vec` 稠密向量检索（Dense Cosine Similarity） + SQLite `FTS5` BM25 稀疏关键词检索（Sparse Retrieval） + 可插拔 Reranker 模型重排** 的混合检索管线；

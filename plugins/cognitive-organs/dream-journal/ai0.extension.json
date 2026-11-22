@@ -1,0 +1,30 @@
+{
+  "$schema": "https://ai0.dev/schemas/ai0.extension.schema.json",
+  "manifest_version": "1.0",
+  "id": "community.organ.dream-journal",
+  "name": "Dream Journal",
+  "version": "1.0.0",
+  "description": "Turns conversational afterglow and sleep-cycle fragments into a poetic, read-only blackboard contribution and proposed episodic memories.",
+  "carrier": "native_code_plugin",
+  "bus": "ext.cognitive_organ",
+  "entry": "./src/index.ts",
+  "default_enabled": true,
+  "permissions": {
+    "read_domains": [
+      "D1_WORKING_TURN",
+      "D2_HOMEOSTASIS_AFFECT",
+      "D3_MEMORY_PROJECTION"
+    ],
+    "propose_domains": ["D3_MEMORY_PROJECTION"],
+    "network": false,
+    "filesystem": false,
+    "actuation": false
+  },
+  "contributions": [
+    {
+      "bus": "ext.console_ui",
+      "slot_id": "slot.memory.custom_tab",
+      "title": "梦境手记"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（问题域规范）
 >
-> 本文档界定系统的核心愿景命题与两大架构立基公理，并以现世最具代表性的五大真实先行体系——**Project AIRI**、**Neuro-sama (`VedalAI/neuro-sdk`)**、**Letta (MemGPT)**、**SAIBA 虚拟人框架** 以及 **SillyTavern (`Character Card V2/V3 & Lorebook`) / OpenClaw / AstrBot / NapCat / Koishi / `kirakira.moe (KIRAKIRA-Cerasus)` 生态**——为外部对比参照系，剖析先行者做对了什么、踩过什么坑，以及本架构“无头认知微内核 + 极小冻结协议 + 八大维度社区扩展生态 + 多态悬浮卡片式 WebUI 控制台”的本质分野与跨代升维。
+> 本文档界定系统的核心愿景命题与两大架构立基公理，并以现世最具代表性的五大真实先行体系——**Project AIRI**、**Neuro-sama (`VedalAI/neuro-sdk`)**、**Letta (MemGPT)**、**SAIBA 虚拟人框架** 以及 **SillyTavern (`Character Card V2/V3 & Lorebook`) 与开源 Agent 运维控制台生态（OpenClaw / AstrBot / NapCat / Koishi 等）**——为外部对比参照系，剖析先行者做对了什么、踩过什么坑，以及本架构“无头认知微内核 + 极小冻结协议 + 八大维度社区扩展生态 + 多态悬浮卡片式 WebUI 控制台”的本质分野与跨代升维。
 >
 > **证据等级标注约定**：
 > * **`[文献/先行项目佐证]`**：有学术论文、法规条文、成熟行业标准或开源项目实证支撑；
@@ -64,7 +64,7 @@
 
 ---
 
-### 2.2 先行者对照系深度剖析（AIRI / Letta / SAIBA / Neuro-sama / SillyTavern & AstrBot / NapCat / Koishi & KIRAKIRA）
+### 2.2 先行者对照系深度剖析（AIRI / Letta / SAIBA / Neuro-sama / SillyTavern & 开源控制台生态）
 
 为了避免闭门造车，我们将现世真正经过工程与社区实证的五大先行体系作为严格对照系：
 
@@ -139,14 +139,14 @@
 
 ---
 
-#### 对照五：SillyTavern (`Character Card V2/V3 & Lorebook`)、OpenClaw / AstrBot / NapCat / Koishi 与 `kirakira.moe (KIRAKIRA-Cerasus)` —— “二次元灵魂资产标准、高密度悬浮卡片控制台与 Material Design 二次个性风格封装”的借鉴与跨代升维
+#### 对照五：SillyTavern (`Character Card V2/V3 & Lorebook`) 与开源 Agent 运维控制台生态（OpenClaw / AstrBot / NapCat / Koishi 等）—— “灵魂资产标准、高密度运维控制台与轻盈 Material Design 3 封装”的借鉴与跨代升维
 
-1. **现世三大社区与前端标杆做对了什么** **`[文献/先行项目佐证]`**：
-   * **SillyTavern 确立了二次元角色资产的事实标准**：全球二次元 AI 社区沉淀了成千上万张高水准的 `Character Card V2/V3`（包含核心设定、开场白、`mes_example` 声线对话样本）与 `WorldInfo / Lorebook`（关键词/递归触发的动态世界观词库）。
+1. **现世社区生态与前端设计实践做对了什么** **`[文献/先行项目佐证]`**：
+   * **SillyTavern 确立了二次元角色资产的事实标准**：全球角色扮演与伴侣 AI 社区沉淀了成千上万张高水准的 `Character Card V2/V3`（包含核心设定、开场白、`mes_example` 声线对话样本）与 `WorldInfo / Lorebook`（关键词/递归触发的动态世界观词库）。
    * **OpenClaw / AstrBot / NapCat / Koishi 确立了无头内核与多渠道 Agent 运维控制台的操作视觉与配置范式**：
-     * **`NapCat WebUI`** 证明了针对无头协议内核的管理面板，采用**深邃底布 + 半透明毛玻璃悬浮卡片岛（Floating Card Islands） + Bento 实时连接状态与 WebSocket 吞吐指标卡 + 实时事件流终端（Live Event Console）**，能够带来极强的现代科技掌控感；
+     * **`NapCat WebUI`** 证明了针对无头协议内核的管理面板，采用**清晰层次化的状态指标卡 + 实时连接监控 + 实时事件流终端（Live Event Console）**，能够带来极强的现代工程掌控感；
      * **`AstrBot / Koishi`** 证明了复杂的模型提供商（Providers）、消息平台适配器与插件系统必须采用**高密度功能型控制台**（紧凑导航 + 零手写 JSON 的主从分节 Schema 可视化表单 + 明确的 Dirty/Revision 保存状态机 + 插件“安装 $\neq$ 授权 $\neq$ 启用”分离 + 插件加载报错就地展示与一键热重载修复）。
-   * **`kirakira.moe (KIRAKIRA-Cerasus)` 确立了二次元语境下对 Material Design 3 & Fluent UI 的二次个性风格组件封装典范**：证明了通过自定义动态色调表面（Tonal Surface Elevation）、细腻水波纹点击反馈（Ripple）、弹簧物理阻尼缓动（Spring Easing）与精致的胶囊/标签控件二次封装，可以彻底打破传统企业级后台（如早期 AntD/Element）的冰冷死板感，赋予界面鲜活的二次元呼吸感与亲和力。
+   * **开源社区中对 Material Design 3 进行轻盈化二次封装的视觉工艺实践（如二次元社区开源前端参考案例 `kirakira.moe`）提供了一条关键美学启示**：它证明了借助动态色调表面阶梯（Tonal Surface Elevation）、细腻指针水波纹点击反馈（Ripple）、弹簧/果冻物理阻尼缓动（Spring Easing）与精细化表单控件封装，可以彻底打破传统企业级后台的冰冷死板感，在保持专业感的同时赋予界面与数字生命相称的通透呼吸感与亲和力。（*注：本处仅作研究期视觉工艺参考溯源；具体落地规格均已独立提炼为 `ai0` 第一方紧凑 MD3 设计系统，详见 `docs/architecture/06` 第七章与 `ADR-006`。*）
 
 2. **这些先行作品在“长期活体数字生命认知中枢”维度的局限** **`[架构推断]`**：
    * SillyTavern 本质是“无状态 Prompt 拼装器 + 聊天记录滑动窗口”，角色卡里常混杂着破坏安全边界的越狱指令（Jailbreak Prompts）或情感操控脚本，且缺乏跨平台具身感知、内稳态时间流、MVCC 并发行动环与血缘真遗忘；
@@ -156,7 +156,7 @@
 3. **本架构（`ai0`）的吸收融合与跨代升维（Borrow & Ascend）**：
    * **八大功能扩展总线 × 五阶多态异构扩展载体（The 8-Bus × 5-Carrier Polymorphic Ecosystem）**：打破“只有单一编译型 TS 代码插件”的局限，同时支持 **① 零代码声明式资产包（SillyTavern V2/V3 角色卡四步蒸馏料理与越狱清洗、`.soul-template`、`Lorebook`、关系里程碑与正向剧情触发器 `milestones_and_rituals.yaml`）**、**② Agent `SKILL.md` 自然语言技能手册与沙盒脚本（含角色内执行姿态提示）**、**③ 免代码标准协议与跨进程热挂载器（`MCP / Protocol v0 WebSocket / Webhook / OpenAPI`）**、**④ 可视化认知管线、受控好奇心外部世界冲浪子代理与跨插件 ECA 联动蓝图（`.flow.yaml`）**、以及 **⑤ 微内核原生代码插件与动态控制台 UI 视图包（`ai0.extension.json + ext.console_ui`）**；
    * **正本清源 `Shell（具身运行环境）` 一等架构层与 `<main>` 一体式圆角卡片路由视口外壳**：在 `WebUI 控制台` 中彻底剥离 `plugins/shells/webchat` 的顶层越位层级（将其还原为仅挂载于 `/shells/stage/builtin.webchat` 的一个普通插件页面，与社区 Web Live2D/3D 躯壳插件完全平权），将 **`Shell（具身运行环境）`** 确立为核心一级架构域（`/shells/*`）；采用**常驻多态外壳（混合顶栏 `🟢 LIVE / 🧪 SANDBOX` 二元实例环境切换 + 左右双侧可折叠功能栏/迷你栏）+ 中央 `<main>` 一体式大圆角悬浮卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）**，按需分页面承载 **8 大一级域 × 30 条专职子路由** 与 **五大 UI/UX 视图结构母版**；
-   * **后端全量机制 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/曲线层 -> Tier-V2 结构化紧凑表单层 -> Tier-V3 权威源码/审计层`）**：通过 **四层 45 项 KIRAKIRA-MD3 二次封装紧凑组件库（`32px` 控件高度）**，把后端深邃的 `<2500 Token` 认知黑板积木编排器、三层人格演化双栏 Diff、24h 作息生物钟与二阶耦合情绪拖拽曲线、五脑区异构算力代谢水位仪、双向具身 `Shell` 三平面星图、内建混合 RAG 知识库与四级溯源血缘 DAG 真遗忘手术台、以及四轨融合遥测终端 100% 无损且直观地呈现在使用者面前。
+   * **后端全量机制 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/曲线层 -> Tier-V2 结构化紧凑表单层 -> Tier-V3 权威源码/审计层`）**：通过 **`ai0` 第一方紧凑二次封装 MD3 组件库（5 子目录 4 层 45 项纯语义组件，`32px` 紧凑控件高度与 5 级动态灵魂色调表面）**，把后端深邃的 `<2500 Token` 认知黑板积木编排器、三层人格演化双栏 Diff、24h 作息生物钟与二阶耦合情绪拖拽曲线、五脑区异构算力代谢水位仪、双向具身 `Shell` 三平面星图、内建混合 RAG 知识库与四级溯源血缘 DAG 真遗忘手术台、以及四轨融合遥测终端 100% 无损且直观地呈现在使用者面前。
 
 ---
 

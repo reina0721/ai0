@@ -1,0 +1,30 @@
+{
+  "name": "ai0-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n daemon,console -c cyan,magenta \"pnpm dev:daemon\" \"pnpm dev:console\"",
+    "dev:daemon": "node --watch --conditions=development --import tsx apps/daemon/src/cli.ts --port 4174",
+    "dev:console": "pnpm --filter @ai0/console-webui dev",
+    "start": "node apps/daemon/dist/cli.js --serve-console",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "replay:golden": "node apps/daemon/dist/cli.js --run-golden-scenario",
+    "verify:boundaries": "node scripts/verify-architecture-boundaries.mjs",
+    "verify:all": "pnpm verify:boundaries && pnpm build && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "zod": "^3.24.0"
+  }
+}

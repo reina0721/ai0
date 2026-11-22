@@ -1,0 +1,79 @@
+schema: OrchestrationRulesSchema
+id: builtin.flow.late-night-coding-care
+version: 1.0.0
+carrier: visual_cognitive_flow
+bus: ext.orchestration
+name: Late-night Coding Care
+description: Gently reduces cognitive load during sustained late-night coding without interrupting urgent work.
+enabled: true
+
+inputs:
+  - local_time
+  - continuous_coding_minutes
+  - metabolic_energy
+  - active_task_summary
+  - event_urgency
+
+rules:
+  - id: detect_late_night_strain
+    when:
+      all:
+        - field: local_time.hour
+          operator: greater_than_or_equal
+          value: 23
+        - field: continuous_coding_minutes
+          operator: greater_than_or_equal
+          value: 90
+    if:
+      all:
+        - field: event_urgency
+          operator: not_equals
+          value: l0_crisis
+        - field: metabolic_energy
+          operator: less_than
+          value: 0.45
+    then:
+      - action: propose_expression
+        target_bus: ext.expression
+        payload:
+          tone: gentle_practical
+          fallback_text: "已经很晚啦。要不要先保存现场、喝口水，让眼睛和脑子休息五分钟？我会替你记住现在做到哪一步。"
+          never_block_current_turn: true
+      - action: propose_commitment
+        target_domain: D4_COMMITMENTS_TASKS
+        payload:
+          commitment_kind: reversible_self_care_prompt
+          current_step_summary: "等待你决定是否保存现场并短暂休息"
+          requires_owner_confirmation: true
+
+  - id: soften_after_decline
+    when:
+      event: care_prompt_declined
+    if:
+      field: event_urgency
+      operator: not_equals
+      value: l0_crisis
+    then:
+      - action: set_local_cooldown
+        payload:
+          rule_id: detect_late_night_strain
+          duration_ms: 3600000
+      - action: propose_expression
+        target_bus: ext.expression
+        payload:
+          tone: respectful
+          fallback_text: "好，我不打断你。接下来我会尽量简短，也不会在一小时内再提醒。"
+
+constraints:
+  read_only_inputs: true
+  coordinator_is_sole_state_writer: true
+  never_broadcast_to_all_shells: true
+  never_create_external_side_effects: true
+  never_use_guilt_or_dependency_language: true
+  crisis_preempts_immediately: true
+  prompt_cooldown_ms: 3600000
+
+observability:
+  emit_rule_ids: true
+  record_decision_trace: true
+  redact_user_content: true
