@@ -1,7 +1,8 @@
+import { createCompositionFixtures } from "./composition-fixtures.mjs";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
@@ -21,6 +22,7 @@ const processes = [
     cwd: workspace,
     env: {
       ...process.env,
+      AI0_PLUGINS_DIR: [createCompositionFixtures(scratch), process.env.AI0_PLUGINS_DIR].filter(Boolean).join(delimiter),
       AI0_SOUL_DIR: soulDir,
       AI0_OWNER_TOKEN: randomUUID(),
       AI0_HOST: "127.0.0.1",

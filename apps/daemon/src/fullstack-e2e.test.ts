@@ -69,7 +69,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     // 2. Real Channel A WebChat dialogue (private vs public social mask)
     const chatRes = await fetch(`${baseUrl}/protocol/v0/shell/perception`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({
         text: "深夜还在调试 TypeScript 代码，有点累了，你还记得我习惯喝什么吗？",
         venue_type: "private_1on1",
@@ -87,7 +87,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     // 3. Real Channel A barge-in interruption receipt
     const interruptRes = await fetch(`${baseUrl}/protocol/v0/shell/receipt`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({
         intent_id: chatData.expression.intent_id,
         spoken_char_offset: 6,
@@ -169,7 +169,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     // 9-Brick Full Prompt Preview (Private vs Public 70% Social Mask)
     const previewRes = await fetch(`${baseUrl}/api/studio/prompt-preview`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({})
     });
     expect(previewRes.status).toBe(200);
@@ -183,25 +183,25 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     // Co-Worker SubAgent Task Dispatch -> Approve -> Crystallize into SQLite Episodic Memory
     const createTaskRes = await fetch(`${baseUrl}/api/studio/co-work-task`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({ action: "create", title: "核对架构评审清单", subAgentId: "sub_code_reviewer" })
     });
     expect(createTaskRes.status).toBe(200);
     const createdTask = (await createTaskRes.json()) as { task: { id: string } };
     const approveTaskRes = await fetch(`${baseUrl}/api/studio/co-work-task`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({ action: "approve", taskId: createdTask.task.id })
     });
     expect(approveTaskRes.status).toBe(200);
     const approvedTask = (await approveTaskRes.json()) as { task: { status: string; crystallizedMemoryId?: string } };
-    expect(approvedTask.task.status).toBe("completed");
-    expect(approvedTask.task.crystallizedMemoryId).toBeTruthy();
+    expect(approvedTask.task.status).toBe("queued");
+    expect(approvedTask.task.crystallizedMemoryId).toBeUndefined();
 
     // Hybrid RAG Document Ingest + Search
     const ingestRes = await fetch(`${baseUrl}/api/studio/rag-ingest`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({
         collectionId: "kb_e2e_guide",
         title: "onboarding.md",
@@ -211,7 +211,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(ingestRes.status).toBe(200);
     const searchRes = await fetch(`${baseUrl}/api/studio/rag-search`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({ query: "social mask damping", collectionId: "kb_e2e_guide" })
     });
     expect(searchRes.status).toBe(200);
@@ -221,7 +221,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     // Creator One-Click Privacy-Scrubbed Publish Package
     const publishRes = await fetch(`${baseUrl}/api/studio/publish-pack`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({ packageType: "ai0pack" })
     });
     expect(publishRes.status).toBe(200);
@@ -242,7 +242,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     // immediately updates live WebChat responses when asked "你是谁" (zero stale default template!)
     const distillRes = await fetch(`${baseUrl}/api/studio/distill-apply`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({
         apply: true,
         roleArchetype: "study_classmate",
@@ -258,7 +258,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(distillRes.status).toBe(200);
     const mioWhoRes = await fetch(`${baseUrl}/protocol/v0/shell/perception`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: adminHeaders,
       body: JSON.stringify({
         text: "你是谁",
         venue_type: "private_1on1",

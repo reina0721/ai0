@@ -1,9 +1,10 @@
+import { readSoulArchiveConfig } from "@ai0/storage";
 import { timingSafeEqual } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 
 import type { Context, Hono } from "hono";
 
-import type { VerifiableTurnTrace } from "@ai0/protocol";
+import type { AudienceScope, VerifiableTurnTrace } from "@ai0/protocol";
 
 import type { Ai0DaemonRuntime } from "./index.js";
 
@@ -28,6 +29,9 @@ interface RunStatus {
 }
 
 interface ActiveRun {
+  principalId?: string;
+  audience?: AudienceScope;
+  thread?: string;
   controller: AbortController;
   state: RunStatus;
   trace?: VerifiableTurnTrace;
@@ -38,6 +42,10 @@ interface AuthResult {
   readonly authorized: boolean;
   readonly isOwner: boolean;
   readonly scopedShellId?: string;
+  readonly principalId?: string;
+  readonly target?: Mode;
+  readonly audience?: AudienceScope;
+  readonly pluginId?: string;
 }
 
 const EVENT_PREFIX = "evt_shell_";
@@ -98,11 +106,13 @@ function authenticate(c: Context, runtime: Ai0DaemonRuntime): AuthResult {
   const token = ownerHeader || bearer;
   if (!token) return { authorized: false, isOwner: false };
   if (secureEquals(runtime.ownerMasterToken, token)) {
-    return { authorized: true, isOwner: true };
+    return { authorized: true, isOwner: true, principalId: "owner:local" };
   }
   try {
     const claims = runtime.shellGateway.verifyScopedCapabilityToken(token, runtime.ownerMasterToken);
-    return { authorized: true, isOwner: false, scopedShellId: claims.shell_id };
+    if (claims.soul_id && claims.soul_id !== readSoulArchiveConfig(runtime.soulDir).manifest.soul_id) return { authorized: false, isOwner: false };
+    if (claims.plugin_id && claims.generation !== runtime.generation(claims.plugin_id, claims.target)) return { authorized: false, isOwner: false };
+    return { authorized: true, isOwner: false, pluginId: claims.plugin_id, audience: claims.max_audience_privacy_ceiling, principalId: claims.principal_id, target: claims.target, scopedShellId: claims.shell_id };
   } catch {
     return { authorized: false, isOwner: false };
   }
@@ -172,15 +182,25 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
 
   const resolveShellId = (auth: AuthResult, explicit?: unknown): string => {
     if (auth.scopedShellId) return auth.scopedShellId;
-    return parseShellId(explicit) ?? runtime.defaultStageShellId();
+    return parseShellId(explicit) ?? runtime.fallbackShellId();
   };
 
   const findStoredEvent = (shellId: string, mode: Mode, id: string) => {
     const storage = storageFor(mode);
     const direct = storage.getEventById(EVENT_PREFIX + id) ?? storage.getEventById(LEGACY_PREFIX + id);
-    return direct?.source_shell_id === shellId && direct.audience_scope === "only_owner"
+    return direct?.source_shell_id === shellId
       && direct.redacted_at_ts_ms == null ? direct : undefined;
   };
+
+  function accessible(auth: AuthResult, shellId: string, mode: Mode, id: string) {
+    if (auth.isOwner) return true;
+    const event = findStoredEvent(shellId, mode, id);
+    if (!event) {
+      const run = active.get(runKeyOf(shellId, mode, id));
+      return !!run && run.principalId === auth.principalId && run.audience === auth.audience;
+    }
+    return event.principal_id === (auth.principalId ?? "unknown") && event.audience_scope === auth.audience;
+  }
 
   function getTrace(shellId: string, mode: Mode, id: string): VerifiableTurnTrace | undefined {
     const event = findStoredEvent(shellId, mode, id);
@@ -224,21 +244,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
   ): Receipt {
     const existing = receiptOf(trace);
     if (existing) return existing;
-    if (status === "interrupted") {
-      runtime.handleShellInterrupt({
-        shell_id: shellId,
-        intent_id: trace.steps.step7_emitted_intent.intent_id,
-        full_text: trace.steps.step7_emitted_intent.fallback_text,
-        spoken_char_offset: spokenCharOffset,
-        mode
-      }, trace.turn_event_id);
-    } else {
-      storageFor(mode).updateTurnTraceDeliveryReceipt(trace.turn_event_id, {
-        status,
-        spoken_char_offset: spokenCharOffset,
-        degraded_extensions: []
-      });
-    }
+    runtime.commitDelivery(mode, trace.turn_event_id, status, spokenCharOffset);
     return { status, spokenCharOffset };
   }
 
@@ -246,9 +252,11 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     const auth = authenticate(c, runtime);
     if (!auth.authorized) return c.json({ error: "UNAUTHORIZED" }, 401);
     const mode = parseMode(c.req.query("mode"), "live");
+    if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
     if (!mode) return c.json({ error: "INVALID_MODE" }, 400);
     const shellId = resolveShellId(auth, c.req.query("shellId") ?? c.req.header("x-ai0-shell-id"));
-    const turns = storageFor(mode).listShellDecisionTraces(shellId)
+    const turns = storageFor(mode).listShellDecisionTraces(shellId, 50, auth.audience ?? "only_owner",
+      auth.isOwner ? undefined : auth.principalId ?? "unknown", c.req.query("thread"))
       .filter((trace) => {
         const reqId = extractRequestIdFromEventId(trace.turn_event_id);
         return trace.target_instance === targetOf(mode)
@@ -262,7 +270,9 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
         traceId: trace.trace_id,
         targetInstance: targetOf(mode),
         userText: trace.steps.step1_perception.summary_text,
-        assistantText: displayedText(trace),
+        assistantText: receiptOf(trace) ? displayedText(trace) : "",
+        generatedText: trace.steps.step7_emitted_intent.fallback_text,
+        deliveryStatus: receiptOf(trace)?.status ?? "unknown",
         timestamp: new Date(trace.virtual_ts_ms).toISOString(),
         receipt: receiptOf(trace)
       }));
@@ -274,8 +284,10 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     if (!auth.authorized) return c.json({ error: "UNAUTHORIZED" }, 401);
     const mode = parseMode(c.req.query("mode"), "live");
     const id = requestIdOf(c.req.param("id"));
+    if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
     if (!mode || !id) return c.json({ error: "INVALID_SHELL_RUN" }, 400);
     const shellId = resolveShellId(auth, c.req.query("shellId") ?? c.req.header("x-ai0-shell-id"));
+    if (!accessible(auth, shellId, mode, id)) return c.json({ error: "SHELL_RUN_NOT_FOUND" }, 404);
     const state = getStatus(shellId, mode, id);
     return state ? c.json(state) : c.json({ error: "SHELL_RUN_NOT_FOUND" }, 404);
   });
@@ -285,6 +297,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     if (!auth.authorized || !auth.isOwner) return c.json({ error: "UNAUTHORIZED" }, 401);
     const mode = parseMode(c.req.query("mode"), "live");
     const id = requestIdOf(c.req.param("id"));
+    if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
     if (!mode || !id) return c.json({ error: "INVALID_SHELL_RUN" }, 400);
     const shellId = resolveShellId(auth, c.req.query("shellId") ?? c.req.header("x-ai0-shell-id"));
     if (active.has(runKeyOf(shellId, mode, id))) return c.json({ error: "SHELL_TRACE_IN_PROGRESS" }, 409);
@@ -303,13 +316,16 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
       return c.json({ error: "INVALID_SHELL_RUN" }, 400);
     }
     const shellId = resolveShellId(auth, body.shellId ?? c.req.header("x-ai0-shell-id"));
+    if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
     const eventId = EVENT_PREFIX + id;
     const targetInstance = targetOf(mode);
     const runKey = runKeyOf(shellId, mode, id);
+    const thread = typeof body.thread === "string" ? body.thread : undefined;
     if (active.has(runKey)) return c.json({ error: "SHELL_RUN_IN_PROGRESS" }, 409);
 
     const existingEvent =
       storageFor(mode).getEventById(eventId) ?? storageFor(mode).getEventById(LEGACY_PREFIX + id);
+    if (existingEvent && !accessible(auth, shellId, mode, id)) return c.json({ error: "SHELL_RUN_ID_CONFLICT" }, 409);
     if (existingEvent && findStoredEvent(shellId, mode, id)?.summary_text !== input) {
       return c.json({ error: "SHELL_RUN_ID_CONFLICT" }, 409);
     }
@@ -320,14 +336,15 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     if (
       !archived &&
       Array.from(active.values()).some(
-        (entry) => entry.state.shellId === shellId && entry.state.targetInstance === targetInstance
+        (entry) => entry.state.shellId === shellId && entry.state.targetInstance === targetInstance &&
+          entry.principalId === auth.principalId && entry.audience === auth.audience && entry.thread === thread
       )
     ) {
       return c.json({ error: "SHELL_TARGET_BUSY" }, 409);
     }
 
     const controller = new AbortController();
-    const run: ActiveRun = {
+    const run: ActiveRun = { principalId: auth.principalId, audience: auth.audience, thread,
       controller,
       sentChars: 0,
       state: { requestId: id, eventId: existingEvent?.event_id ?? eventId, shellId, targetInstance, status: "accepted" }
@@ -335,7 +352,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     if (!archived) active.set(runKey, run);
 
     const disconnect = () => controller.abort();
-    const requestSignal = c.req.raw.signal;
+    const requestSignal = auth.pluginId ? AbortSignal.any([c.req.raw.signal, runtime.pluginSignal(auth.pluginId, mode)]) : c.req.raw.signal;
     requestSignal.addEventListener("abort", disconnect, { once: true });
     if (requestSignal.aborted) disconnect();
     const messageId = `${run.state.eventId}:a`;
@@ -362,7 +379,8 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
         } else {
           stage("accepted");
           emitState();
-          const turn = await runtime.handleShellTurn({ shell_id: shellId, text: input, mode }, {
+          const turn = await runtime.handleShellTurn({ shell_id: shellId, principalId: auth.principalId, audience_scope: auth.audience,
+            venue_type: auth.audience?.startsWith("group:") ? "group_chat" : auth.audience === "public_all" ? "public_livestream" : "private_1on1", thread, text: input, mode }, {
             eventId: run.state.eventId,
             signal: controller.signal,
             onStage: stage,
@@ -424,8 +442,10 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     const id = requestIdOf(c.req.param("id"));
     const mode = parseMode(body.mode);
     const offset = body.spokenCharOffset ?? 0;
+    if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
     if (!mode || !id || !validOffset(offset)) return c.json({ error: "INVALID_SHELL_RUN" }, 400);
     const shellId = resolveShellId(auth, body.shellId ?? c.req.header("x-ai0-shell-id"));
+    if (!accessible(auth, shellId, mode, id)) return c.json({ error: "SHELL_RUN_NOT_FOUND" }, 404);
     const run = active.get(runKeyOf(shellId, mode, id));
     const trace = getTrace(shellId, mode, id);
     if (trace && !receiptOf(trace)) {
@@ -455,8 +475,10 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     const id = requestIdOf(c.req.param("id"));
     const mode = parseMode(body.mode);
     const offset = body.spokenCharOffset;
+    if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
     if (!mode || !id || !validOffset(offset)) return c.json({ error: "INVALID_SHELL_RECEIPT" }, 400);
     const shellId = resolveShellId(auth, body.shellId ?? c.req.header("x-ai0-shell-id"));
+    if (!accessible(auth, shellId, mode, id)) return c.json({ error: "SHELL_RUN_NOT_FOUND" }, 404);
     const trace = getTrace(shellId, mode, id);
     if (!trace) return c.json({ error: "SHELL_TRACE_NOT_FOUND" }, 404);
     const run = active.get(runKeyOf(shellId, mode, id));

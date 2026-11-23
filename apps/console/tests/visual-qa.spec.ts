@@ -138,7 +138,7 @@ test("a narrow reduced-motion console keeps focus and the WebChat composer usabl
     route.fulfill({ status: 502, json: { error: "UPSTREAM_CONNECT_FAILED" } }));
   await page.route((url) => /^\/protocol\/v0\/shell\/runs\/[^/]+$/u.test(url.pathname), (route) =>
     route.fulfill({ status: 404, json: { error: "SHELL_RUN_NOT_FOUND" } }));
-  await page.goto("/shells/stage/builtin.webchat?appearance=dark");
+  await page.goto("/webchat?appearance=dark");
 
   const root = page.locator("[data-console-root]");
   const commands = page.getByRole("button", { name: "打开命令面板", exact: true });
@@ -177,7 +177,7 @@ test("a narrow reduced-motion console keeps focus and the WebChat composer usabl
 
 test("bootstrap failure leaves suggestion drafts available with one focus surface", async ({ page }) => {
   await page.route("**/api/studio/bootstrap?*", (route) => route.fulfill({ status: 502, json: { error: "HTTP_502" } }));
-  await page.goto("/shells/stage/builtin.webchat");
+  await page.goto("/webchat");
   const thread = page.locator('[data-webchat-target="live"]');
   await expect(thread).toContainText("暂时无法连接");
   await expect(thread.getByRole("button", { name: "重新连接" })).toBeVisible();

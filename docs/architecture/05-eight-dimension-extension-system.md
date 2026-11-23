@@ -13,14 +13,14 @@
 
 普通干活型 Agent 只需要扩展“手脚（工具）”。但一个完整的**数字生命认知中枢**是一个活体赛博有机体，社区开发者和玩家需要沿着 **8 条标准化功能总线** 全方位改造她：
 
-1. **`ext.shell`（具身运行环境总线）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers`）与什么端侧身体动作（`Actuators`）”（如桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord IM、Minecraft 等游戏 Mod、以及挂载在浏览器里的 Web 交互舞台插件如 `plugins/shells/webchat`）。
+1. **`ext.shell`（具身运行环境总线）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers`）与什么端侧身体动作（`Actuators`）”（如桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord IM、Minecraft 等游戏 Mod、以及挂载在浏览器里的 网页交互插件如 `plugins/shells/webchat`）。
 2. **`ext.media_pipeline`（多模态音视频与感官管线总线）**：位于躯壳与大脑之间的流式媒体信号加工厂（流式 ASR 语音转写、GPT-SoVITS / FishAudio 情感 TTS 合成与口型同步 `Visemes`、摄像头微表情语义提取器）。
 3. **`ext.cognitive_organ`（大脑认知器官与生命周期钩子总线）**：允许向大脑内部插入新的认知脑区或替换默认算法（如睡眠期梦境日记器、塔罗占卜心境器官、自定义情绪动力学模型、自定义显著性门控），天然享受内核的一键消融开关与 MVCC 事务保护。
 4. **`ext.action_mcp_skill`（外部行动工具与复合技能总线）**：为大脑的 **8 步一等行动认知环（`W2`）** 与 **潜意识好奇心冲浪环（`W3`）** 提供外部世界操作工作流（标准 MCP Servers、HTTP Webhook/OpenAPI 桥接器、以及包含任务手册与脚本的复合 `SKILL.md` 技能包）。
 5. **`ext.memory_knowledge`（内建混合 RAG 知识库与外部活体知识连接器总线）**：在内核**开箱即用内建混合 RAG 引擎（文档解析分块 + `sqlite-vec` 稠密向量 + FTS5 BM25 稀疏检索 + Reranker）**的基础上，支持热插拔挂载 Obsidian 笔记库、Notion、本地代码库、番剧/游戏设定 Wiki，并在卸载时自动浓缩沉淀百字常识卡（`CrystallizedGistCard`）。
 6. **`ext.model_provider`（模型推理后端与角色 LoRA 总线）**：接入云端 API、本地推理引擎（Ollama / vLLM / llama.cpp）、Embedding / Reranker、L0 本地安全危机分类器以及角色专属 **LoRA 权重热切换器**。
 7. **`ext.soul_asset`（灵魂模板、动态世界观词库、关系里程碑与评测剧本总线）**：支持社区零代码分享与混搭“纯净角色基因包（`.soul-template`）”、SillyTavern 角色卡（V2/V3）、动态世界观设定集（`Lorebook / WorldInfo`）、关系里程碑与纪念日正向剧情触发包（`milestones_and_rituals.yaml`）以及回归评测剧本（`.scenario.yaml`）。
-8. **`ext.console_ui`（控制台动态 UI 视图、专属配置页与 Web 躯壳挂载槽总线）**：允许任何扩展在 `@ai0/console-webui` 中动态注册自己的专属配置面板、实时状态监控卡片、独立路由页面（`/extensions/custom/:pluginId`），或将 Web 交互躯壳挂载为控制台内的一个互动舞台页（`/shells/stage/:shellPluginId`）。
+8. **`ext.console_ui`**。插件可提供独立页面、配置面板或其他插件的界面贡献。页面可以独立于任何躯壳连接存在。
 
 ---
 
@@ -35,7 +35,7 @@
 | **形态 II：Agent `SKILL.md` 自然语言技能手册与沙盒脚本包**<br/>*(Markdown Skill Manuals & Sandboxed Scripts)* | `<skill-folder>/SKILL.md` + 可选 `scripts/*.py|js` + `templates/`<br/>**【自然语言 Markdown / 轻量脚本】** | 吸收并升维 Agent Skills 规范：`SKILL.md` 包含 YAML Frontmatter（技能名、触发语义描述、所需的底层 MCP/Actuator 权限白名单、**角色内执行姿态提示 `in_character_demeanor`**）与 Markdown 步骤指南。用户无需编译代码，直接在控制台网页编写一段 Markdown 手册即可教会她新技能（如“每天陪我复盘代码提交并用傲娇语气写总结”）。 | `ext.action_mcp_skill`、`ext.cognitive_organ`（好奇心冲浪议程） |
 | **形态 III：免代码标准协议与跨进程热挂载连接器**<br/>*(Zero-Code Protocol & Out-of-Process Bridges)* | JSON/YAML 连接配置（`MCP stdio/SSE/HTTP`、`Protocol v0 WebSocket`、`OpenAPI / Webhook`、`OpenAI-Compatible API`）<br/>**【免写 `ai0` 插件代码 / 跨语言通用】** | 外部进程可使用任何语言（Python / Rust / C# Unity / C++ Unreal / Go）编写；在控制台仅需填写启动命令行、WebSocket/SSE URL 或导入 OpenAPI JSON Schema，并签发 `Scoped Capability Token` 即可秒级热挂载。 | `ext.shell`、`ext.action_mcp_skill`、`ext.model_provider`、`ext.media_pipeline` |
 | **形态 IV：可视化认知管线、好奇心子代理与跨插件 ECA 蓝图**<br/>*(Visual Cognitive Flows & ECA Blueprints)* | `.flow.yaml` / `orchestration_rules.yaml` / `blackboard_policy.yaml`<br/>**【控制台可视化积木与节点连线】** | 无需修改内核源码，在控制台通过可视化积木编排：**① `When -> If -> Then` 跨插件事件联动规则**、**② `W3` 后台好奇心冲浪/读书笔记子代理管线**、**③ `<2500 Token` 认知黑板槽位预算与语境预设**，支持一键导出 `.flow.yaml` 供社区复用。 | 跨总线协同编排、`ext.cognitive_organ`、`ext.memory_knowledge` |
-| **形态 V：微内核原生代码插件与动态控制台 UI 视图包**<br/>*(Native Microkernel Code Plugins & Console UI)* | `ai0.extension.json` + `./dist/index.js` (ESM / WASM) + `./schema/config.json`<br/>**【TypeScript / WASM 深度开发】** | 面向硬核开发者与研究者：直接实现微内核生命周期 Hook 接口（如自定义情绪微分方程、自定义媒体流编解码器、自定义存储连接器），并可通过 `ext.console_ui` 向控制台注入自定义配置表单、实时监控卡片或挂载 Web 躯壳舞台路由。 | 全部 8 大功能总线（`ext.shell` 至 `ext.console_ui`） |
+| **形态 V：微内核原生代码插件与动态控制台 UI 视图包**<br/>*(Native Microkernel Code Plugins & Console UI)* | `ai0.extension.json` + `./dist/index.js` (ESM / WASM) + `./schema/config.json`<br/>**【TypeScript / WASM 深度开发】** | 面向硬核开发者与研究者：直接实现微内核生命周期 Hook 接口（如自定义情绪微分方程、自定义媒体流编解码器、自定义存储连接器），并可通过 `ext.console_ui` 向控制台注入自定义配置表单、实时监控卡片或声明插件自己的页面路径。 | 全部 8 大功能总线（`ext.shell` 至 `ext.console_ui`） |
 
 ---
 
@@ -125,11 +125,11 @@ config_schema:
 ### 总线 1：具身运行环境扩展 (`ext.shell`) —— 正本清源 `Shell` 架构层与 `plugins/shells/webchat` 的插件定位
 
 * **核心架构正本清源（`Shell` is the Architecture Layer; `plugins/shells/webchat` is Just One Mounted Plugin）**：
-  1. **`Shell（具身运行环境）` 是一等公民架构层**：任何与数字生命发生感知与表达交互的外部或浏览器载体（桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord 桥接器、游戏 Mod、网页对话舞台）在架构上一律平等抽象为 `ext.shell`。
+  1. **`Shell（具身运行环境）` 是一等公民架构层**：任何与数字生命发生感知与表达交互的外部或浏览器载体（桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord 桥接器、游戏 Mod、网页聊天客户端）在架构上一律平等抽象为 `ext.shell`。
   2. **`plugins/shells/webchat` 绝不是控制台的一个顶层架构层面，而仅仅是一个默认预装的普通 `ext.shell` + `ext.console_ui` 插件**：
      * 在通信上，它 100% 走公开标准协议端点 `ws://host:port/protocol/v0/shell`（零特权、零内部后门）；
-     * 在 WebUI 控制台中，它仅仅通过 `ext.console_ui` 的 `slot.shells.mounted_stage` 插槽，在控制台的 **“具身躯壳（Shells）”** 导航域下动态挂载了一个普通的子路由页面（`/shells/stage/builtin.webchat`）。
-     * **100% 可替换与平权**：如果社区开发者编写了 `community.live2d.webstage`（带 Live2D 骨骼渲染的网页舞台插件）或 `community.galgame.stage`（视觉小说对话框舞台插件），安装启用后同样平权挂载在 `/shells/stage/:shellPluginId` 下；如果用户只使用外部桌宠或 QQ 躯壳并将 `plugins/shells/webchat` 禁用卸载，WebUI 控制台的整体架构、顶栏 `LIVE / SANDBOX` 环境切换与 `/dashboard` 首屏依然 **100% 独立自洽**！
+     * WebChat 在自己的清单中声明 `/webchat` 页面，使用公开协议建立连接。
+     * 社区可以给自己的插件声明其他页面、选择导航标题，也可以消费 WebChat 的输入框扩展点。宿主根据有效清单生成入口。
 
 ### 总线 2：多模态感官与表达媒体管线扩展 (`ext.media_pipeline`)
 
@@ -213,13 +213,13 @@ config_schema:
      * `data.character_book` $\rightarrow$ 无损转换至 `lorebooks/imported_world.yaml`；
      * **安全清洗防火墙（Jailbreak & PUA Sanitizer）**：由确定性代码在导入阶段强制剥离原卡 `system_prompt / post_history_instructions` 中夹带的越狱指令、伪造 System 标签与情感操控留存脚本，并在控制台“四步蒸馏料理台”中以红绿 Diff 高亮展示剥离明细。
 
-### 总线 8：控制台动态 UI 视图、配置表单与 Web 躯壳舞台挂载槽 (`ext.console_ui`)
+### 总线 8：插件页面、配置表单与界面扩展点（`ext.console_ui`）
 
 * **职责**：让任何插件都能在 `@ai0/console-webui` 中拥有可视化配置与观测界面，支持三类挂载形态：
   1. **自动配置表单（`config_schema`）**：在控制台 `/extensions/configurator` 中由 `ExtensionDynamicSchemaDrawer` 自动渲染 `Tier-V1/V2/V3` 配置面板，支持绑定密钥保险箱（Secrets Vault）与保存即单插件热重载；
   2. **内嵌观测卡片与页签（`ui_slots`）**：挂载于记忆域、媒体调音台或右侧伴生检视副栏；
-  3. **独立插件页面与 Web 具身躯壳舞台挂载槽（`/extensions/custom/:pluginId` & `/shells/stage/:shellPluginId`）**：允许 `plugins/shells/webchat` 或社区开发的 Live2D/VRM/Galgame 网页躯壳插件作为控制台内的一个标准子路由页面动态挂载运行。
-     * **零编译期污染与双轨挂载 ABI（`web_stage_module` / `sandboxed_iframe_stage`）**：插件在自身 `package.json` 中闭环管理第三方 UI/渲染依赖，独立构建 `./dist/ui/stage.js` + `./dist/ui/stage.css`（或沙盒 HTML）并在 `ai0.extension.json` 的 `console_contributions.ui_slots` 中声明 `entry_module`、`style_sheets` 与 `shell_id`；`@ai0/daemon` 动态扫描内置目录 `plugins/*/*` 以及外置用户插件目录（`<soulDir>/plugins/*`、`user-plugins/*`、`AI0_PLUGINS_DIR`），仅安全托管各插件 `dist/` 下的构建产物于 `/api/plugins/:extensionId/assets/*`，并为每个舞台签发绑定其 `shell_id` 的 Channel A `ScopedCapabilityToken`；`@ai0/console-webui` 的 `MountedShellStageHost` 通过 `@ai0/sdk` 的 `Ai0ShellStageHostBridge` 动态挂载并同步主题、`LIVE / SANDBOX` 环境与单轮轨迹查证，实现**官方参考插件与社区外部插件 100% 标杆同构，官方上游升级绝不破坏用户自建插件**。
+  3. **插件页面**。每项页面贡献声明自己的本地路径、模块入口和可选导航标题。一个插件可提供多个页面。
+     * 模块导出 `mountPage(container, host)` 并返回清理函数。旧版清单和模块由兼容层翻译。页面作者通过 `scope.define` 公开自己的扩展点。
 
 ---
 
@@ -274,7 +274,7 @@ cross_plugin_triggers:
 
 1. **内置虚拟躯壳与多模态感官模拟器（Mock Shell & Sensor Simulator — `/shells/simulator`）**：
    * 创作者在开发一个新的 `SKILL.md` 技能、一条 `Lorebook` 词书、一个 `ext.cognitive_organ` 脑区插件或一条跨插件 ECA 规则时，无需真的启动 Unity/Live2D 客户端或登录外部 IM；
-   * 直接在控制台打开虚拟躯壳模拟器，可任意伪造握手参数（切换 `private_1on1 | group_chat | public_livestream`、切换 `owner_verified | stranger:troll`），一键发送模拟触觉（如连戳 3 下脑袋）、模拟视觉语义（如皱眉 + 竞争假设）、模拟中途流式打断（指定 `spoken_char_offset`）或模拟动态热更新 `Actuators`，并在右侧伴生检视栏中实时观测 8 步决策轨迹与插件 Hook 耗时。
+   * 直接在控制台打开躯壳协议模拟器，可任意伪造握手参数（切换 `private_1on1 | group_chat | public_livestream`、切换 `owner_verified | stranger:troll`），一键发送模拟触觉（如连戳 3 下脑袋）、模拟视觉语义（如皱眉 + 竞争假设）、模拟中途流式打断（指定 `spoken_char_offset`）或模拟动态热更新 `Actuators`，并在右侧伴生检视栏中实时观测 8 步决策轨迹与插件 Hook 耗时。
 2. **代码级强制脱敏的一键社区资产打包器（Privacy-Scrubbed Creator Asset Bundler）**：
    * 当用户在控制台调教出一套满意的角色人格、生物钟曲线、`Lorebook` 词库、里程碑规则、`SKILL.md` 技能或 `.flow.yaml` 编排蓝图，点击 **`[📦 一键脱敏打包导出社区分享包]`** 时：
    * 后端打包引擎在代码层**强制物理排除** `soul_core.sqlite`（所有个人对话 `event_log`、私密情景记忆、决策轨迹）、`redaction_ledger.json`、`attachments/` 个人照片以及 Secrets Vault 中的任何 API Key；

@@ -155,7 +155,7 @@
 
 3. **本架构（`ai0`）的吸收融合与跨代升维（Borrow & Ascend）**：
    * **八大功能扩展总线 × 五阶多态异构扩展载体（The 8-Bus × 5-Carrier Polymorphic Ecosystem）**：打破“只有单一编译型 TS 代码插件”的局限，同时支持 **① 零代码声明式资产包（SillyTavern V2/V3 角色卡四步蒸馏料理与越狱清洗、`.soul-template`、`Lorebook`、关系里程碑与正向剧情触发器 `milestones_and_rituals.yaml`）**、**② Agent `SKILL.md` 自然语言技能手册与沙盒脚本（含角色内执行姿态提示）**、**③ 免代码标准协议与跨进程热挂载器（`MCP / Protocol v0 WebSocket / Webhook / OpenAPI`）**、**④ 可视化认知管线、受控好奇心外部世界冲浪子代理与跨插件 ECA 联动蓝图（`.flow.yaml`）**、以及 **⑤ 微内核原生代码插件与动态控制台 UI 视图包（`ai0.extension.json + ext.console_ui`）**；
-   * **正本清源 `Shell（具身运行环境）` 一等架构层与 `<main>` 一体式圆角卡片路由视口外壳**：在 `WebUI 控制台` 中彻底剥离 `plugins/shells/webchat` 的顶层越位层级（将其还原为仅挂载于 `/shells/stage/builtin.webchat` 的一个普通插件页面，与社区 Web Live2D/3D 躯壳插件完全平权），将 **`Shell（具身运行环境）`** 确立为核心一级架构域（`/shells/*`）；采用**常驻多态外壳（混合顶栏 `🟢 LIVE / 🧪 SANDBOX` 二元实例环境切换 + 左右双侧可折叠功能栏/迷你栏）+ 中央 `<main>` 一体式大圆角悬浮卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）**，按需分页面承载 **8 大一级域 × 30 条专职子路由** 与 **五大 UI/UX 视图结构母版**；
+   * 躯壳协议支持独立载体。控制台导航会随插件声明的页面变化，WebChat 与社区客户端分别管理自己的界面。
    * **后端全量机制 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/曲线层 -> Tier-V2 结构化紧凑表单层 -> Tier-V3 权威源码/审计层`）**：通过 **`ai0` 第一方紧凑二次封装 MD3 组件库（5 子目录 4 层 45 项纯语义组件，`32px` 紧凑控件高度与 5 级动态灵魂色调表面）**，把后端深邃的 `<2500 Token` 认知黑板积木编排器、三层人格演化双栏 Diff、24h 作息生物钟与二阶耦合情绪拖拽曲线、五脑区异构算力代谢水位仪、双向具身 `Shell` 三平面星图、内建混合 RAG 知识库与四级溯源血缘 DAG 真遗忘手术台、以及四轨融合遥测终端 100% 无损且直观地呈现在使用者面前。
 
 ---

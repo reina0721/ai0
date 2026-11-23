@@ -41,8 +41,9 @@ export function renderRoutePageView(
       return createElement(Domain7RuntimePage, { pathname, snapshot, onNavigate });
     case "system":
       return createElement(Domain8SystemPage, { pathname, snapshot, onNavigate });
-    case "dashboard":
     default:
+      return createElement("main", { className: "ai0-main-rounded-card-outlet" }, createElement("h1", null, "页面不可用"), createElement("p", null, pathname));
+    case "dashboard":
       return createElement(Domain1DashboardPage, {
         pathname: route?.pathname ?? "/dashboard",
         snapshot,

@@ -13,7 +13,8 @@
     }
   },
   "scripts": {
-    "dev": "concurrently -k -n daemon,console -c cyan,magenta \"pnpm dev:daemon\" \"pnpm dev:console\"",
+    "dev": "pnpm build:plugins && concurrently -k -n daemon,console -c cyan,magenta \"pnpm dev:daemon\" \"pnpm dev:console\"",
+    "build:plugins": "pnpm --filter \"{./plugins/**}...\" -r --if-present build",
     "dev:daemon": "node --watch --conditions=development --import tsx apps/daemon/src/cli.ts --port 4174",
     "dev:console": "pnpm --filter @ai0/console-webui dev",
     "start": "node apps/daemon/dist/cli.js --serve-console",
@@ -22,7 +23,8 @@
     "test": "vitest run",
     "replay:golden": "node apps/daemon/dist/cli.js --run-golden-scenario",
     "verify:boundaries": "node scripts/verify-architecture-boundaries.mjs",
-    "verify:all": "pnpm verify:boundaries && pnpm build && pnpm typecheck && pnpm test"
+    "verify:composition-browser": "pnpm --filter @ai0/console-webui test:browser composition.spec.ts webchat.spec.ts",
+    "verify:all": "pnpm verify:boundaries && pnpm build && pnpm typecheck && pnpm test && pnpm verify:composition-browser"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -205,7 +205,7 @@ export function RelationshipWorkspace({ snapshot }: { snapshot?: ConsoleLiveSnap
       setBusy(false);
     }
   };
-  const metrics = [["信任连接", snapshot?.trustBond], ["社交期待", snapshot?.socialLonging], ["未解张力", snapshot?.frictionTension]] as const;
+  const metrics = [["信任连接（尚无测量值）", snapshot?.trustBond], ["社交期待（模型状态）", snapshot?.socialLonging], ["未解张力（条目数）", snapshot?.frictionTension]] as const;
   return (
     <WorkspacePage>
       <WorkspaceHeader title="关系状态与里程碑">

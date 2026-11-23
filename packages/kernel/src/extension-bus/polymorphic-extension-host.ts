@@ -12,11 +12,11 @@ export type ExtensionCarrier = ExtensionCarrierKind;
 export type ExtensionBus = ExtensionDimension;
 export interface ICognitiveOrganExtension {
   organId: string; defaultEnabled: boolean;
-  contributeToBlackboard?(snapshot: ReadOnlyCognitiveSnapshot, maxTokens: number):
+  contributeToBlackboard?(snapshot: Partial<ReadOnlyCognitiveSnapshot>, maxTokens: number):
     MaybePromise<{ slot_id: string; text: string } | null>;
-  onTurnCompleted?(turnTrace: VerifiableTurnTrace, snapshot: ReadOnlyCognitiveSnapshot):
+  onTurnCompleted?(turnTrace: VerifiableTurnTrace, snapshot: Partial<ReadOnlyCognitiveSnapshot>):
     MaybePromise<StateMutationProposal[]>;
-  onSleepCycleWakeup?(snapshot: ReadOnlyCognitiveSnapshot, rawDirtyEvents: unknown[]):
+  onSleepCycleWakeup?(snapshot: Partial<ReadOnlyCognitiveSnapshot>, rawDirtyEvents: unknown[]):
     MaybePromise<StateMutationProposal[]>;
 }
 export interface IMediaPipelineExtension {
@@ -75,26 +75,31 @@ export class PolymorphicExtensionHost {
     if (typeof organ.organId !== "string") throw new Error(`NOT_COGNITIVE_ORGAN:${id}`);
     item.organEnabled = enabled;
   }
+  private readableSnapshot(item: MountedExtension, snapshot: ReadOnlyCognitiveSnapshot): Partial<ReadOnlyCognitiveSnapshot> {
+    return structuredClone(Object.fromEntries(Object.entries(snapshot).filter(([key]) =>
+      key === "state_rev" || item.readDomains?.includes(key as StateDomain))));
+  }
   async contributeOrgan(id: string, snapshot: ReadOnlyCognitiveSnapshot, maxTokens: number):
     Promise<{ slot_id: string; text: string } | null> {
     const item = this.require(id), organ = item.extension as ICognitiveOrganExtension;
     if (item.organEnabled === false) return { slot_id: `organ.${organ.organId}`,
       text: `[已消融认知器官 ${organ.organId}：注入中性常数]` };
     if (!organ.contributeToBlackboard) return null;
-    return await organ.contributeToBlackboard(snapshot, maxTokens);
+    const result = await organ.contributeToBlackboard(this.readableSnapshot(item, snapshot), maxTokens);
+    return this.mounted.get(id) === item ? result : null;
   }
   async notifyTurnCompleted(id: string, trace: VerifiableTurnTrace,
     snapshot: ReadOnlyCognitiveSnapshot): Promise<StateMutationProposal[]> {
     const item = this.require(id), organ = item.extension as ICognitiveOrganExtension;
     if (item.organEnabled === false || !organ.onTurnCompleted) return [];
-    return (await organ.onTurnCompleted(trace, snapshot)).filter(p => this.canProposeDomain(id, p.domain));
+    return (await organ.onTurnCompleted(trace, this.readableSnapshot(item, snapshot))).filter(p => this.mounted.get(id) === item && this.canProposeDomain(id, p.domain));
   }
   async notifySleepWakeup(id: string, snapshot: ReadOnlyCognitiveSnapshot,
     rawDirtyEvents: unknown[]): Promise<StateMutationProposal[]> {
     const item = this.require(id), organ = item.extension as ICognitiveOrganExtension;
     if (item.organEnabled === false || !organ.onSleepCycleWakeup) return [];
-    return (await organ.onSleepCycleWakeup(snapshot, rawDirtyEvents))
-      .filter(p => this.canProposeDomain(id, p.domain));
+    return (await organ.onSleepCycleWakeup(this.readableSnapshot(item, snapshot), rawDirtyEvents))
+      .filter(p => this.mounted.get(id) === item && this.canProposeDomain(id, p.domain));
   }
   hotReloadExtension(id: string, newConfig: Readonly<Record<string, unknown>>, expectedRev: number): number {
     const item = this.require(id);

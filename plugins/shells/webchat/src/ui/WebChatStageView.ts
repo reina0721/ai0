@@ -11,7 +11,7 @@ import {
   type WebChatProtocolClient
 } from "../client/webchat-protocol-client.js";
 
-export const WEBCHAT_STAGE_ROUTE = "/shells/stage/builtin.webchat";
+export const WEBCHAT_STAGE_ROUTE = "/webchat";
 
 export interface WebChatTranscriptBubble {
   id: string;

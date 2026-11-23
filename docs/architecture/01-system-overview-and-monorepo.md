@@ -50,7 +50,7 @@ flowchart TB
         AdminAPI["Kernel Admin & Audit Telemetry Bus (特权管理与四轨遥测总线)"]
         AppShell["常驻多态外壳 (混合顶栏 LIVE/SANDBOX 环境切换 + 左可折叠路由栏 + 右可折叠检视副栏)"]
         RouterOutlet["<main> 一体式圆角卡片路由视口盒子 (MainRoundedCardOutlet = <RouterOutlet />)<br/>按需渲染 8 大一级域 × 30 条专职路由页面 | 内部承载五大 UI/UX 视图母版 & 4层45项第一方紧凑 MD3 组件"]
-        UISlots["动态 UI 扩展槽 & Web Shell 舞台挂载点 (ext.console_ui -> /shells/stage/:shellId)"]
+        UISlots["插件页面和扩展点 (ext.console_ui)"]
     end
 
     ShellExt <--> MediaPipe <-->|"Protocol v0 (公开标准协议)"| WSGateway
@@ -64,7 +64,7 @@ flowchart TB
     Coord <-->|"原子事务读写 / WHERE 受众隔离"| SQLite & SoulFiles
     GitSnap <--> SQLite & SoulFiles
     ControlPlane <-->|"特权总线 (非 Shell 协议)"| AdminAPI <--> Coord & ExtHost & GitSnap
-    UISlots -.->|"按需挂载已启用 Web Shell 插件视图 (/shells/stage/:shellId)"| ShellExt
+    UISlots -.->|"挂载已启用插件的页面模块"| ShellExt
 ```
 
 ---
@@ -141,13 +141,13 @@ flowchart TB
 │           ├── app-shell/               # 常驻多态外壳 (混合顶栏 LIVE/SANDBOX 环境切换 / 左三态可折叠路由轨 / 右三态检视副栏 / 主权围栏)
 │           ├── router/                  # 8 大一级导航域 × 30 条专职二级子路由嵌套路由树、懒加载与 DirtyRouteGuard 守卫
 │           ├── design-system/           # 四层 45 项第一方紧凑二次封装 MD3 组件库 (含 MainRoundedCardOutlet 一体式圆角卡片路由视口盒子)
-│           ├── archetypes/              # <main> 圆角卡片盒子内部的五大 UI/UX 视图结构母版 (挂载舞台 / 态势终端 / 主从配置 / 拓扑画布 / 多态工作坊)
+│           ├── archetypes/              # <main> 圆角卡片盒子内部的五大 UI/UX 视图结构母版 (插件页面 / 态势终端 / 主从配置 / 拓扑画布 / 多态工作坊)
 │           ├── domains/                 # 1:1 零阉割投射后端全量机制的 10 大业务域模块 (具身 Shells 中枢 / 五阶扩展工作坊 / 可食用角色蒸馏炉 / 黑板积木编排器等)
-│           └── extension-slots/         # 第三方插件动态 UI 扩展槽与 Web Shell 舞台挂载宿主 (ext.console_ui Schema & 无凭据沙盒 Iframe)
+│           └── extension-slots/         # 第三方插件动态 UI 扩展槽与 插件页面宿主 (ext.console_ui Schema & 无凭据沙盒 Iframe)
 │
 ├── plugins/                             # 【统一多态扩展与插件生态总目录 — 严禁任何插件混入顶层 packages/ 搞单插件独占!】
 │   ├── shells/                          # 总线 1 (ext.shell)：具身运行环境插件集
-│   │   └── webchat/                     # [@ai0/plugin-shell-webchat / builtin.webchat] 默认预装网页对话躯壳；按需挂载于 /shells/stage/builtin.webchat
+│   │   └── webchat/                     # 默认网页会话插件，提供 /webchat 页面
 │   ├── cognitive-organs/                # 总线 3 (ext.cognitive_organ)：大脑认知器官插件集
 │   │   └── dream-journal/               # [@ai0/plugin-organ-dream-journal / community.organ.dream-journal] 官方参考器官：睡眠期梦境与悄悄话日记
 │   ├── skills-and-mcp/                  # 总线 4 (ext.action_mcp_skill)：SKILL.md 自然语言技能手册与 MCP 连接器集
@@ -171,7 +171,7 @@ flowchart TB
    * 仅依赖 `zod`，严禁引用任何 Node.js 专有原生模块或内核包，确保可在浏览器、移动端、边缘设备或任何外部脚本中无缝运行。
 2. **`plugins/**` 全目录通用零后门铁律（Universal Plugin Zero-Backdoor Enforcement）**：
    * **物理目录隔离**：顶层 `packages/` 目录仅限五大微内核底座包（`protocol`, `storage`, `kernel`, `gateway`, `sdk`），所有官方参考插件（如 `plugins/shells/webchat`）一律归入 `plugins/**` 目录，严禁任何单一插件在 `packages/` 顶层享有独占特权席位；社区与用户自建插件一律归入官方源码树之外的独立目录（`<soulDir>/plugins/*`、`user-plugins/*` 或 `AI0_PLUGINS_DIR`），确保官方上游更新（`git pull` / 发行版升级）对用户插件零冲突、零覆盖。
-   * **双向依赖反转硬约束（Invariant 3 & Invariant 7）**：`plugins/**` 下的任何插件包可在自身 `package.json` 中独立管理第三方 npm 依赖（自包含依赖闭包与独立 `dist/` 产物），但在 `@ai0/*` 内部包中仅允许依赖 `@ai0/protocol` 与 `@ai0/sdk`，**编译期严禁**依赖或导入 `@ai0/kernel`、`@ai0/storage`、`@ai0/gateway`、`@ai0/console-webui` 或 `@ai0/daemon`；反向地，`packages/*` 与 `apps/*` 编译期**严禁**依赖任何 `@ai0/plugin-*` 包、导入 `plugins/**` 源码或把特定插件的 UI/业务依赖塞入宿主 `package.json`，所有 Web 躯壳舞台一律通过运行时清单发现、静态资产托管（`/api/plugins/:id/assets/*`）与 `Ai0ShellStageHostBridge` 动态挂载。
+   * **双向依赖反转硬约束（Invariant 3 & Invariant 7）**：`plugins/**` 下的任何插件包可在自身 `package.json` 中独立管理第三方 npm 依赖（自包含依赖闭包与独立 `dist/` 产物），但在 `@ai0/*` 内部包中仅允许依赖 `@ai0/protocol` 与 `@ai0/sdk`，**编译期严禁**依赖或导入 `@ai0/kernel`、`@ai0/storage`、`@ai0/gateway`、`@ai0/console-webui` 或 `@ai0/daemon`；反向地，`packages/*` 与 `apps/*` 编译期**严禁**依赖任何 `@ai0/plugin-*` 包、导入 `plugins/**` 源码或把特定插件的 UI/业务依赖塞入宿主 `package.json`，插件网页一律通过运行时清单发现、静态资产托管（`/api/plugins/:id/assets/*`）与 `ConsolePageHost` 动态挂载。
 3. **`@ai0/kernel` 无头（Headless）纯洁性铁律**：
    * `@ai0/kernel` 严禁依赖任何前端 UI 框架（React/DOM）或特定外部平台 SDK（如 Discord.js / Live2D Cubism SDK），确保认知微内核在任何服务器、桌面或嵌入式容器中均可独立无头运行。
 4. **`@ai0/storage` 唯一写入口铁律**：

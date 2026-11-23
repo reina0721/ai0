@@ -1,5 +1,5 @@
 import { createTheme, StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
-import { defineShellStageModule, type Ai0ShellStageHostBridge, type Ai0ShellStageHostState } from "@ai0/sdk";
+import { type ConsolePageModule, type Ai0ShellStageHostBridge, type Ai0ShellStageHostState } from "@ai0/sdk";
 import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -140,18 +140,18 @@ function MountedWebChatApp({ host, container }: { host: Ai0ShellStageHostBridge;
   );
 }
 
-const stageModule = defineShellStageModule<HTMLElement>({
-  extensionId: "builtin.webchat",
-  mountShellStage(container, host) {
+const page: ConsolePageModule<HTMLElement> = {
+  mountPage(container, host) {
+    if (!host.shell) throw new Error("WebChat 需要已登记的躯壳接入能力。");
     const root = createRoot(container);
-    root.render(<MountedWebChatApp host={host} container={container} />);
+    root.render(<MountedWebChatApp host={host.shell} container={container} />);
     return {
       unmount() {
         root.unmount();
       }
     };
   }
-});
+};
 
-export const mountShellStage = stageModule.mountShellStage;
-export default stageModule;
+export const mountPage = page.mountPage;
+export default page;

@@ -3,7 +3,7 @@
 > **项目阶段**：工程规格与控制平面架构规范（解法域工程规格）
 >
 > 本文档定义 `@ai0/console-webui` 的完整前端系统架构、多级嵌套路由树与 UI/UX 工程设计规范。由于 `ai0` 剥离了重型桌宠/Live2D/3D 客户端外壳包袱、采用**无头（Headless）认知微内核**架构，`WebUI 控制台` 作为系统唯一标配的**内建实体控制平面（Control Plane）、主权配置中枢、五阶多态扩展工作坊与认知科学观测天文台**，严格遵循以下四大架构铁律：
-> 1. **正本清源 `Shell（具身运行环境）` 的一等架构地位，剥离 `plugins/shells/webchat` 的越位层级**：系统的顶层交互架构层是 **`Shell（具身运行环境，ext.shell）`**；`plugins/shells/webchat` 绝不是控制台的一个顶层架构层面或顶栏模式，它**仅仅是一个默认预装的普通 `ext.shell` + `ext.console_ui` 插件**，在控制台中仅表现为一个挂载在 `/shells/stage/builtin.webchat` 路由下的普通插件页面（与社区开发的 Web Live2D/VRM/Galgame 躯壳插件 100% 平权，可随时替换或禁用，绝不绑架控制台本身架构）。
+> 1. 躯壳协议定义外部载体的感知、表达和动作。控制台管理连接。WebChat 插件提供网页会话和自己的导航入口。
 > 2. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）+ 8 大域 30 条专职子路由**：外围由**无边框环境底板混合顶栏 + 左右双侧可折叠功能栏/迷你栏**构成常驻不闪烁的多态布局外壳；中央 **`<main>` 主内容区本身被整体包裹为一张完整、统一的大圆角悬浮卡片盒子（`border-radius: 16px`）作为 `<RouterOutlet />` 路由视图出口**。在任意路由下，`<main>` 圆角卡片大盒子内部**仅专职渲染当前 URL 对应的那 1 个页面**（默认根首屏为 `/dashboard` 全景态势大盘，**严禁将所有功能塞到首屏主页，也严禁把 `<main>` 拆碎成满屏零散漂浮的小卡片**）。
 > 3. **后端全量设计（`01~05`）100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/料理流水线层` $\rightarrow$ `Tier-V2 结构化紧凑表单层` $\rightarrow$ `Tier-V3 权威源码与确定性证据层`）**：后端每一项认知机制、五阶多态扩展载体、配置结构体、数学动力学参数与防火墙规则在前端均拥有 1:1 的专职路由与可视化控制入口。
 > 4. **建立服务于数字生命愿景的第一方自包含设计语言（`ai0` Console Design System）**：以**“科研级白盒认知治理的高密度精密感 × 数字生命长期陪伴的通透呼吸感”**为视觉核心，基于 Material Design 3 交互原语进行桌面高密度二次封装（5 子目录 45 项纯语义模块化组件、5 级动态灵魂色调表面、单色矢量符号学与弹簧/水波纹触觉微交互），不依赖任何外部小众视觉参考先验知识即可独立复现与验收。
@@ -18,8 +18,8 @@
 
 1. **剥离 `plugins/shells/webchat` 的架构越位，全面凸显 `Shell（具身运行环境层）`**：
    * **`@ai0/console-webui`（特权控制平面）**：通过仅供所有者访问的 `Kernel Admin & Audit Telemetry Bus`（`/api/admin/v1/*` & `ws://.../telemetry`）管理内核全量状态；控制台拥有统一、自洽的 **第一方紧凑二次封装 MD3 多态视觉体系**，默认根路由首屏为 **`/dashboard`（数字生命全景态势与具身 `Shells` 总览大盘）**。
-   * **`Shell（具身运行环境，ext.shell）`**：作为系统第 2 大核心一级导航域（`/shells/*`），统一治理所有外部与内置具身运行环境（桌面萌宠、Live2D/VRM 客户端、QQ/Telegram/Discord IM、游戏 Mod、Web 交互舞台）的双向连接、三平面能力（`Sensors` 视神经感官覆盖桶 / `Realizers` 动态表现力词典 / `Actuators` 端侧执行器热增删）、多 `Shell` 注意力焦点仲裁、丘脑门控与媒体管线。
-   * **`plugins/shells/webchat` 的真实定位——仅为一个普通的挂载插件页面**：`plugins/shells/webchat` 只是使用 `@ai0/protocol` 编写的一个零特权参考 `Shell` 插件（100% 走公开标准协议 `ws://.../protocol/v0/shell`）。当它处于启用状态时，它通过 `ext.console_ui` 的舞台挂载槽在控制台侧栏动态挂载一个普通子路由页面 `/shells/stage/builtin.webchat`（社区编写的 `community.live2d.webstage` 等插件亦平权挂载于 `/shells/stage/:shellPluginId`）。
+   * **躯壳接入**由网关管理。控制台从握手、租约及能力更新读取载体的连接、感知、表达和动作状态。
+   * **WebChat** 在自己的清单中声明 `/webchat`、导航标题和模块入口。宿主确认资源可用且插件启用后才显示入口。
 2. **混合顶栏中央的全局实例环境状态机（`🟢 LIVE` vs. `🧪 SANDBOX:<fork_id>` 二元主权隔离）**：
    为了防止破坏性的认知实验（如将时间拨快 7 天或消融情绪脑区）污染陪伴了使用者数年的正式个体（`live`）的真实承诺与记忆时间线，混合顶栏中央驻留一个带弹簧滑块的**二元实例环境胶囊切换器（`SegmentedPill`）**，驱动全局 `target_instance` 参数与视口外缘主权防呆围栏：
    * **环境态 A：`🟢 LIVE 正式运行实例（target_instance: "live"）`**：
@@ -36,7 +36,7 @@
 2. **中央 `<main>` 一体式圆角卡片路由视口容器盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）与三段式内部视口几何契约**：
    * 被外围多态功能栏紧密环绕（紧凑咬合间距 `6px~8px`）的中央 `<main>` 主内容区域，**整体作为一个单一、完整、带精致大圆角（`border-radius: 16px`）、微抬升色调表面（`Surface-Container-Elevated`）、`1px` 细腻高光描边与独立裁剪边界（`overflow: hidden`）的“圆角卡片式大容器盒子”**，将当前路由页面的整块信息架构完整包裹起来！
    * **两级紧凑导航几何契约（左栏精炼 8 大一级域零滚动条 + `<main>` 盒子顶部内嵌 `40px` 粘性水平子路由栏 `InternalStickySubNav`）**：
-     为彻底防止 30 条子路由在左侧 `220px` 导航栏纵向展开导致菜单臃肿与垂直滚动条，规定：**左侧导航栏（`PolymorphicNavRail`）在展开态下永远仅精炼渲染 8 个一级核心域入口（外加底部已启用 Web `Shell` 舞台快捷入口，总高 $<420\text{px}$，永远零垂直滚动条！）**；点击任一一级域后，该域下的 2~6 条专职二级子路由统一收敛在 **`<main>` 圆角卡片大盒子内部顶端的 `40px` 粘性胶囊页签横条（`InternalStickySubNav`）** 中丝滑切换！
+     侧栏按领域列出管理工具。“插件页面”分组来自当前有效的页面贡献，桌面与移动导航共用这份列表。
    * **`<main>` 圆角卡片盒子的三段式内部滚动几何（Three-Part Internal Viewport Geometry）**：
      `<main>` 容器（`height: calc(100vh - 64px), display: flex, flex-direction: column, overflow: hidden`）内部严格遵循：
      1. **顶部固定子路由与态势带（`InternalStickySubNav & TelemetryMetricStrip`，`height: 40px~44px, flex-shrink: 0`）**：承载当前一级域下的二级子路由胶囊页签与页面级快捷操作；
@@ -72,7 +72,7 @@ flowchart TB
                 M_Rule1["✨ 视觉核心：整个 <main> 主内容区本身用一整张完整、统一的圆角悬浮卡片盒子视觉包裹 (Elevated Surface-L1, 1px 细腻描边, overflow: hidden)"]
                 M_Rule2["🔀 单路由单页面铁律：作为 <RouterOutlet />，每次仅渲染当前激活 URL 路由对应的那 1 个专职页面 (默认根首屏为 /dashboard，绝不搞首屏大杂烩!)"]
                 M_Rule3["📐 内部高内聚反碎片化：在 <main> 圆角卡片大盒子内部，按当前路由绑定的【五大 UI/UX 视图结构母版】做平铺主从分栏与【Tier-V1 直觉图形 → Tier-V2 紧凑表单 → Tier-V3 权威源码】三层渐进式披露，严禁把 <main> 拆碎成满屏零散小卡片!"]
-                M_Rule4["🧩 插件页面挂载槽：plugins/shells/webchat (或社区 Live2D/3D 网页躯壳) 仅在访问 /shells/stage/:shellPluginId 路由时在此盒子内按需渲染 (内部走通道 A 标准协议)"]
+                M_Rule4["插件自己的页面与路由，例如 WebChat /webchat"]
             end
 
             subgraph RightRail["4. 右侧多态可折叠上下文副栏 (PolymorphicContextInspector)"]
@@ -115,7 +115,7 @@ flowchart TB
 
 | 视图结构母版 | 在 `<main>` 圆角卡片大盒子内部的结构形态 (Internal Layout Morphology) | 核心交互方式 (Interaction Paradigm) | 典型适用的路由页面 |
 | :--- | :--- | :--- | :--- |
-| **母版 I：插件挂载互动舞台与伴生白盒检视态**<br/>*(Mounted Shell Stage & Companion Inspector Archetype)* | `<main>` 圆角卡片盒子内部为全幅互动舞台画布（支持一键收拢外围左右侧栏进入全屏态）；当点击右上角或某条话轮时，联动展开右侧 `400px` 伴生检视副栏 | 实时流式交互、情绪 VAD 微光晕、流式打断精确上报 `spoken_char_offset` 并渲染 `unsaid_remainder` 腹稿印记、联动右侧副栏逐帧查证 **8 步可验证决策轨迹** 与潜台词剧透遮罩 | • `/shells/stage/:shellPluginId`（如挂载 `builtin.webchat` 或社区 Live2D/3D 网页舞台）<br/>• `/shells/simulator`（内置虚拟躯壳调试模拟器） |
+| **母版 I：插件页面** | 插件的页面模块渲染主工作区。 | 页面通过公开扩展点接收其他插件的贡献。 | WebChat 会话与社区页面 |
 | **母版 II：高密度态势指标带与多轨实时流监控态**<br/>*(Telemetry Strip, Topology & Multi-Stream Terminal Archetype)* | `<main>` 圆角卡片盒子内部上方为紧凑水平态势指标带或拓扑连接矩阵，下方通过 `1px` 分割线无缝衔接高对比暗色等宽多轨实时流终端/状态机看板 | WebSocket 毫秒级遥测流式推送、多维胶囊组合过滤（`Principal / Venue / StateDomain`）、流暂停/帧级 JSON Diff 比对、运行中任务就地暂停或急停 | • `/dashboard`（数字生命全景态势总览首屏）<br/>• `/shells/topology`（双向具身网关与在线 `Shell` 三平面星图）<br/>• `/runtime/coordinator-agency`（MVCC 五域水位、机会池与 `W2` 8步行动看板）<br/>• `/runtime/terminal`（四轨融合实时遥测与协议抓包终端） |
 | **母版 III：主从分节 Schema 配置器、降维曲线与版本 Diff 审批态**<br/>*(Master-Detail Configurator, Visual Curve & Diff Approval Archetype)* | `<main>` 圆角卡片盒子内部左侧为二级分类/Profile 锚点分栏（`190px`），右侧为主配置画布（顶部 `Tier-V1` 交互拖拽曲线/积木矩阵 + 中部 `Tier-V2` 紧凑 `32px` Schema 表单 + 右上角 `Tier-V3` YAML/JSON 源码切换），底部内嵌粘性 `FloatingDirtyDiffBar` | 零手写 JSON 的可视化拖拽与胶囊选择、确定性表单生命周期（`idle -> editing_dirty -> validating -> saving(expected_rev) -> saved_confirmed`）、路由离开脏状态拦截守卫（`beforeRouteLeave`）、待审批提案左右双栏 Diff `Approve / Reject`、一键在线拨测与试听 | • `/dashboard/blackboard`（认知黑板 `<2500 Token` 槽位积木编排器）<br/>• `/soul/persona` & `/soul/lorebooks` & `/soul/homeostasis`<br/>• `/models/providers` & `/models/routing`（五脑区算力代谢）<br/>• `/shells/attention-arbitration` & `/shells/thalamic-gate` & `/shells/media-pipeline`<br/>• `/extensions/configurator` & `/extensions/cognitive-organs`<br/>• `/memory/retrieval-sleep` & `/system/safety-sb243` & `/system/settings-security` |
 | **母版 IV：交互式全幅拓扑画布与时间线资产治理态**<br/>*(Interactive Graph Canvas & Timeline Governance Archetype)* | `<main>` 圆角卡片盒子内部上方为多维检索、四级溯源筛选胶囊与视图模式切换栏，中央为全幅可无级缩放平移的 DAG 拓扑图谱画布（或时间轴/规则连线画布），右侧内嵌节点手术台抽屉 | 节点上下游血缘高亮追踪、双时态更替链（`supersedes`）折叠展开、可视化预览 **`Hard Forget`（五表级联擦除 + 拓扑序局部微重算 + `redaction_ledger` 墓碑写入）** 影响半径、拖拽积木拼装跨插件 ECA 规则流 | • `/memory/lineage`（四级溯源记忆血缘 DAG 与真遗忘手术台）<br/>• `/memory/relationship`（关系雷达、心结48h一键释怀、里程碑画廊与身份绑定图谱）<br/>• `/extensions/flows-eca`（跨插件 ECA 联动蓝图与后台认知流编排器）<br/>• `/system/instances-storage`（多 `.soul` 实例与 Git 快照回档时间线） |
@@ -134,9 +134,9 @@ flowchart TB
 | **2. 具身躯壳 (`Shells`) 与感官媒体中枢**<br/>*(Embodied Shells & Media)*<br/>`[正本清源的一等架构域]` | **`/shells/topology`** | **双向具身协议网关（`Protocol v0`）与在线 `Shell` 三平面能力星图页**：统一管理所有外部与内置具身运行环境（桌宠、Live2D/3D 客户端、QQ/TG/Discord IM 躯壳、游戏 Mod、Web 躯壳）的 Inbound 入站与 Outbound 反向拨号 WebSocket 连接、RTT 心跳延迟与 `Scoped Capability Token` 签发；点开任意 `Shell` 透视其 **`Sensors`（视神经感官覆盖桶 `live_foveal / ambient_peripheral / stale / disconnected` 四态与防幻觉 TTL 倒计时、单帧 `frame_span_ms=0` 锁、预测编码竞争假设）**、**`Realizers`（支持的扩展与动态注册的 `expression_vocabulary` 表现力词典）** 与 **`Actuators`（运行期 `capabilities_updated` 动态动作热增删流）** | **母版 II** | `01` 公理一、`03`、`04-protocol` 1~4 |
 | | **`/shells/attention-arbitration`** | **多 `Shell` 注意力焦点仲裁与主动搭话出口躯壳路由策略页**：专门配置当用户同时挂载多个 `Shell`（如桌面萌宠 + 手机 IM + 直播间）时的前台注意力焦点保持惯性窗口（`focus_hysteresis_window_ms: 4000` 防焦点高频横跳）、多端紧急度与场合优先级权重排序，以及主动搭话出口躯壳选择降级链（锁死 `never_broadcast_to_all_shells: true` 严禁全端同时弹窗广播铁律） | **母版 III** | `05-extension` 4 多端注意力仲裁引擎 |
 | | **`/shells/thalamic-gate`** | **L0 丘脑显著性门控、视神经感官习惯化（$\gamma_{\text{hab}}$）与话轮防抖聚合调校页**：可视化配置上行输入聚合防抖窗口（`1200ms` 连续短句合并、`lifecycle: "retract"` 欲言又止草稿感知）、视神经时空梯度习惯化衰减率 $\gamma_{\text{hab}}$（防静态 IDE 窗口焦点刷屏）、边缘视觉/表情最低置信度 `confidence` 与持续时长 `sustained_ms` 门控、瞬态生物特征 `ephemeral_blackboard` 15 分钟滑动窗口策略 | **母版 III** | `02-cognitive` 1.2/1.3 & `04-protocol` 4.2 |
-| | **`/shells/media-pipeline`** | **多模态音视频媒体管线编排与三锚点具身演出调音台页（`ext.media_pipeline`）**：DAW 式可视化串联上行流式 ASR/视觉语义提取中间件与下行情感 TTS（GPT-SoVITS / FishAudio 等）+ 口型同步 `Visemes`；管理动态表情/动作/声线情绪词典映射表；内置 **`EmbodiedKeyframeTimeline`（`pre_speech` 视线先行 $\rightarrow$ `on_substring` 词中高潮 $\rightarrow$ `on_utterance_end` 余韵 `linger_ms`）三锚点关键帧排练舞台** 与音频回路试听器 | **母版 III** | `05` 总线 2 & `04-protocol` 2 |
+| | **`/shells/media-pipeline`** | **多模态音视频媒体管线编排与三锚点具身演出调音台页（`ext.media_pipeline`）**：DAW 式可视化串联上行流式 ASR/视觉语义提取中间件与下行情感 TTS（GPT-SoVITS / FishAudio 等）+ 口型同步 `Visemes`；管理动态表情/动作/声线情绪词典映射表；内置 **`EmbodiedKeyframeTimeline`（`pre_speech` 视线先行 $\rightarrow$ `on_substring` 词中高潮 $\rightarrow$ `on_utterance_end` 余韵 `linger_ms`）三锚点关键帧预览** 与音频回路试听器 | **母版 III** | `05` 总线 2 & `04-protocol` 2 |
 | | **`/shells/simulator`** | **内置虚拟躯壳与多模态感官调试模拟器页（Mock Shell & Sensor Simulator）**：供创作者在无需启动外部 Unity/Live2D/IM 客户端的情况下，直接在控制台模拟任意 `venue_type / audience_scope / principal` 的虚拟躯壳握手，一键注入模拟触觉（戳头）、视觉语义（皱眉/竞争假设）、流式打断（指定 `spoken_char_offset`）或动态增删 `Actuators`，并联动右侧 8 步决策轨迹副栏验证内核响应 | **母版 I & II** | `05` 第五章创作者调试沙盒 |
-| | **`/shells/stage/:shellPluginId`**<br/>*(插件动态挂载的 Web 躯壳页面)* | **已挂载的 Web 具身躯壳插件视图页（`plugins/shells/webchat` 仅作为此路由下的一个普通挂载实例 `/shells/stage/builtin.webchat`!）**：用于渲染任何实现了 Web 界面挂载的 `ext.shell` 插件（如默认预装的 `builtin.webchat`、或社区开发的 `community.live2d.webstage`、`community.galgame.vn`）。插件视图内部 100% 严格走公开标准协议 `ws://.../protocol/v0/shell`（零特权零后门）；同时用户可随时点击右上角展开控制台的 **右侧 8 步可验证决策轨迹副栏** 进行伴生查证，或点击一键全屏/弹出独立窗口 | **母版 I** | `01` `plugins/shells/webchat` 零后门铁律 & `05` 总线 1/8 |
+| | **插件声明的本地路径** | WebChat 提供 `/webchat`。可用路由随插件启用、禁用、卸载及资源校验结果更新。 | **母版 I** | 总线 1/8 |
 | **3. 灵魂、人格与内稳态**<br/>*(Soul, Persona & Homeostasis)* | **`/soul/persona`** | **三层人格设定与双轨演化 Diff 审批页**：Tier 0 安全底线徽章、Tier 1 核心 DNA（存在论契约三选一视觉卡、口癖与反客服腔 Chip 池、Tier 1 变更提案双栏 Diff 审批）、Tier 2 自我叙事（`narrative.md` 受众隐私染色段落块、`routine_append` 一键回退与 `high_impact_shift` 高冲突审批） | **母版 III** | `02-cognitive` 2.1 & `03` `D5` 域 |
 | | **`/soul/distiller`** | **载体形态 I：可食用的蒸馏角色四步料理工坊与一键脱敏分享打包页**：拖拽导入 SillyTavern V2/V3 角色卡（`.png / .json`）或 `.soul-template` $\rightarrow$ 四路可视化分馏（性格 DNA / `<START>` 黄金声线可试听胶囊 / Lorebook 词条卡 / 越狱与 PUA 清洗红绿对比）$\rightarrow$ 一键装瓶；支持**一键物理剥离私人记忆导出纯净社区分享包（`.soul-template`）** | **母版 V** | `05` 载体 I & 总线 7 角色蒸馏清洗 |
 | | **`/soul/lorebooks`** | **载体形态 I：动态世界观词库（`Lorebook / WorldInfo`）编排与激活模拟器页**：管理多本世界观设定集、主/副触发词 Chip、递归激活深度、黑板槽位优先级与单轮 Token 预算；内置**输入测试句子实时高亮命中词条与递归链的激活模拟器** | **母版 III** | `02-storage` `lorebooks/` & `05` 载体 I |
@@ -169,7 +169,7 @@ flowchart TB
 
 1. **全景态势总览大盘（`/dashboard` — 控制台默认根首屏）**：
    * 在 `<main>` 圆角卡片大盒子内部，顶部展示一行高凝练的**四维生命体征条（Vital Pulse Strip）**：当前活跃 `.soul` 实例与运行时长、快慢情绪/心境实时微波形、双轨精力液位（昼夜生理精力 $E_{\text{circadian}}$ + Token 算力代谢精力 $E_{\text{metabolic}}$）、以及反解出的下一精确阈值唤醒时刻 $t_{\text{next}}$ 倒计时；
-   * 中部平铺展示 **活跃具身躯壳（`Shells`）连接星图摘要**（点击任意已挂载 Web 躯壳如 `builtin.webchat` 的 `[💬 进入互动舞台]` 按钮即可路由跳转至 `/shells/stage/:id`）、**待审批事项队列**（挂起的 Tier 1/2 人格演进提案与 `W2` 行动权限请求）以及 **近期解锁的关系里程碑与好奇心读书随笔**。
+   * 中部显示网关报告的活跃连接。可打开的网页入口来自可用插件页面，两者单独查询。
 2. **认知状态黑板槽位积木编排器与 70% 社交面具阻尼模拟器（`/dashboard/blackboard` — `BlackboardSlotComposer`）**：
    * **`Tier-V1` 积木编排层**：将 `blackboard_policy.yaml` 中的 9 大认知槽位渲染为可拖拽调节预算比例的彩色积木条（顶部 `slot.tier0_safety_invariants` 强制带金锁固定置顶不可缩减），并提供 `[🌱 日常陪伴预设 (2200 Tokens)]`、`[🌌 深度长谈预设 (3600 Tokens)]`、`[🎮 游戏低延迟预设 (1200 Tokens)]` 一键切换胶囊；
    * **公私场合双态对比模拟器（`only_owner` vs. `public_all` Social Mask Preview）**：提供一键对比开关——左侧展示当 `Audience == 'only_owner'` 时编译出的完整黑板快照；右侧实时展示当切换至 `Audience == 'public_all'`（如公开直播间）时，黑板编译器如何**由确定性代码自动剥离所有 `only_owner` 级别的 `narrative.md` 段落、隐藏私密 `mood_attribution` 心境成因，并开启 `Social Mask Damper` 将情绪波动衰减 $70\%$**！
@@ -193,9 +193,9 @@ flowchart TB
 4. **多模态音视频媒体管线与三锚点具身演出调音台（`/shells/media-pipeline` — `EmbodiedKeyframeTimeline`）**：
    * DAW 式可视化串联 `onUpstreamMediaFrame`（流式 ASR / 语气识别 / 视觉提取）与 `onDownstreamExpression`（GPT-SoVITS / FishAudio 情感 TTS + 口型同步 `Visemes`）；
    * 内置**三锚点微表情与视线关键帧排练时间轴**：在一条话语波形轴上直观调试遵循动画规律的三个锚点——**① `pre_speech`（开口前视线先行 `gaze` 与吸气） $\rightarrow$ ② `on_substring:<核心词>`（语音播到关键词时的微表情达峰与脸红值 `blush_level`） $\rightarrow$ ③ `on_utterance_end`（话音落下后的余韵保持时长 `linger_ms`，彻底告别说完话瞬间立正归零的木偶恐怖谷）**。
-5. **内置虚拟躯壳调试模拟器（`/shells/simulator`）与已挂载 Web 躯壳插件页（`/shells/stage/:shellPluginId`）**：
+5. **躯壳协议模拟器与网页交互**
    * `/shells/simulator` 提供免外部客户端的全功能虚拟 `Shell` 发生器；
-   * `/shells/stage/:shellPluginId` 作为通用插件舞台宿主，按需渲染 `plugins/shells/webchat`（或社区 Live2D/3D 网页躯壳插件），并在右侧无缝支持展开 **8 步可验证决策轨迹副栏**。
+   * 通过插件导航打开已注册的交互页面；只有绑定了 `shell_id` 的页面才可申请该载体的令牌。
 
 ---
 
@@ -411,19 +411,19 @@ flowchart LR
 
 ## 五、第三方插件动态 UI 扩展槽架构（`ext.console_ui`）与可脚本化回归评测引擎（`.scenario.yaml`）
 
-### 5.1 第三方插件动态 UI 扩展槽与 Web 具身躯壳舞台挂载架构（`ext.console_ui`）
+### 5.1 插件页面与界面扩展点
 
-为了让五阶多态扩展中的任何社区插件都能在 `WebUI 控制台` 的 `<main>` 圆角卡片路由视口或右侧副栏中无缝拥有可视化界面，同时物理防止恶意插件通过 XSS 窃取控制台 `Owner Master Session Token`，控制台采用 **“声明式 JSON Schema 原生渲染 + 无凭据沙盒化 Iframe 自定义画布”** 双轨扩展槽机制：
+插件在 `console_contributions.pages` 中声明页面；`PluginPageHost` 加载就绪的模块。原生模块在控制台同源环境执行，需要持有者信任。
 
-1. **预定挂载插槽（Standard UI Slot Targets）**：
-   * `slot.shells.mounted_stage`：在 `/shells/stage/:shellPluginId` 下挂载 Web 具身躯壳互动舞台（**`plugins/shells/webchat` 与社区开发的 Web Live2D/VRM/Galgame 舞台插件统一通过此插槽平权挂载**，内部强制仅连接公开 `ws://.../protocol/v0/shell`）；
+1. **页面及扩展契约**
+   * 独立页面可以公开带版本的扩展点，消费方在依赖作用域内注册按钮、菜单和下一级扩展点。
    * `slot.inspector.companion_tab`：在右侧多态检视副栏中新增专属实时监控页签（如游戏 `Shell` 插件展示当前小地图与背包状态；自定义认知器官展示生理节律波形）；
    * `slot.memory.custom_tab`：在记忆与灵魂治理域中挂载专属卡片列表（如睡眠期梦境日记本插件 `community.organ.dream-journal`）；
    * `slot.ecosystem.plugin_config`：在 `/extensions/configurator` 中由 `ExtensionDynamicSchemaDrawer` 自动渲染该插件的 `Tier-V1/V2/V3` 配置表单；
    * `slot.studio.voice_tuner`：在 `/shells/media-pipeline` 多模态媒体管线调音台中挂载专属声线试听控件。
 2. **安全渲染机制**：
    * **模式 A（推荐，90% 插件配置与监控适用：声明式 Schema 原生渲染）**：插件在 `ai0.extension.json` 中仅声明 JSON Schema 与数据绑定端点（支持 `timeseries_chart`、`kv_badges`、`markdown_card_list`、`json_schema_form`），由控制台第一方紧凑 MD3 组件安全渲染；
-   * **模式 B（高阶自定义画布与 Web 躯壳舞台：无凭据沙盒 Iframe）**：对于需要复杂 2D/3D/WebGL 画布的插件，运行在 `<iframe sandbox="allow-scripts">` 隔离域中，仅通过受控 `postMessage` 桥接器或公开 `Scoped Capability Token` WebSocket 通信，物理隔离宿主 Cookie 与 `Owner Master Session Token`。
+   * **兼容 iframe 页面**。旧清单中的 iframe 由沙盒承载，宿主通过消息桥接同步状态。
 
 ### 5.2 可脚本化场景回归回放与消融评测引擎（`.scenario.yaml`）
 
@@ -588,7 +588,7 @@ steps:
 | | **20. `ThalamicGateDebounceTuner`** | L0 丘脑显著性门控、感官习惯化 $\gamma_{\text{hab}}$ 衰减曲线、`1200ms` 话轮防抖聚合状态机与 `ephemeral_blackboard` 15 分钟滑动窗口调校器 |
 | | **21. `EmbodiedKeyframeTimeline`** | `ext.embodied.v1` 三锚点关键帧（`pre_speech -> on_substring -> on_utterance_end`）+ `ext.media.sideband.v1`（`char_offset_timestamps_ms` 音频毫秒时间戳到单字偏移 `spoken_char_offset` 二分反算标尺与口型 `viseme_frames`）排练调音条 |
 | | **22. `MockShellSensorSimulator`** | 内置免外部客户端的虚拟躯壳与多模态感官发生器（伪造任意四元组握手、注入触觉/视觉竞争假设、模拟指定音频毫秒或字数偏移打断） |
-| | **23. `MountedShellStageHost`** | `/shells/stage/:shellPluginId` 通用 Web 具身躯壳舞台挂载容器（以零特权标准协议承载 `plugins/shells/webchat` 或社区 Web Live2D/3D 舞台插件，并联动右侧 8 步轨迹副栏） |
+| | **23. `PluginPageHost`** | 从已启用插件的页面描述加载指定模块，并在页面退出时释放其资源。 |
 | | **24. `EdibleSoulDistillerWizard`** | **可食用蒸馏角色四步可视化料理流水线组件**：拖拽投料 $\rightarrow$ 四路分馏（性格 DNA / `<START>` 黄金声线试听胶囊 / Lorebook / 越狱与 PUA 清洗红绿对比） $\rightarrow$ 一键装瓶食用 |
 | | **25. `LorebookActivationSimulator`** | 动态世界观词库编排与激活模拟器：输入测试话语实时高亮命中 `keys / secondary_keys`、递归激活链与滑入黑板 Token 占用 |
 | | **26. `BioRhythmAffectCurveCanvas`** | 可拖拽 24h 作息生物钟与免打扰曲线 + 快慢情绪二阶耦合 ODE 冲击/衰减实时仿真画布 + 性格气质预设胶囊与 `Next-Wakeup` 倒计时器 |

@@ -811,12 +811,23 @@ function mutateFromPlan(
 
   const checkpointSensitiveValues = [...plan.root_event_ids, ...plan.original_event_summaries];
   for (const checkpoint of plan.checkpoints) {
+    let working = checkpoint.working_memory_json;
+    const saved = JSON.parse(working);
+    if (saved?.format === "ai0.coordinator.v1") {
+      const snapshot = saved.snapshot;
+      const sensitive = (value: unknown) => checkpointSensitiveValues.some(part => part && JSON.stringify(value).includes(part));
+      snapshot.D1_WORKING_TURN.recent_turns = snapshot.D1_WORKING_TURN.recent_turns.filter((turn: unknown) => !sensitive(turn));
+      snapshot.D1_WORKING_TURN.unsaid_remainder = null;
+      snapshot.D5_IDENTITY_NARRATIVE.pending_approvals = snapshot.D5_IDENTITY_NARRATIVE.pending_approvals.filter((item: unknown) => !sensitive(item));
+      snapshot.D5_IDENTITY_NARRATIVE.active_tensions = snapshot.D5_IDENTITY_NARRATIVE.active_tensions.filter((item: unknown) => !sensitive(item));
+      working = JSON.stringify(saved);
+    }
     sql.run(
       `UPDATE cognitive_state_checkpoints
        SET working_memory_json = ?, mood_attribution = ?
        WHERE state_rev = ?`,
       [
-        replaceSensitiveOccurrences(checkpoint.working_memory_json, checkpointSensitiveValues),
+        replaceSensitiveOccurrences(working, checkpointSensitiveValues),
         checkpoint.mood_attribution === null
           ? null
           : replaceSensitiveOccurrences(checkpoint.mood_attribution, checkpointSensitiveValues),

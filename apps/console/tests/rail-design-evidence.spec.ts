@@ -172,7 +172,7 @@ test("frozen production rail removal preserves console appearance and layout", a
         "main", ".ai0-workspace-section", ".ai0-workspace-table thead th", ".ai0-workspace-table tbody tr",
         ".ai0-workspace-table tbody .ai0-workspace-status"
       ]);
-      await visit("/shells/stage/builtin.webchat", theme, appearance);
+      await visit("/webchat", theme, appearance);
       await expect(root.locator(`[data-message-turn-id="${fixtureId}"][data-message-role="assistant"]`)).toHaveAttribute("data-message-status", "completed");
       await root.getByRole("textbox", { name: "输入聊天消息" }).fill("继续安排我们的团队复盘。");
       await expect(root.getByRole("button", { name: "发送", exact: true })).toBeEnabled();

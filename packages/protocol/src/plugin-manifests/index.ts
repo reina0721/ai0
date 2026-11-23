@@ -38,13 +38,7 @@ export const ExtensionCarrierKindSchema = z.enum([
 ]);
 export type ExtensionCarrierKind = z.infer<typeof ExtensionCarrierKindSchema>;
 
-export const ConsoleUiSlotTargetSchema = z.enum([
-  "slot.shells.mounted_stage",
-  "slot.inspector.companion_tab",
-  "slot.memory.custom_tab",
-  "slot.ecosystem.plugin_config",
-  "slot.studio.voice_tuner"
-]);
+export const ConsoleUiSlotTargetSchema = z.string().regex(/^[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)+$/i);
 export type ConsoleUiSlotTarget = z.infer<typeof ConsoleUiSlotTargetSchema>;
 
 export const ExtensionPermissionsSchema = z.object({
@@ -61,7 +55,8 @@ export const ConsoleWidgetTypeSchema = z.enum([
   "markdown_card_list",
   "json_schema_form",
   "sandboxed_iframe_stage",
-  "web_stage_module"
+  "web_stage_module",
+  "contribution_module"
 ]);
 export type ConsoleWidgetType = z.infer<typeof ConsoleWidgetTypeSchema>;
 
@@ -90,6 +85,23 @@ export const RuntimeConsoleUiSlotSchema = ConsoleUiSlotContributionSchema.extend
 });
 export type RuntimeConsoleUiSlot = z.infer<typeof RuntimeConsoleUiSlotSchema>;
 
+const PagePathSchema = z.string().regex(/^\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9._-]+)*$/u)
+  .refine(path => !path.split("/").some(part => part === "." || part === ".."));
+export const ConsolePageSchema = z.object({
+  path: PagePathSchema, title: z.string().min(1), aliases: z.array(PagePathSchema).optional(),
+  navigation: z.boolean().optional(), shell_id: z.string().min(1).optional(),
+  entry_module: z.string().min(1), style_sheets: z.array(z.string()).optional()
+});
+export interface RuntimeConsolePage {
+  path: string;
+  title: string;
+  navigation?: boolean;
+  aliases?: string[];
+  shell_id?: string;
+  entry_module_url?: string;
+  iframe_src_url?: string;
+  style_sheet_urls?: string[];
+}
 export const RuntimePluginDescriptorSchema = z.object({
   extension_id: z.string(),
   display_name: z.string(),
@@ -99,6 +111,9 @@ export const RuntimePluginDescriptorSchema = z.object({
   dimension: ExtensionDimensionSchema,
   origin: PluginOriginSchema,
   enabled: z.boolean(),
+  module_urls: z.array(z.string()).optional(),
+  missing_assets: z.array(z.string()).optional(),
+  pages: z.array(ConsolePageSchema.omit({ entry_module: true, style_sheets: true }).extend({ entry_module_url: z.string().optional(), iframe_src_url: z.string().optional(), style_sheet_urls: z.array(z.string()).optional() })).optional(),
   ui_slots: z.array(RuntimeConsoleUiSlotSchema)
 });
 export type RuntimePluginDescriptor = z.infer<
@@ -106,6 +121,8 @@ export type RuntimePluginDescriptor = z.infer<
 >;
 
 export const ConsoleContributionsSchema = z.object({
+  pages: z.array(ConsolePageSchema).optional(),
+  modules: z.array(z.string().min(1)).optional(),
   config_schema: z
     .union([z.string(), z.record(z.unknown())])
     .optional(),

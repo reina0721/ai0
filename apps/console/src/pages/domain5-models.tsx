@@ -273,7 +273,7 @@ export function Domain5ModelsPage(props: Domain5ModelsPageProps): ReactElement {
               {remainPct !== undefined ? <LinearProgress className="ai0-workspace-meter" variant="determinate"
                 value={Math.min(100, remainPct)} aria-label="今日可用预算余量" /> : null}
               <small>
-                {meta ? `已消耗 ${meta.usedTokensToday.toLocaleString()} / ${dailyBudget.toLocaleString()} Tokens · L0 应急配额 ${meta.emergencyReservePct}%` : "等待预算数据。"}
+                {meta ? `配置用量 ${meta.usedTokensToday.toLocaleString()} / ${dailyBudget.toLocaleString()} Tokens · L0 应急配额 ${meta.emergencyReservePct}%` : "等待预算数据。"}
               </small>
             </WorkspaceItem>
             <WorkspaceGrid columns={2}>

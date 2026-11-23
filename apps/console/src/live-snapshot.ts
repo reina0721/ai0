@@ -1,3 +1,4 @@
+import type { RuntimeConsolePage } from "@ai0/protocol";
 import type { PluginOrigin, RuntimeConsoleUiSlot, VerifiableTurnTrace } from "@ai0/protocol";
 
 export interface LiveBlackboardSlotSnapshot {
@@ -41,6 +42,11 @@ export interface LiveExtensionSnapshot {
   rev: number;
   readDomains: string[];
   proposeDomains: string[];
+  activationError?: string;
+  missingAssets?: string[];
+  generation?: string;
+  pages?: RuntimeConsolePage[];
+  moduleUrls?: string[];
   uiSlots?: RuntimeConsoleUiSlot[];
 }
 
@@ -259,7 +265,7 @@ export interface ConsoleStudioState {
       id: string;
       title: string;
       subAgentId: string;
-      status: "running" | "waiting_approval" | "completed" | "paused";
+      status: "queued" | "running" | "waiting_approval" | "completed" | "paused";
       currentStep: number;
       totalSteps: number;
       stepLabel: string;
@@ -343,6 +349,7 @@ export interface ConsoleStudioState {
 }
 
 export interface LiveConversationSession {
+  canOpenOwnerThread?: boolean;
   umo: string;
   label: string;
   platform: string;
@@ -354,6 +361,7 @@ export interface LiveConversationSession {
 }
 
 export interface ConsoleLiveSnapshot {
+  sleepJournal?: Array<{ title: string; date: string; content: string }>;
   soulId: string;
   personaName: string;
   soulDir: string;
@@ -370,7 +378,10 @@ export interface ConsoleLiveSnapshot {
   moodValence: number;
   socialLonging: number;
   frictionTension: number;
-  trustBond: number;
+  trustBond?: number;
+  activeConnections?: number;
+  connectedShellIds?: string[];
+  capabilityRevision?: number;
   blackboardSlots: LiveBlackboardSlotSnapshot[];
   compiledBlackboardPrompt: string;
   totalBlackboardTokens: number;

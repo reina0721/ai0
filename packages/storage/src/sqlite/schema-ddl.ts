@@ -15,6 +15,29 @@ PRAGMA secure_delete = ON;
  * foreign-key, or CHECK constraint.
  */
 export const SQLITE_SCHEMA_DDL = `
+CREATE VIEW IF NOT EXISTS demo_derived_memories AS
+WITH RECURSIVE lineage(memory_id) AS (
+  SELECT l.child_memory_id FROM memory_lineage_edges l JOIN event_log e ON l.parent_id=e.event_id
+  WHERE l.parent_type='event' AND json_extract(e.payload_json,'$.origin')='demo'
+  UNION SELECT l.child_memory_id FROM memory_lineage_edges l JOIN lineage p ON l.parent_id=p.memory_id
+  WHERE l.parent_type='memory'
+) SELECT memory_id FROM lineage;
+CREATE TABLE IF NOT EXISTS shell_action_intents (
+    intent_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    actuator_id TEXT NOT NULL,
+    requires_consent INTEGER NOT NULL,
+    arguments_json TEXT,
+    evidence_id TEXT
+);
+CREATE INDEX IF NOT EXISTS shell_actions_by_session ON shell_action_intents(session_id);
+CREATE TABLE IF NOT EXISTS shell_principal_bindings (
+    shell_id TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    principal_id TEXT NOT NULL,
+    PRIMARY KEY(shell_id, external_id)
+);
+
 CREATE TABLE IF NOT EXISTS event_log (
     event_seq           INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id            TEXT NOT NULL UNIQUE,

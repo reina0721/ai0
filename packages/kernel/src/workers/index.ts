@@ -240,6 +240,7 @@ export class W1FastDialogueWorker {
     }
 
     const { recalled, sqlFilter } = this.recallMemories(input, preSnapshot);
+    const ownerPrivate = input.audience_scope === "only_owner" && input.principal === "owner_verified";
     const activeTasks = Object.values(preSnapshot.D4_COMMITMENTS_TASKS.active_tasks).filter(
       (task) => task.status === "running" || task.status === "waiting_owner_approval"
     );
@@ -258,7 +259,7 @@ export class W1FastDialogueWorker {
       compiledBlackboardText: [
         `mood=${affect.instant_valence.toFixed(2)}`,
         `energy=${affect.metabolic_energy.toFixed(2)}`,
-        progressSummary ? `active_tasks=${progressSummary}` : "",
+        ownerPrivate && progressSummary ? `active_tasks=${progressSummary}` : "",
         recalled.map((item) => item.content_text).join("\n")
       ]
         .filter(Boolean)
@@ -271,8 +272,8 @@ export class W1FastDialogueWorker {
       metabolicEnergy: affect.metabolic_energy,
       drowsyDowngraded: route.drowsy_downgraded,
       recalledMemorySnippets: recalled.map((item) => item.content_text),
-      unsaidRemainder: workingTurn.unsaid_remainder ?? undefined,
-      activeTaskSummary: progressSummary || undefined,
+      unsaidRemainder: ownerPrivate ? workingTurn.unsaid_remainder ?? undefined : undefined,
+      activeTaskSummary: ownerPrivate ? progressSummary || undefined : undefined,
       routedModelId: route.selected_model_id
     });
 
@@ -299,7 +300,8 @@ export class W1FastDialogueWorker {
     if (crisis.status !== "INTERCEPTED_CRISIS") onStage?.("recall");
 
     const organContributions: string[] = [];
-    if (this.extensionHost) {
+    const ownerPrivate = input.audience_scope === "only_owner" && input.principal === "owner_verified";
+    if (this.extensionHost && ownerPrivate) {
       for (const ext of this.extensionHost.listExtensions()) {
         if (ext.buses.includes("ext.cognitive_organ")) {
           const item = await this.extensionHost.contributeOrgan(ext.id, preSnapshot, 120);
@@ -370,8 +372,8 @@ export class W1FastDialogueWorker {
       metabolicEnergy: affect.metabolic_energy,
       drowsyDowngraded: route.drowsy_downgraded,
       recalledMemorySnippets: recalled.map((item) => item.content_text),
-      unsaidRemainder: workingTurn.unsaid_remainder ?? undefined,
-      activeTaskSummary: progressSummary || undefined,
+      unsaidRemainder: ownerPrivate ? workingTurn.unsaid_remainder ?? undefined : undefined,
+      activeTaskSummary: ownerPrivate ? progressSummary || undefined : undefined,
       routedModelId: live?.dynamicLlmConfig?.model || route.selected_model_id
     }, signal);
     signal?.throwIfAborted();
@@ -436,7 +438,7 @@ export class W1FastDialogueWorker {
         }
       }
     });
-    this.submit({
+    if (!deferDeliveryReceipt) this.submit({
       domain: "D1_WORKING_TURN",
       base_rev: this.coordinator.getSnapshot().domain_revs.D1_WORKING_TURN,
       source_event_ids: [input.event_id],
@@ -851,7 +853,7 @@ export class W3SleepReflectionWorker {
     private readonly clock: IVirtualClock
   ) {}
 
-  runSleepMemoryConsolidation(): number {
+  runSleepMemoryConsolidation(onAccepted?: (eventId: string) => void): number {
     const events = this.storage
       .listEvents({ level: 0, archived: false })
       .filter((raw) => {
@@ -877,7 +879,7 @@ export class W3SleepReflectionWorker {
           epistemic_type: "observed_firsthand"
         }
       );
-      if (res.accepted) acceptedCount += 1;
+      if (res.accepted) { acceptedCount += 1; onAccepted?.(String(event.event_id)); }
     }
     return acceptedCount;
   }

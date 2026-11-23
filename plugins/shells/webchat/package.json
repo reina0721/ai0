@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./contracts": {
+      "development": "./src/contracts.ts",
+      "types": "./dist/contracts.d.ts",
+      "default": "./dist/contracts.js"
+    },
     ".": {
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",

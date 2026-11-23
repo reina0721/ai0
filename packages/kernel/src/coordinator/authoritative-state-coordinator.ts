@@ -62,6 +62,8 @@ export interface CoordinatorStorageMutator {
   saveProspectiveCommitment?(commitment: Record<string, unknown>): void;
   applyIdentityNarrativeRevision?(revision: Record<string, unknown>): void;
   saveTurnDecisionTrace(trace: VerifiableTurnTrace): void;
+  latestStateRevision?(): number;
+  loadCoordinatorState?(): ReadOnlyCognitiveSnapshot | undefined;
   checkpointCoordinatorState?(snapshot: ReadOnlyCognitiveSnapshot): void;
 }
 export interface TelemetryFrame {
@@ -122,7 +124,24 @@ export class AuthoritativeStateCoordinator {
   private readonly pendingApprovals: PendingApproval[] = [];
   private readonly activeTensions: ActiveTension[] = [];
 
-  constructor(private readonly clock: IVirtualClock, private readonly storage: CoordinatorStorageMutator) {}
+  private readonly initialSnapshot: ReadOnlyCognitiveSnapshot;
+
+  constructor(private readonly clock: IVirtualClock, private readonly storage: CoordinatorStorageMutator) {
+    this.initialSnapshot = this.getSnapshot();
+    this.restoreCheckpoint();
+  }
+
+  restoreCheckpoint(): void {
+    const saved = this.storage.loadCoordinatorState?.() ?? this.initialSnapshot;
+    this.stateRev = Math.max(saved.state_rev, this.storage.latestStateRevision?.() ?? 0);
+    Object.assign(this.domainRevs, saved.domain_revs);
+    Object.assign(this.d1, saved.D1_WORKING_TURN);
+    Object.assign(this.d2, saved.D2_HOMEOSTASIS_AFFECT);
+    for (const id of Object.keys(this.activeTasks)) delete this.activeTasks[id];
+    Object.assign(this.activeTasks, saved.D4_COMMITMENTS_TASKS.active_tasks);
+    this.pendingApprovals.splice(0, this.pendingApprovals.length, ...saved.D5_IDENTITY_NARRATIVE.pending_approvals);
+    this.activeTensions.splice(0, this.activeTensions.length, ...saved.D5_IDENTITY_NARRATIVE.active_tensions);
+  }
 
   getSnapshot(): ReadOnlyCognitiveSnapshot {
     return {

@@ -65,7 +65,7 @@ const ConsoleContext = createContext<ConsoleContextValue | null>(null);
 const THEMES = new Set(["sakura-pink", "astral-blue", "cyber-emerald"]);
 const RAILS = new Set(["mini", "expanded", "dual"]);
 const INSPECTORS = new Set(["mini", "trace", "sandbox-diff"]);
-const LIVE_STUDIO_WRITES = new Set(["config", "co-work-task", "growth-proposal", "sleep-run", "rag-ingest", "instances", "onboarding"]);
+const LIVE_STUDIO_WRITES = new Set(["config", "plugin-enabled", "co-work-task", "growth-proposal", "sleep-run", "rag-ingest", "instances", "onboarding"]);
 
 export interface ConsoleProviderProps {
   children: ReactNode;
@@ -234,14 +234,17 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
   useEffect(() => {
     if (props.disableAutoFetch || !current?.ready) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = setInterval(() => void refreshSnapshot(), 5000);
     const unsubscribe = subscribeTelemetryStream((frame) => {
       const event = frame as { target_instance?: string; payload?: { connected?: boolean } } | null;
-      if (event?.payload?.connected || (event?.target_instance && event.target_instance !== targetInstance)) return;
+      if (event?.target_instance && event.target_instance !== targetInstance) return;
+      if (event?.payload?.connected) { void refreshSnapshot(); return; }
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => void refreshSnapshot(), 450);
     });
     return () => {
       if (timer) clearTimeout(timer);
+      clearInterval(poll);
       unsubscribe();
     };
   }, [current?.ready, props.disableAutoFetch, refreshSnapshot, targetInstance]);

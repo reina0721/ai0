@@ -2,7 +2,7 @@
   "$schema": "https://ai0.dev/schemas/ai0.extension.schema.json",
   "manifest_version": "1.1.0",
   "extension_id": "builtin.webchat",
-  "display_name": "Built-in WebChat Shell",
+  "display_name": "WebChat",
   "version": "1.0.0",
   "author": "ai0-official",
   "carrier_kind": "native_code_plugin",
@@ -11,21 +11,28 @@
   "entry_point": "./dist/index.js",
   "entry": "./dist/index.js",
   "permissions": {
-    "read_blackboard_domains": ["D1_WORKING_TURN", "D2_HOMEOSTASIS_AFFECT"],
+    "read_blackboard_domains": [
+      "D1_WORKING_TURN",
+      "D2_HOMEOSTASIS_AFFECT"
+    ],
     "propose_mutation_domains": [],
     "max_audience_scope": "only_owner",
     "network_access": false
   },
   "console_contributions": {
-    "ui_slots": [
+    "pages": [
       {
-        "slot_target": "slot.shells.mounted_stage",
-        "widget_type": "web_stage_module",
+        "path": "/webchat",
         "title": "WebChat",
-        "route_path": "/shells/stage/builtin.webchat",
+        "navigation": true,
+        "aliases": [
+          "/shells/stage/builtin.webchat"
+        ],
         "shell_id": "builtin.webchat.default",
         "entry_module": "./dist/ui/stage.js",
-        "style_sheets": ["./dist/ui/stage.css"]
+        "style_sheets": [
+          "./dist/ui/stage.css"
+        ]
       }
     ]
   }

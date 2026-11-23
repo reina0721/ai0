@@ -1,0 +1,14 @@
+{
+  "manifest_version": "1.1.0",
+  "extension_id": "builtin.terminal",
+  "display_name": "终端文字客户端",
+  "version": "1.0.0",
+  "carrier_kind": "zero_code_protocol_bridge",
+  "dimension": "ext.shell",
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  }
+}

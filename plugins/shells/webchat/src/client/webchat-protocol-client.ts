@@ -32,7 +32,7 @@ export const webChatShellExtension = defineShellBridgeExtension({
     max_audience_scope: "only_owner",
     network_access: false
   },
-  stage_route: "/shells/stage/builtin.webchat"
+  stage_route: "/webchat"
 });
 
 export type WebChatInterruptionReceipt = DeliveryReceipt & {

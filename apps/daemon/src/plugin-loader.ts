@@ -1,6 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { ExtensionComposition } from "@ai0/sdk";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { delimiter, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   Ai0ExtensionManifestSchema,
@@ -9,6 +11,7 @@ import {
   type ExtensionCarrierKind,
   type ExtensionDimension,
   type PluginOrigin,
+  type RuntimeConsolePage,
   type RuntimeConsoleUiSlot,
   type RuntimePluginDescriptor,
   type StateDomain
@@ -37,6 +40,11 @@ export interface DiscoveredPlugin {
   readonly manifest: Ai0ExtensionManifest;
   readonly rootDir: string;
   readonly origin: PluginOrigin;
+  readonly generation: string;
+  readonly signature: string;
+  readonly pages: RuntimeConsolePage[];
+  readonly moduleUrls: string[];
+  readonly missingAssets: string[];
   readonly uiSlots: readonly RuntimeConsoleUiSlot[];
   readonly enabled: boolean;
 }
@@ -185,6 +193,26 @@ export class RuntimePluginLoader {
   private readonly discovered = new Map<string, DiscoveredPlugin>();
   private readonly roots: Array<{ dir: string; origin: PluginOrigin }>;
 
+  private revisionValue = 0;
+  private readonly scopes = new Map<PolymorphicExtensionHost, Map<string, { generation: string; dispose(): Promise<void> }>>();
+  private readonly configurations = new WeakMap<PolymorphicExtensionHost, Map<string, { rev: number; config: Readonly<Record<string, unknown>> }>>();
+  private readonly errors = new WeakMap<PolymorphicExtensionHost, Map<string, string>>();
+  activationError(host: PolymorphicExtensionHost, id: string) { return this.errors.get(host)?.get(id); }
+  generation(host: PolymorphicExtensionHost, id: string) {
+    const plugin = this.getPlugin(id);
+    return plugin?.enabled ? plugin.generation + "." + (this.configurations.get(host)?.get(id)?.rev ?? 0) : undefined;
+  }
+  configure(host: PolymorphicExtensionHost, id: string, config: Readonly<Record<string, unknown>>, expected: number) {
+    const entries = this.configurations.get(host) ?? new Map();
+    const current = entries.get(id)?.rev ?? 0;
+    if (!this.getPlugin(id)?.enabled || current !== expected) throw new Error("Extension unavailable or revision conflict");
+    this.configurations.set(host, entries);
+    entries.set(id, { rev: current + 1, config });
+    this.revisionValue++;
+    return current + 1;
+  }
+  get revision() { return this.revisionValue; }
+
   constructor(options: PluginLoaderOptions = {}) {
     const builtinDir = resolve(options.builtinPluginsDir ?? join(REPO_ROOT, "plugins"));
     const soulPluginsDir = options.soulDir ? resolve(join(options.soulDir, "plugins")) : undefined;
@@ -207,7 +235,8 @@ export class RuntimePluginLoader {
     this.reload();
   }
 
-  reload(): void {
+  reload(overrides?: ReadonlyMap<string, boolean>): void {
+    const previous = new Map(this.discovered);
     this.discovered.clear();
     for (const { dir, origin } of this.roots) {
       for (const pluginDir of collectPluginCandidateDirs(dir)) {
@@ -216,21 +245,63 @@ export class RuntimePluginLoader {
           const parsedJson = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
           const fallbackId = pluginDir.split(sep).at(-1) ?? "plugin.unknown";
           const manifest = parseManifest(parsedJson, fallbackId);
-          const uiSlots = (manifest.console_contributions?.ui_slots ?? []).map((slot) =>
-            normalizeSlot(manifest.extension_id, slot)
-          );
+          const missingAssets: string[] = [];
+          const uiSlots = (manifest.console_contributions?.ui_slots ?? []).flatMap(slot => {
+            const entry = ["contribution_module", "web_stage_module"].includes(slot.widget_type) ? slot.entry_module :
+              slot.widget_type === "sandboxed_iframe_stage" ? slot.iframe_src : undefined;
+            if (!entry && ["contribution_module", "web_stage_module", "sandboxed_iframe_stage"].includes(slot.widget_type)) {
+              missingAssets.push(slot.slot_target + ": missing entry");
+              return [];
+            }
+            const missing = [entry, ...(slot.style_sheets ?? [])].filter((path): path is string => !!path)
+              .filter(path => !this.assetPath(pluginDir, path));
+            missingAssets.push(...missing);
+            return missing.length ? [] : [normalizeSlot(manifest.extension_id, slot)];
+          });
+          const modulePaths = manifest.console_contributions?.modules ?? [];
+          const moduleUrls = new Set(uiSlots.flatMap(slot =>
+            slot.widget_type === "contribution_module" && slot.entry_module_url ? [slot.entry_module_url] : []));
+          for (const path of modulePaths) {
+            if (this.assetPath(pluginDir, path)) moduleUrls.add(normalizeAssetUrl(manifest.extension_id, path)!);
+            else missingAssets.push(path);
+          }
+          const pages: RuntimeConsolePage[] = [];
+          for (const page of manifest.console_contributions?.pages ?? []) {
+            const files = [page.entry_module, ...(page.style_sheets ?? [])];
+            const missing = files.filter(file => !this.assetPath(pluginDir, file));
+            if (missing.length) { missingAssets.push(...missing); continue; }
+            pages.push({ path: page.path, title: page.title, aliases: page.aliases, shell_id: page.shell_id,
+              navigation: page.navigation, entry_module_url: normalizeAssetUrl(manifest.extension_id, page.entry_module),
+              style_sheet_urls: page.style_sheets?.map(file => normalizeAssetUrl(manifest.extension_id, file)!) });
+          }
+          // Translate v1 shell-page declarations at the discovery boundary.
+          for (const slot of uiSlots.filter(item => item.slot_target === "slot.shells.mounted_stage")) {
+            pages.push({ path: slot.route_path ?? "/shells/stage/" + encodeURIComponent(manifest.extension_id),
+              title: slot.title, shell_id: slot.shell_id ?? manifest.extension_id + ".default",
+              entry_module_url: slot.entry_module_url, iframe_src_url: slot.iframe_src_url, style_sheet_urls: slot.style_sheet_urls });
+          }
+          const pageAssets = (manifest.console_contributions?.pages ?? []).flatMap(page => [page.entry_module, ...(page.style_sheets ?? [])]);
+          if (manifest.extension_id === "ai0.console" || this.discovered.has(manifest.extension_id)) continue;
+          const enabled = overrides?.get(manifest.extension_id) ?? (origin === "builtin" && parsedJson.default_enabled !== false);
+          const signature = JSON.stringify([pluginDir, parsedJson, enabled, [...pageAssets, ...modulePaths].map(file => { const path = this.assetPath(pluginDir, file); return path ? statSync(path).mtimeMs : null; }), manifest.entry && this.assetPath(pluginDir, manifest.entry) ? statSync(this.assetPath(pluginDir, manifest.entry)!).mtimeMs : null, missingAssets, uiSlots.flatMap(slot =>
+            [slot.entry_module, slot.iframe_src, ...(slot.style_sheets ?? [])].filter((path): path is string => !!path)
+              .map(path => statSync(this.assetPath(pluginDir, path)!).mtimeMs))]);
+          const old = previous.get(manifest.extension_id);
+          const generation = old?.signature === signature ? old.generation : randomUUID();
           this.discovered.set(manifest.extension_id, {
             manifest,
             rootDir: pluginDir,
+            missingAssets, pages, moduleUrls: [...moduleUrls],
             origin,
             uiSlots,
-            enabled: parsedJson.default_enabled !== false
+            generation, signature, enabled
           });
         } catch {
           // Isolate malformed external manifests instead of crashing daemon boot.
         }
       }
     }
+    if (previous.size !== this.discovered.size || this.listPlugins().some(p => previous.get(p.manifest.extension_id)?.generation !== p.generation)) this.revisionValue++;
   }
 
   listPlugins(): DiscoveredPlugin[] {
@@ -251,6 +322,9 @@ export class RuntimePluginLoader {
       dimension: plugin.manifest.dimension,
       origin: plugin.origin,
       enabled: enabledOverrides?.get(plugin.manifest.extension_id) ?? plugin.enabled,
+      pages: plugin.pages,
+      module_urls: plugin.moduleUrls,
+      missing_assets: plugin.missingAssets,
       ui_slots: [...plugin.uiSlots]
     }));
   }
@@ -270,37 +344,18 @@ export class RuntimePluginLoader {
       dimension: plugin.manifest.dimension,
       origin: plugin.origin,
       enabled: enabledOverrides?.get(plugin.manifest.extension_id) ?? plugin.enabled,
+      pages: plugin.pages,
+      module_urls: plugin.moduleUrls,
+      missing_assets: plugin.missingAssets,
       ui_slots: [...plugin.uiSlots]
     };
-  }
-
-  findDefaultStageShellId(): string | undefined {
-    for (const plugin of this.discovered.values()) {
-      if (!plugin.enabled) continue;
-      const stageSlot = plugin.uiSlots.find(
-        (slot) => slot.slot_target === "slot.shells.mounted_stage"
-      );
-      if (stageSlot?.shell_id) return stageSlot.shell_id;
-    }
-    return undefined;
   }
 
   readPluginAsset(extensionId: string, requestedRelativePath: string): PluginAssetPayload | undefined {
     const plugin = this.discovered.get(extensionId);
     if (!plugin) return undefined;
-    const normalized = stripLeadingRelative(requestedRelativePath).replaceAll("\\", "/");
-    if (!normalized || normalized.includes("\0") || normalized.includes("..")) return undefined;
-
-    const allowedRoot = resolve(plugin.rootDir, "dist");
-    const targetPath = normalized.startsWith("dist/")
-      ? resolve(plugin.rootDir, normalized)
-      : resolve(allowedRoot, normalized);
-    const rel = relative(allowedRoot, targetPath);
-    if (!rel || rel.startsWith("..") || isAbsolute(rel)) return undefined;
-    if (!existsSync(targetPath)) return undefined;
-
-    const info = statSync(targetPath);
-    if (!info.isFile()) return undefined;
+    const targetPath = this.assetPath(plugin.rootDir, requestedRelativePath);
+    if (!targetPath) return undefined;
     const contentType = CONTENT_TYPES[extname(targetPath).toLowerCase()] ?? "application/octet-stream";
     return {
       content: readFileSync(targetPath),
@@ -309,12 +364,46 @@ export class RuntimePluginLoader {
     };
   }
 
-  mountIntoHost(host: PolymorphicExtensionHost): void {
+  private assetPath(rootDir: string, requestedRelativePath: string): string | undefined {
+    const normalized = stripLeadingRelative(requestedRelativePath).replaceAll("\\", "/");
+    if (!normalized || normalized.includes("\0") || normalized.includes("..")) return undefined;
+
+    const allowedRoot = resolve(rootDir, "dist");
+    const targetPath = normalized.startsWith("dist/")
+      ? resolve(rootDir, normalized)
+      : resolve(allowedRoot, normalized);
+    const rel = relative(allowedRoot, targetPath);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) return undefined;
+    if (!existsSync(targetPath)) return undefined;
+
+    const physicalRoot = resolve(realpathSync(rootDir), "dist");
+    const physical = relative(physicalRoot, realpathSync(targetPath));
+    if (physical.startsWith("..") || isAbsolute(physical)) return undefined;
+    const info = statSync(targetPath);
+    if (!info.isFile()) return undefined;
+    return targetPath;
+  }
+
+  async mountIntoHost(host: PolymorphicExtensionHost, composition: ExtensionComposition): Promise<void> {
+    const scopes = this.scopes.get(host) ?? new Map<string, { generation: string; dispose(): Promise<void> }>();
+    this.scopes.set(host, scopes);
+    const errors = this.errors.get(host) ?? new Map<string, string>();
+    this.errors.set(host, errors);
+    const cleanup = [];
+    for (const [id, scope] of scopes) {
+      const next = this.getPlugin(id);
+      if (next?.enabled && this.generation(host, id) === scope.generation) continue;
+      errors.delete(id);
+      scopes.delete(id);
+      cleanup.push(scope.dispose());
+    }
+    if (cleanup.length) await Promise.all(cleanup);
     for (const plugin of this.discovered.values()) {
       const { manifest } = plugin;
+      if (!plugin.enabled || scopes.has(manifest.extension_id)) continue;
       const buses = new Set<ExtensionDimension>([manifest.dimension]);
-      if (plugin.uiSlots.length > 0) buses.add("ext.console_ui");
-      const stageSlot = plugin.uiSlots.find((slot) => slot.slot_target === "slot.shells.mounted_stage");
+      if (plugin.pages.length || plugin.uiSlots.length) buses.add("ext.console_ui");
+      const shellPage = plugin.pages.find(page => page.shell_id);
 
       const extensionPayload: Record<string, unknown> = {
         id: manifest.extension_id,
@@ -322,34 +411,36 @@ export class RuntimePluginLoader {
         version: manifest.version,
         origin: plugin.origin,
         source: plugin.rootDir,
-        ...(stageSlot?.shell_id ? { shellId: stageSlot.shell_id } : {}),
-        ...(stageSlot?.route_path ? { stageRoute: stageSlot.route_path } : {}),
+        ...(shellPage?.shell_id ? { shellId: shellPage.shell_id } : {}),
+        pages: plugin.pages,
+      module_urls: plugin.moduleUrls,
         uiSlots: plugin.uiSlots
       };
 
-      if (manifest.dimension === "ext.cognitive_organ") {
-        extensionPayload.organId = manifest.extension_id;
-        extensionPayload.defaultEnabled = plugin.enabled;
-        extensionPayload.contributeToBlackboard = () => ({
-          slot_id: `organ.${manifest.extension_id.replace(/[^a-z0-9_]+/gi, "_")}`,
-          text: `${manifest.display_name}：已动态挂载并处于待命状态。`
+      const generation = this.generation(host, manifest.extension_id)!;
+      const settings = this.configurations.get(host)?.get(manifest.extension_id);
+      const fiber = composition.mount(manifest.extension_id, async scope => {
+        if (manifest.entry && ["ext.cognitive_organ", "ext.media_pipeline"].includes(manifest.dimension)) {
+          const entry = this.assetPath(plugin.rootDir, manifest.entry);
+          if (!entry) throw new Error("Missing entry " + manifest.entry);
+          const url = pathToFileURL(entry);
+          url.searchParams.set("generation", generation);
+          const implementation = await import(url.href);
+          Object.assign(extensionPayload, implementation.default);
+          if (typeof implementation.activate === "function") await implementation.activate(scope, settings?.config ?? {});
+        }
+        scope.effect(() => {
+          host.registerExtension({
+            id: manifest.extension_id, carrier: manifest.carrier_kind, buses: [...buses],
+            ...settings, readDomains: [...manifest.permissions.read_blackboard_domains],
+            proposeDomains: [...manifest.permissions.propose_mutation_domains], extension: extensionPayload
+          });
+          return () => { host.unregisterExtension(manifest.extension_id); };
         });
-      }
-
-      if (manifest.dimension === "ext.media_pipeline") {
-        extensionPayload.getSupportedVocabulary = () => ({
-          voice_emotion_tags: ["warm_neutral", "bright", "soft_sleepy"]
-        });
-      }
-
-      host.registerExtension({
-        id: manifest.extension_id,
-        carrier: manifest.carrier_kind,
-        buses: [...buses],
-        readDomains: [...manifest.permissions.read_blackboard_domains],
-        proposeDomains: [...manifest.permissions.propose_mutation_domains],
-        extension: extensionPayload
       });
+      scopes.set(manifest.extension_id, { generation, dispose: fiber.dispose });
+      try { await fiber.ready(); }
+      catch (error) { errors.set(manifest.extension_id, String(error)); }
     }
   }
 }

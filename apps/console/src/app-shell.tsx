@@ -1,3 +1,8 @@
+import { PluginPageHost } from "./design-system/domain-visualizers/PluginPageHost.js";
+import { registeredPages, resolvePluginPage } from "./router/plugin-pages.js";
+import type { ConsoleNavigationItem } from "@ai0/sdk";
+import { useCallback } from "react";
+import { ConsoleExtensions } from "./context/ExtensionContext.js";
 import Alert from "@mui/material/Alert";
 import ButtonBase from "@mui/material/ButtonBase";
 import Dialog from "@mui/material/Dialog";
@@ -129,15 +134,11 @@ function OnboardingWizardOverlay(props: {
         primaryRole: selectedRole
       });
       await ctx.refreshSnapshot();
-      const stageExtension = props.snapshot?.extensions.find(
-        (ext) => ext.enabled && ext.uiSlots?.some((slot) => slot.slot_target === "slot.shells.mounted_stage")
-      );
-      const stageRoute =
-        stageExtension?.uiSlots?.find((slot) => slot.slot_target === "slot.shells.mounted_stage")?.route_path ??
-        (stageExtension ? `/shells/stage/${stageExtension.id}` : "/shells/topology");
+      const pages = registeredPages(props.snapshot).filter(page => page.shell_id);
+      const nextPath = pages.length === 1 ? pages[0]!.path : "/shells/topology";
       ctx.showToast("初始化配置已保存，正在进入交互工作区");
       props.onClose();
-      ctx.navigateConsole(stageRoute);
+      ctx.navigateConsole(nextPath);
     } catch (err) {
       ctx.showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -265,7 +266,7 @@ function OnboardingWizardOverlay(props: {
               onClick={() => void handleSubmit()}
             >
               {renderConsoleIcon("check", 14)}
-              <span>完成配置并进入对话舞台</span>
+              <span>保存配置并继续</span>
             </RippleButton>
           </div>
         </footer>
@@ -276,6 +277,11 @@ function OnboardingWizardOverlay(props: {
 function ConsoleShell(props: ConsoleAppOptions): ReactElement {
   const ctx = useConsole();
   const location = useLocation();
+  const [extensionLinks, setExtensionLinks] = useState<ConsoleNavigationItem[]>([]);
+  const registerNavigation = useCallback((item: ConsoleNavigationItem) => {
+    setExtensionLinks(previous => [...previous, item]);
+    return () => setExtensionLinks(previous => previous.filter(link => link !== item));
+  }, []);
 
   const pathname =
     props.pathname ?? (location.pathname === "/" ? "/dashboard" : location.pathname);
@@ -288,9 +294,12 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
   const mode = props.mode ?? ctx?.mode ?? "live";
   const navRailMode = props.navRailMode ?? ctx?.navRailMode ?? "expanded";
   const route = resolveConsoleRoute(pathname);
-  const dedicatedStage = route?.id === "shells.stage";
-  const inspectorMode = dedicatedStage ? "mini" : props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
-  const activeDomain = route?.domainId ?? "dashboard";
+  const pages = registeredPages(snapshot);
+  const page = resolvePluginPage(pathname, pages);
+  const pageLinks = pages.filter(item => item.navigation).map(item => ({ id: item.pluginId + item.path, path: item.path, label: item.title }));
+  const links = [...pageLinks, ...extensionLinks.filter(item => (resolveConsoleRoute(item.path) || resolvePluginPage(item.path, pages)) && !pageLinks.some(link => link.path === item.path))];
+  const inspectorMode = page ? "mini" : props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
+  const activeDomain = route?.domainId ?? "extensions";
   const targetInstance = mode === "live" ? "live" : "sandbox:console";
   const smallNav = useMediaQuery("(max-width: 1079px)");
   const overlayInspector = useMediaQuery(inspectorMode === "sandbox-diff" ? "(max-width: 1450px)" : "(max-width: 1310px)");
@@ -319,7 +328,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
   const vitalSummary = snapshot ? [
     `心境 ${snapshot.moodValence >= 0 ? "+" : ""}${snapshot.moodValence.toFixed(2)}`,
     `节律 ${Math.round(snapshot.circadianEnergy * 100)}%`,
-    `预算 ${Math.round(snapshot.metabolicEnergy * 100)}%`
+    `代谢精力 ${Math.round(snapshot.metabolicEnergy * 100)}%`
   ].join(" · ") : undefined;
 
   const handleApproval = async (
@@ -336,7 +345,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
           action: approve ? "approve" : "pause",
           taskId: id
         });
-        ctx.showToast(approve ? "任务已完成并沉淀为情景记忆" : "已暂停该任务");
+        ctx.showToast(approve ? "任务已批准，等待执行器" : "已暂停该任务");
       } else {
         await ctx.postStudio("/api/studio/growth-proposal", {
           proposalId: id,
@@ -406,7 +415,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
         }
         navigationRail={
           <div data-shell-slot="navigation">
-            <PolymorphicNavRail
+            <PolymorphicNavRail extensionLinks={links}
               mode={smallNav ? "mini" : navRailMode}
               activeDomain={activeDomain}
               activePath={pathname}
@@ -418,14 +427,19 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
         }
         main={
           <div data-shell-slot="main">
-            {!dedicatedStage && ctx?.loading ? <LinearProgress className="ai0-bootstrap-progress" aria-label="正在连接守护进程" /> : null}
-            {!dedicatedStage && ctx?.error ? (
+            {!page && ctx?.loading ? <LinearProgress className="ai0-bootstrap-progress" aria-label="正在连接守护进程" /> : null}
+            {!page && ctx?.error ? (
               <Alert severity={snapshot ? "warning" : "error"} className="ai0-connection-notice"
                 action={<RippleButton size="sm" onClick={ctx.retryBootstrap}>重新连接</RippleButton>}>
                 {snapshot ? "未能刷新，正在显示最近一次数据。" : "暂时无法连接守护进程。"} {ctx.error}
               </Alert>
             ) : null}
-            {renderRoutePageView(pathname, snapshot, (path) => ctx?.navigateConsole(path))}
+            <ConsoleExtensions key={JSON.stringify([targetInstance, snapshot?.soulId])} registerNavigation={registerNavigation} snapshot={snapshot}>
+              {page ? <main className="ai0-main-rounded-card-outlet" aria-label={page.title} data-plugin-page={page.path}>
+                <PluginPageHost key={page.pluginId + page.path} page={page} snapshot={snapshot} />
+              </main> : !route && !snapshot && ctx?.loading ? <p role="status">正在加载控制台页面…</p>
+                : renderRoutePageView(pathname, snapshot, (path) => ctx?.navigateConsole(path))}
+            </ConsoleExtensions>
           </div>
         }
         contextInspector={
@@ -436,7 +450,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
             <Drawer open={smallNav && navOpen} onClose={() => setNavOpen(false)} transitionDuration={reduced ? 0 : 220}
               slotProps={{ paper: { className: "ai0-mobile-nav-drawer", "aria-label": "控制台导航" } }}>
               <header className="ai0-drawer-title"><h2>工作区</h2><RippleButton size="sm" variant="ghost" ariaLabel="关闭导航" onClick={() => setNavOpen(false)}>{renderConsoleIcon("close")}</RippleButton></header>
-              <PolymorphicNavRail mode="expanded" activeDomain={activeDomain} activePath={pathname} hrefFor={ctx?.getConsoleHref}
+              <PolymorphicNavRail extensionLinks={links} mode="expanded" activeDomain={activeDomain} activePath={pathname} hrefFor={ctx?.getConsoleHref}
                 onNavigate={(path) => { setNavOpen(false); ctx?.navigateConsole(path); }} />
             </Drawer>
             <Drawer anchor="right" open={overlayInspector && inspectorMode !== "mini"}
@@ -458,6 +472,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
               </DialogActions>
             </Dialog>
             <CommandPaletteModal
+              extensionItems={links}
               open={ctx?.paletteOpen ?? false}
               onNavigate={(path) => ctx?.navigateConsole(path)}
               onClose={() => ctx?.setPaletteOpen(false)}

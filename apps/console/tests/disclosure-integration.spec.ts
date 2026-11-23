@@ -15,7 +15,9 @@ async function expectDisclosure(button: Locator, region: Locator) {
 test("event payload and trace disclosures expose persisted records and track filters", async ({ page }) => {
   const browser = watchBrowser(page);
   const text = "浏览器折叠验收 " + crypto.randomUUID().slice(0, 8);
+  const { ownerToken } = await (await page.request.get("/api/studio/bootstrap")).json();
   const perception = await page.request.post("/protocol/v0/shell/perception", {
+    headers: { "x-ai0-owner-token": ownerToken },
     data: { text, venue_type: "private_1on1", audience_scope: "only_owner" }
   });
   await expect(perception).toBeOK();

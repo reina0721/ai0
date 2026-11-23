@@ -7,7 +7,7 @@
   "description": "Turns conversational afterglow and sleep-cycle fragments into a poetic, read-only blackboard contribution and proposed episodic memories.",
   "carrier": "native_code_plugin",
   "bus": "ext.cognitive_organ",
-  "entry": "./src/index.ts",
+  "entry": "./dist/index.js",
   "default_enabled": true,
   "permissions": {
     "read_domains": [
@@ -15,16 +15,31 @@
       "D2_HOMEOSTASIS_AFFECT",
       "D3_MEMORY_PROJECTION"
     ],
-    "propose_domains": ["D3_MEMORY_PROJECTION"],
+    "propose_domains": [
+      "D3_MEMORY_PROJECTION"
+    ],
     "network": false,
     "filesystem": false,
     "actuation": false
   },
-  "contributions": [
-    {
-      "bus": "ext.console_ui",
-      "slot_id": "slot.memory.custom_tab",
-      "title": "梦境手记"
-    }
-  ]
+  "console_contributions": {
+    "pages": [
+      {
+        "path": "/dream-journal",
+        "aliases": [
+          "/extensions/custom/dream-journal"
+        ],
+        "title": "梦境手记",
+        "navigation": true,
+        "entry_module": "./dist/page.js"
+      }
+    ],
+    "ui_slots": [
+      {
+        "slot_target": "slot.memory.custom_tab",
+        "widget_type": "markdown_card_list",
+        "title": "梦境手记"
+      }
+    ]
+  }
 }

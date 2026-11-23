@@ -1,3 +1,4 @@
+import type { ConsoleNavigationItem } from "@ai0/sdk";
 import ButtonBase from "@mui/material/ButtonBase";
 import Tooltip from "@mui/material/Tooltip";
 import type { ReactElement } from "react";
@@ -12,6 +13,7 @@ export interface PolymorphicNavRailProps {
   mode: NavRailMode;
   activeDomain: PrimaryDomainId;
   activePath?: string;
+  extensionLinks?: readonly ConsoleNavigationItem[];
   className?: string;
   onModeChange?: (mode: NavRailMode) => void;
   onNavigate?: (path: string, domain: PrimaryDomainId) => void;
@@ -21,6 +23,9 @@ export interface PolymorphicNavRailProps {
 export function PolymorphicNavRail(props: PolymorphicNavRailProps): ReactElement {
   const mini = props.mode === "mini";
   const currentNavId = props.activePath ? findSidebarContext(props.activePath)?.item.id : undefined;
+  const groups = [...CONSOLE_SIDEBAR_GROUPS_16];
+  if (props.extensionLinks?.length) groups.push({ id: "plugins", title: "插件页面",
+    items: props.extensionLinks.map(link => ({ ...link, domainId: "extensions", icon: "extensions", matchPaths: [] })) });
   return (
     <aside data-mode={props.mode} className={"ai0-polymorphic-nav-rail " + (props.className ?? "")}>
       <div className="ai0-nav-rail__primary">
@@ -33,11 +38,11 @@ export function PolymorphicNavRail(props: PolymorphicNavRailProps): ReactElement
           </div>
         ) : null}
         <nav aria-label="控制台主导航" className="ai0-grouped-navigation">
-          {CONSOLE_SIDEBAR_GROUPS_16.map((group) => (
+          {groups.map((group) => (
             <div key={group.id} className="ai0-nav-group" data-nav-group={group.id}>
               {!mini ? <div className="ai0-nav-group__label">{group.title}</div> : null}
               {group.items.map((item) => {
-                const active = currentNavId ? currentNavId === item.id : !props.activePath && item.domainId === props.activeDomain;
+                const active = group.id === "plugins" ? item.path === props.activePath : currentNavId ? currentNavId === item.id : !props.activePath && item.domainId === props.activeDomain;
                 const link = (
                   <ButtonBase
                     key={item.id}

@@ -1,3 +1,4 @@
+import { registeredPages } from "../router/plugin-pages.js";
 import {
   WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspacePage, WorkspaceRow, WorkspaceSection,
   WorkspaceTable, WorkspaceTableBody, WorkspaceTableCell, WorkspaceTableHead, WorkspaceTableRow
@@ -43,8 +44,27 @@ function ExtensionList({ snapshot }: { snapshot?: ConsoleLiveSnapshot }) {
   const runtime = snapshot?.extensions ?? [];
   const query = filter.trim().toLocaleLowerCase();
   const matches = (...parts: string[]) => parts.some((value) => value.toLocaleLowerCase().includes(query));
-  const shownPlugins = plugins.filter((plugin) => matches(plugin.name, plugin.id, plugin.bus));
-  const shownRuntime = runtime.filter((extension) => matches(extension.id, ...extension.buses));
+  const [pending, setPending] = useState<string>();
+  const pages = registeredPages(snapshot);
+  const ids = [...new Set([...runtime.map(item => item.id), ...plugins.map(item => item.id)])];
+  const shown = ids.flatMap(id => {
+    const extension = runtime.find(item => item.id === id);
+    const config = plugins.find(item => item.id === id);
+    const name = extension?.displayName ?? config?.name ?? id;
+    return matches(name, id, ...(extension?.buses ?? [config?.bus ?? ""])) ? [{ id, name, extension, config }] : [];
+  });
+  async function toggle(id: string, enabled: boolean) {
+    if (!ctx || pending) return;
+    setPending(id);
+    try {
+      await ctx.postStudio("plugin-enabled", { id, enabled });
+      await ctx.refreshSnapshot();
+    } catch (error) {
+      ctx.showToast("更新插件失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setPending(undefined);
+    }
+  }
   return (
     <WorkspacePage data-ecosystem-page="true">
       <WorkspaceHeader title="插件与扩展管理">
@@ -52,23 +72,30 @@ function ExtensionList({ snapshot }: { snapshot?: ConsoleLiveSnapshot }) {
       </WorkspaceHeader>
       <CompactInput ariaLabel="过滤扩展" value={filter} type="search" onInput={setFilter} placeholder="搜索名称、标识或总线" />
       <WorkspaceGrid columns={2}>
-        <WorkspaceSection>
-          <h2>已登记配置</h2>
-          {shownPlugins.length ? shownPlugins.map((plugin) => (
-            <WorkspaceItem key={plugin.id}>
+        {shown.map(({ id, name, extension, config }) => {
+          const enabled = config?.enabled ?? extension?.enabled ?? false;
+          const status = !extension ? "未发现插件文件" : extension.activationError ? "激活失败"
+            : !enabled ? "已停用" : extension.enabled ? "运行中" : "未激活";
+          return (
+            <WorkspaceItem key={id} as="article" data-plugin-card={id}>
               <WorkspaceRow>
-                <strong>{plugin.name}</strong><small>v{plugin.version} · {plugin.enabled ? "已启用" : "已停用"}</small>
+                <strong>{name}</strong><small>{status}</small>
+                {extension && <JellySwitch checked={enabled} ariaLabel={"启用 " + name}
+                  disabled={!ctx?.ownerToken || ctx.mode === "sandbox" || Boolean(pending)}
+                  onChange={value => void toggle(id, value)} />}
               </WorkspaceRow>
-              <p>{plugin.description}</p>
+              <small>{id} · v{extension?.version ?? config?.version} · {extension?.buses.join("、") ?? config?.bus}</small>
+              {config?.description && <p>{config.description}</p>}
+              {extension?.activationError && <p role="alert">{extension.activationError}</p>}
+              {!!extension?.missingAssets?.length && <p>缺少资源：{extension.missingAssets.join("、")}</p>}
+              {pages.filter(page => page.pluginId === id).map(page => (
+                <RippleButton key={page.path} onClick={() => ctx?.navigateConsole(page.path)}>打开 {page.title}</RippleButton>
+              ))}
             </WorkspaceItem>
-          )) : <small>没有匹配的扩展配置。</small>}
-        </WorkspaceSection>
-        <WorkspaceSection>
-          <h2>运行时注册</h2>
-          {shownRuntime.length ? shownRuntime.map((extension) => <RuntimeDetails key={extension.id} extension={extension} />)
-            : <small>没有匹配的运行时扩展。</small>}
-        </WorkspaceSection>
+          );
+        })}
       </WorkspaceGrid>
+      {!shown.length && <small>{query ? "没有匹配的插件。" : "未发现插件。"}</small>}
     </WorkspacePage>
   );
 }
@@ -307,42 +334,11 @@ function Organs({ snapshot }: { snapshot?: ConsoleLiveSnapshot }) {
             <RuntimeDetails extension={organ} />
             <JellySwitch label="启用器官" checked={organ.enabled} disabled={!sandbox || Boolean(pending)}
               onChange={(enabled) => void toggle(organ.id, enabled)} />
-            {organ.id === "community.organ.dream-journal" ? (
-              <RippleButton onClick={() => ctx?.navigateConsole("/extensions/custom/dream-journal")}>查看梦境手记</RippleButton>
-            ) : null}
+            {registeredPages(snapshot).filter(page => page.pluginId === organ.id).map(page =>
+              <RippleButton key={page.path} onClick={() => ctx?.navigateConsole(page.path)}>查看{page.title}</RippleButton>)}
           </WorkspaceItem>
         ))}
         {!organs.length ? <small>当前实例没有已注册的认知器官。</small> : null}
-      </WorkspaceSection>
-    </WorkspacePage>
-  );
-}
-
-function ExtensionDetail({ snapshot, pluginId }: { snapshot?: ConsoleLiveSnapshot; pluginId?: string }) {
-  const ctx = useConsole();
-  const dream = pluginId === "dream-journal" || pluginId === "community.organ.dream-journal";
-  const id = dream ? "community.organ.dream-journal" : pluginId;
-  const extension = snapshot?.extensions.find((entry) => entry.id === id);
-  const journals = dream ? snapshot?.studioConfig?.evolution.dreamJournal ?? [] : [];
-  return (
-    <WorkspacePage data-custom-extension={id}>
-      <WorkspaceHeader title={dream ? "梦境手记" : "扩展自定义视图"}>
-        <RippleButton onClick={() => ctx?.navigateConsole("/extensions/marketplace")}>查看扩展清单</RippleButton>
-      </WorkspaceHeader>
-      <WorkspaceSection>
-        <h2>{id}</h2>
-        {extension ? <RuntimeDetails extension={extension} /> : <small>当前实例未注册此扩展。</small>}
-        {dream ? (
-          <>
-            {journals.map((entry) => (
-              <WorkspaceItem key={entry.id} as="article">
-                <WorkspaceRow><strong>{entry.title}</strong><small>{entry.date} · {entry.kind === "dream" ? "梦境" : "好奇心笔记"}</small></WorkspaceRow>
-                <p>{entry.content}</p>
-              </WorkspaceItem>
-            ))}
-            {!journals.length ? <small>当前存档暂无梦境手记。</small> : null}
-          </>
-        ) : extension ? <small>此扩展提供运行时注册信息。</small> : null}
       </WorkspaceSection>
     </WorkspacePage>
   );
@@ -360,7 +356,6 @@ export function Domain6ExtensionsPage(props: Domain6ExtensionsPageProps): ReactE
     case "extensions.skills-mcp": content = <Skills ecosystem={ecosystem} />; break;
     case "extensions.cognitive-organs": content = <Organs snapshot={snapshot} />; break;
     case "extensions.flows-eca": content = <Flows ecosystem={ecosystem} />; break;
-    case "extensions.custom": content = <ExtensionDetail snapshot={snapshot} pluginId={route.params.pluginId} />; break;
     default: content = <ExtensionList snapshot={snapshot} />;
   }
   return (

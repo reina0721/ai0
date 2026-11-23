@@ -22,7 +22,7 @@ test("desktop density, compact navigation, and six theme combinations", async ({
   }
   await expect(page.locator(".ai0-hybrid-top-bar")).toHaveCSS("height", "48px");
   await expect(page.locator("main")).toHaveCSS("border-top-left-radius", "16px");
-  await expect(page.getByRole("navigation", { name: "控制台主导航" }).locator("[data-nav-path]")).toHaveCount(16);
+  await expect(page.getByRole("navigation", { name: "控制台主导航" }).locator("[data-nav-group]:not([data-nav-group=plugins]) [data-nav-path]")).toHaveCount(16);
 
   for (const viewport of [{ width: 1024, height: 768 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
@@ -69,7 +69,8 @@ test("bootstrap retries and a refresh preserves edits behind the route guard", a
   await model.fill("playwright-draft-model");
 
   const refreshed = page.waitForResponse((response) => response.url().endsWith("/api/admin/v1/snapshot?mode=live"));
-  expect((await page.request.post("/protocol/v0/shell/perception", { data: { text: "这是一条刷新测试消息。", mode: "live" } })).ok()).toBe(true);
+  const { ownerToken } = await (await page.request.get("/api/studio/bootstrap")).json();
+  expect((await page.request.post("/protocol/v0/shell/perception", { headers: { "x-ai0-owner-token": ownerToken }, data: { text: "这是一条刷新测试消息。", mode: "live" } })).ok()).toBe(true);
   await refreshed;
   await expect(model).toHaveValue("playwright-draft-model");
 

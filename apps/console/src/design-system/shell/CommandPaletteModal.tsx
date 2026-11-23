@@ -34,7 +34,7 @@ export function isCommandPaletteShortcut(event: CommandPaletteShortcutEvent): bo
   return event.key.toLowerCase() === "k" && Boolean(event.ctrlKey || event.metaKey);
 }
 
-const routes: readonly CommandPaletteExtensionItem[] = CONSOLE_ROUTES_30.map((route) => ({
+const routes: readonly CommandPaletteExtensionItem[] = CONSOLE_ROUTES_30.filter(route => !route.path.includes(":")).map((route) => ({
   id: route.id, label: route.label, path: route.defaultConcretePath ?? route.path,
   description: route.path, keywords: route.keywords
 }));

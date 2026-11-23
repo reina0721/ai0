@@ -1,3 +1,4 @@
+import { registeredPages } from "../router/plugin-pages.js";
 import {
   WorkspaceCode, WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspacePage, WorkspaceRow,
   WorkspaceSection, WorkspaceStatus, WorkspaceTag
@@ -79,6 +80,8 @@ function PlatformConfig({ gate, studio }: { gate: boolean; studio?: ConsoleStudi
         <RippleButton size="sm" onClick={resource.refresh}>刷新运行状态</RippleButton>
         <WorkspaceSaveButton form={form} />
       </WorkspaceHeader>
+      {!gate && registeredPages(ctx?.snapshot).filter(page => page.shell_id).map(page =>
+        <RippleButton key={page.path} onClick={() => ctx?.navigateConsole(page.path)}>打开 {page.title}</RippleButton>)}
       <WorkspaceSection>
         <WorkspaceRow>
           <h2>{gate ? "共享感官覆盖" : "Protocol v0 接入拓扑"}</h2>
@@ -124,8 +127,8 @@ function PlatformConfig({ gate, studio }: { gate: boolean; studio?: ConsoleStudi
                 </WorkspaceGrid>
               ) : (
                 <div className="ai0-workspace-actions">
-                  <WorkspaceStatus data-tone={platform.connected ? "live" : "warn"}>
-                    {platform.connected ? `在线 ${platform.rttMs}ms` : "离线"}
+                  <WorkspaceStatus data-tone={(topology.data?.active_sessions.some(session => session.shell_id === platform.id) ?? false) ? "live" : "warn"}>
+                    {(topology.data?.active_sessions.some(session => session.shell_id === platform.id) ?? false) ? `在线 ${platform.rttMs}ms` : "离线"}
                   </WorkspaceStatus>
                   {[...platform.sensors, ...platform.realizers, ...platform.actuators].map((value, index) => (
                     <WorkspaceTag key={`${value}:${index}`}>{value}</WorkspaceTag>
@@ -218,7 +221,7 @@ function Media({ snapshot }: { snapshot?: ConsoleLiveSnapshot }) {
         {intent ? (
           <><code>{intent.intent_id}</code><small>{intent.extensions_attached.join("、") || "该意图没有表现扩展。"}</small></>
         ) : <small>等待本实例产生表达意图。</small>}
-        <small>可在虚拟躯壳模拟器查看返回的实际表现关键帧。</small>
+        <small>可在躯壳协议模拟器查看返回的实际表现关键帧。</small>
       </WorkspaceSection>
     </WorkspacePage>
   );
@@ -253,7 +256,7 @@ function Simulator() {
 
   return (
     <WorkspacePage>
-      <WorkspaceHeader title="虚拟躯壳模拟器">
+      <WorkspaceHeader title="躯壳协议模拟器">
         {sandbox ? <WorkspaceStatus data-tone="sandbox">sandbox:console</WorkspaceStatus>
           : <RippleButton onClick={() => ctx?.setMode("sandbox")}>切换到沙盒</RippleButton>}
       </WorkspaceHeader>

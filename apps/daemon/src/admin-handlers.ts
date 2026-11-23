@@ -1,3 +1,4 @@
+import type { ShellProtocolGateway } from "@ai0/gateway";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -22,16 +23,13 @@ import {
 
 type Json = Record<string, unknown>;
 export interface CircadianAnchor { hour: number; energy: number }
-export interface ActiveShellSession {
-  session_id: string; shell_id: string; venue_type: VenueType;
-  audience_scope: AudienceScope; modality: SensorModality; last_active_ts_ms: number;
-}
 export interface DaemonMutableState {
   virtualOffsetHours: number; debounceWindowMs: number; circadianAnchors: CircadianAnchor[];
-  activeShellSessions: Map<string, ActiveShellSession>;
   telemetryFrames: AdminTelemetryFrame[]; sandboxForks: Map<string, CoordinatorStorageMutator>;
 }
 export interface DaemonHandlerContext {
+  reloadExtension(id: string, mode: "live" | "sandbox", config: Json, expected: number): Promise<number>;
+  shellGateway: ShellProtocolGateway;
   soulDir: string; storage: CoordinatorStorageMutator; sandboxStorage: CoordinatorStorageMutator;
   hardForgetEngine: HardForgetEngine; sandboxHardForgetEngine: HardForgetEngine;
   soulArchiveManager: SoulArchiveManager; virtualClock: VirtualClock; sandboxClock: VirtualClock;
@@ -144,7 +142,7 @@ export function createRealAdminHandlers(
       return backend.compiler.compile(backend.coordinator.getSnapshot(), policy, audience);
     },
     "shells.topology": (_request, context) => ({
-      active_sessions: [...runtime.state.activeShellSessions.values()],
+      active_sessions: runtime.shellGateway.listConnections(context.target_instance),
       shell_extensions: selected(runtime, context.target_instance).extensions.listExtensions()
         .filter((item) => item.buses.includes("ext.shell")),
       sensory_coverage: runtime.sensoryCoverage.list()
@@ -200,16 +198,20 @@ export function createRealAdminHandlers(
     },
     "memory.hardForget": async (request, context) => {
       const body = bodyOf(request.body), backend = selected(runtime, context.target_instance), now = backend.clock.nowMs();
-      return backend.engine.execute({ target_event_ids: strings(body.target_event_ids),
+      const result = await backend.engine.execute({ target_event_ids: strings(body.target_event_ids),
         target_memory_ids: strings(body.target_memory_ids), virtualTsMs: now, redactedAtTsMs: now,
         ...(context.target_instance === "live" ? { soulDirPath: runtime.soulDir } : {}) });
+      backend.coordinator.restoreCheckpoint();
+      return result;
     },
     "memory.topicSeal": async (request, context) => {
       const body = bodyOf(request.body), backend = selected(runtime, context.target_instance), now = backend.clock.nowMs();
-      return backend.engine.executeTopicSeal({ topic_description: String(body.topic_description ?? ""),
+      const result = await backend.engine.executeTopicSeal({ topic_description: String(body.topic_description ?? ""),
         target_event_ids: strings(body.target_event_ids), target_memory_ids: strings(body.target_memory_ids),
         virtualTsMs: now, redactedAtTsMs: now, created_virtual_ts: now,
         ...(context.target_instance === "live" ? { soulDirPath: runtime.soulDir } : {}) });
+      backend.coordinator.restoreCheckpoint();
+      return result;
     },
     "memory.knowledge.unmountGist": (request, context) => {
       const body = bodyOf(request.body), backend = selected(runtime, context.target_instance);
@@ -250,10 +252,9 @@ export function createRealAdminHandlers(
       }
       return { extensions: host.listExtensions() };
     },
-    "extensions.hotReload": (request, context) => {
+    "extensions.hotReload": async (request, context) => {
       const body = bodyOf(request.body), id = context.params.extensionId;
-      const rev = selected(runtime, context.target_instance).extensions.hotReloadExtension(
-        id ?? "", bodyOf(body.config), finite(body.expected_rev, 0));
+      const rev = await runtime.reloadExtension(id ?? "", context.target_instance === "live" ? "live" : "sandbox", bodyOf(body.config), finite(body.expected_rev, 0));
       return { extension_id: id, rev };
     },
     "extensions.bundleExport": (request) => {

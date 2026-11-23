@@ -54,7 +54,7 @@ export const CONSOLE_SIDEBAR_GROUPS_16: readonly ConsoleSidebarNavGroup[] = Obje
     title: "概览与交互",
     items: [
       { id: "dashboard.overview", label: "系统概览", icon: "dashboard", path: "/dashboard", domainId: "dashboard", matchPaths: ["/dashboard"] },
-      { id: "shells.stage", label: "躯壳舞台", icon: "chat", path: "/shells/stage/builtin.webchat", domainId: "shells", matchPaths: ["/shells/stage/builtin.webchat", "/shells/simulator"] },
+      { id: "shells.simulator", label: "躯壳协议模拟器", icon: "shells", path: "/shells/simulator", domainId: "shells", matchPaths: ["/shells/simulator"] },
       { id: "dashboard.conversations", label: "会话记录", icon: "sessions", path: "/conversations", domainId: "dashboard", matchPaths: ["/conversations"] }
     ]
   },
@@ -99,7 +99,7 @@ export const CONSOLE_SIDEBAR_GROUPS_16: readonly ConsoleSidebarNavGroup[] = Obje
 
 export const CONSOLE_PRIMARY_DOMAINS: readonly ConsolePrimaryDomain[] = Object.freeze([
   { id: "dashboard", label: "概览与黑板", icon: "dashboard", defaultPath: "/dashboard" },
-  { id: "shells", label: "交互与平台", icon: "chat", defaultPath: "/shells/stage/builtin.webchat" },
+  { id: "shells", label: "交互与平台", icon: "chat", defaultPath: "/shells/topology" },
   { id: "soul", label: "人格与认知", icon: "persona", defaultPath: "/soul/distiller" },
   { id: "memory", label: "记忆与知识库", icon: "memory", defaultPath: "/memory/lineage" },
   { id: "models", label: "模型与路由", icon: "models", defaultPath: "/models/providers" },
@@ -112,13 +112,12 @@ export const CONSOLE_ROUTES_30: readonly ConsoleRoute[] = Object.freeze([
   { id: "dashboard.overview", domainId: "dashboard", label: "系统概览", path: "/dashboard" },
   { id: "dashboard.conversations", domainId: "dashboard", label: "会话记录", path: "/conversations" },
   { id: "dashboard.blackboard", domainId: "dashboard", label: "上下文黑板", path: "/dashboard/blackboard" },
-  { id: "shells.stage", domainId: "shells", label: "躯壳舞台", path: "/shells/stage/:shellPluginId", defaultConcretePath: "/shells/stage/builtin.webchat" },
   { id: "shells.topology", domainId: "shells", label: "接入通道", path: "/shells/topology" },
   { id: "shells.profiles-rules", domainId: "shells", label: "受众与策略", path: "/profiles/rules" },
   { id: "shells.attention", domainId: "shells", label: "注意力焦点仲裁", path: "/shells/attention-arbitration" },
   { id: "shells.thalamic-gate", domainId: "shells", label: "话轮防抖与感官门控", path: "/shells/thalamic-gate" },
   { id: "shells.media-pipeline", domainId: "shells", label: "语音与表现管线", path: "/shells/media-pipeline" },
-  { id: "shells.simulator", domainId: "shells", label: "虚拟躯壳模拟器", path: "/shells/simulator" },
+  { id: "shells.simulator", domainId: "shells", label: "躯壳协议模拟器", path: "/shells/simulator" },
   { id: "soul.distiller", domainId: "soul", label: "角色卡片蒸馏", path: "/soul/distiller" },
   { id: "soul.persona", domainId: "soul", label: "关系契约与性格设定", path: "/soul/persona" },
   { id: "soul.homeostasis", domainId: "soul", label: "节律与情绪动力学", path: "/soul/homeostasis" },
@@ -135,7 +134,6 @@ export const CONSOLE_ROUTES_30: readonly ConsoleRoute[] = Object.freeze([
   { id: "extensions.skills-mcp", domainId: "extensions", label: "SKILL.md 与 MCP", path: "/extensions/skills-mcp" },
   { id: "extensions.cognitive-organs", domainId: "extensions", label: "认知器官模块", path: "/extensions/cognitive-organs" },
   { id: "extensions.flows-eca", domainId: "extensions", label: "自动化联动流 (ECA)", path: "/extensions/flows-eca" },
-  { id: "extensions.custom", domainId: "extensions", label: "扩展自定义视图", path: "/extensions/custom/:pluginId", defaultConcretePath: "/extensions/custom/dream-journal" },
   { id: "runtime.coordinator-agency", domainId: "runtime", label: "子代理与异步任务", path: "/runtime/coordinator-agency" },
   { id: "runtime.terminal", domainId: "runtime", label: "链路追踪与日志", path: "/runtime/terminal" },
   { id: "runtime.sandbox-lab", domainId: "runtime", label: "沙盒实验与回归评测", path: "/sandbox/lab" },
@@ -186,9 +184,7 @@ export function findSidebarContext(pathname: string): {
     for (const item of group.items) {
       if (
         item.path === normalized ||
-        item.matchPaths.includes(normalized) ||
-        (item.path === "/shells/stage/builtin.webchat" && normalized.startsWith("/shells/stage/")) ||
-        (item.path === "/extensions/marketplace" && normalized.startsWith("/extensions/custom/"))
+        item.matchPaths.includes(normalized)
       ) {
         return { groupTitle: group.title, item };
       }

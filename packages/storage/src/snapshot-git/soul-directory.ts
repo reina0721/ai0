@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -255,15 +256,16 @@ function writeManagedFile(
 }
 
 function createDefaultConfig(createdAt: string): SoulArchiveConfig {
+  const soulId = "soul." + randomUUID();
   return SoulArchiveConfigSchema.parse({
     manifest: {
       schema_version: "1.0.0",
-      soul_id: "soul.mio",
+      soul_id: soulId,
       created_at: createdAt,
       active_model_profile: "default"
     },
     identity: {
-      soul_id: "soul.mio",
+      soul_id: soulId,
       display_name: "Mio",
       theme_color_preset: "sakura-pink",
       ontological_contract: "poetic_cyber_life",
@@ -547,11 +549,119 @@ export function initializeSoulDirectory(
     options.config ??
     createDefaultConfig(options.createdAt ?? new Date().toISOString());
 
+  if (!options.config && (existsSync(layout.manifestPath) || existsSync(layout.identityPath))) {
+    const existing = existsSync(layout.manifestPath)
+      ? readStructuredFile(layout.manifestPath, SoulArchiveManifestSchema)
+      : readStructuredFile(layout.identityPath, IdentityYamlSchema);
+    config.manifest.soul_id = config.identity.soul_id = existing.soul_id;
+  }
   writeSoulArchiveConfig(layout.rootPath, config, {
     overwrite: options.overwrite ?? false
   });
   readSoulArchiveConfig(layout.rootPath);
   return layout;
+}
+
+function demoEvents(base: number, day: number) {
+  return [
+    {
+      event_id: "evt_seed_01_awakening",
+      wall_ts_ms: base,
+      virtual_ts_ms: base,
+      source_shell_id: "builtin.webchat.default",
+      principal_id: "owner:local",
+      principal_trust: "owner_verified" as const,
+      venue_type: "private_1on1" as const,
+      audience_scope: "only_owner" as const,
+      event_category: "perception_committed" as const,
+      modality: "text" as const,
+      summary_text: "初次唤醒：主人设定了樱花粉主题与安静陪伴的共同节奏，约定不强行打扰专注工作。",
+      payload_json: JSON.stringify({ origin: "demo", scene: "first_awakening", theme: "sakura-pink" }),
+      state_rev_after: 1,
+      active_modules_mask: 31
+    },
+    {
+      event_id: "evt_seed_02_late_night_code",
+      wall_ts_ms: base + 3 * day,
+      virtual_ts_ms: base + 3 * day,
+      source_shell_id: "builtin.webchat.default",
+      principal_id: "owner:local",
+      principal_trust: "owner_verified" as const,
+      venue_type: "private_1on1" as const,
+      audience_scope: "only_owner" as const,
+      event_category: "perception_committed" as const,
+      modality: "text" as const,
+      summary_text: "深夜调试 TypeScript 架构到凌晨一点，主人喜欢喝不加糖的冰美式，并嘱咐我记住这个习惯。",
+      payload_json: JSON.stringify({ origin: "demo", topic: "coffee_preference", hour: 1 }),
+      state_rev_after: 2,
+      active_modules_mask: 31
+    },
+    {
+      event_id: "evt_seed_03_private_health",
+      wall_ts_ms: base + 5 * day,
+      virtual_ts_ms: base + 5 * day,
+      source_shell_id: "builtin.webchat.default",
+      principal_id: "owner:local",
+      principal_trust: "owner_verified" as const,
+      venue_type: "private_1on1" as const,
+      audience_scope: "only_owner" as const,
+      event_category: "perception_committed" as const,
+      modality: "text" as const,
+      summary_text: "私密约定：主人下周要去复查腕管旧伤，提醒我这件事绝对不能在公开直播间或群聊里提起。",
+      payload_json: JSON.stringify({ origin: "demo", privacy: "strict_only_owner" }),
+      state_rev_after: 3,
+      active_modules_mask: 31
+    },
+    {
+      event_id: "evt_seed_04_stargazing_ritual",
+      wall_ts_ms: base + 8 * day,
+      virtual_ts_ms: base + 8 * day,
+      source_shell_id: "builtin.webchat.default",
+      principal_id: "owner:local",
+      principal_trust: "owner_verified" as const,
+      venue_type: "private_1on1" as const,
+      audience_scope: "only_owner" as const,
+      event_category: "sleep_consolidation_run" as const,
+      modality: "text" as const,
+      summary_text: "共同完成天文资料检索与周末观星笔记整理，沉淀为安静默契的共同经历。",
+      payload_json: JSON.stringify({ origin: "demo", ritual: "stargazing_notes" }),
+      state_rev_after: 4,
+      active_modules_mask: 31
+    },
+    {
+      event_id: "evt_seed_05_public_greeting",
+      wall_ts_ms: base + 10 * day,
+      virtual_ts_ms: base + 10 * day,
+      source_shell_id: "mock.livestream.public",
+      principal_id: "guest:harbor_01",
+      principal_trust: "stranger" as const,
+      venue_type: "public_livestream" as const,
+      audience_scope: "public_all" as const,
+      event_category: "perception_committed" as const,
+      modality: "text" as const,
+      summary_text: "公开场合互动：向大家介绍 ai0 数字生命微内核与可插拔具身协议的设计理念。",
+      payload_json: JSON.stringify({ origin: "demo", venue: "public_livestream" }),
+      state_rev_after: 5,
+      active_modules_mask: 31
+    }
+  ];
+
+}
+
+/** Mark only exact legacy fixture records. Leave unknown and user-authored rows intact. */
+export function labelLegacyDemoEvents(storage: CoordinatorStorageMutator): void {
+  storage.runInTransaction(() => {
+    for (const fixture of demoEvents(0, 1)) {
+      const row = storage.getEventById(fixture.event_id);
+      if (!row || row.redacted_at_ts_ms !== null || row.summary_text !== fixture.summary_text ||
+          row.source_shell_id !== fixture.source_shell_id || row.principal_id !== fixture.principal_id ||
+          row.audience_scope !== fixture.audience_scope || row.event_category !== fixture.event_category) continue;
+      const expected = JSON.parse(fixture.payload_json);
+      delete expected.origin;
+      if (row.payload_json !== JSON.stringify(expected)) continue;
+      storage.sqlite.prepare("UPDATE event_log SET payload_json=? WHERE event_id=?").run(fixture.payload_json, row.event_id);
+    }
+  });
 }
 
 /**
@@ -568,88 +678,7 @@ export function seedDefaultSoulAwakeningData(
   const day = 24 * hour;
   const base = nowMs - 12 * day;
 
-  const events = [
-    {
-      event_id: "evt_seed_01_awakening",
-      wall_ts_ms: base,
-      virtual_ts_ms: base,
-      source_shell_id: "builtin.webchat.default",
-      principal_id: "owner:local",
-      principal_trust: "owner_verified" as const,
-      venue_type: "private_1on1" as const,
-      audience_scope: "only_owner" as const,
-      event_category: "perception_committed" as const,
-      modality: "text" as const,
-      summary_text: "初次唤醒：主人设定了樱花粉主题与安静陪伴的共同节奏，约定不强行打扰专注工作。",
-      payload_json: JSON.stringify({ scene: "first_awakening", theme: "sakura-pink" }),
-      state_rev_after: 1,
-      active_modules_mask: 31
-    },
-    {
-      event_id: "evt_seed_02_late_night_code",
-      wall_ts_ms: base + 3 * day,
-      virtual_ts_ms: base + 3 * day,
-      source_shell_id: "builtin.webchat.default",
-      principal_id: "owner:local",
-      principal_trust: "owner_verified" as const,
-      venue_type: "private_1on1" as const,
-      audience_scope: "only_owner" as const,
-      event_category: "perception_committed" as const,
-      modality: "text" as const,
-      summary_text: "深夜调试 TypeScript 架构到凌晨一点，主人喜欢喝不加糖的冰美式，并嘱咐我记住这个习惯。",
-      payload_json: JSON.stringify({ topic: "coffee_preference", hour: 1 }),
-      state_rev_after: 2,
-      active_modules_mask: 31
-    },
-    {
-      event_id: "evt_seed_03_private_health",
-      wall_ts_ms: base + 5 * day,
-      virtual_ts_ms: base + 5 * day,
-      source_shell_id: "builtin.webchat.default",
-      principal_id: "owner:local",
-      principal_trust: "owner_verified" as const,
-      venue_type: "private_1on1" as const,
-      audience_scope: "only_owner" as const,
-      event_category: "perception_committed" as const,
-      modality: "text" as const,
-      summary_text: "私密约定：主人下周要去复查腕管旧伤，提醒我这件事绝对不能在公开直播间或群聊里提起。",
-      payload_json: JSON.stringify({ privacy: "strict_only_owner" }),
-      state_rev_after: 3,
-      active_modules_mask: 31
-    },
-    {
-      event_id: "evt_seed_04_stargazing_ritual",
-      wall_ts_ms: base + 8 * day,
-      virtual_ts_ms: base + 8 * day,
-      source_shell_id: "builtin.webchat.default",
-      principal_id: "owner:local",
-      principal_trust: "owner_verified" as const,
-      venue_type: "private_1on1" as const,
-      audience_scope: "only_owner" as const,
-      event_category: "sleep_consolidation_run" as const,
-      modality: "text" as const,
-      summary_text: "共同完成天文资料检索与周末观星笔记整理，沉淀为安静默契的共同经历。",
-      payload_json: JSON.stringify({ ritual: "stargazing_notes" }),
-      state_rev_after: 4,
-      active_modules_mask: 31
-    },
-    {
-      event_id: "evt_seed_05_public_greeting",
-      wall_ts_ms: base + 10 * day,
-      virtual_ts_ms: base + 10 * day,
-      source_shell_id: "mock.livestream.public",
-      principal_id: "guest:harbor_01",
-      principal_trust: "stranger" as const,
-      venue_type: "public_livestream" as const,
-      audience_scope: "public_all" as const,
-      event_category: "perception_committed" as const,
-      modality: "text" as const,
-      summary_text: "公开场合互动：向大家介绍 ai0 数字生命微内核与可插拔具身协议的设计理念。",
-      payload_json: JSON.stringify({ venue: "public_livestream" }),
-      state_rev_after: 5,
-      active_modules_mask: 31
-    }
-  ];
+  const events = demoEvents(base, day);
 
   for (const event of events) {
     storage.appendEvent(event);

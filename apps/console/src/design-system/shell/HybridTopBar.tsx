@@ -137,7 +137,7 @@ export function HybridTopBar(props: HybridTopBarProps): ReactElement {
 
         <div className="ai0-topbar-actions">
           {props.vitalSummary ? (
-            <Tooltip describeChild title={<>心境、节律精力和算力预算</>} placement="bottom">
+            <Tooltip describeChild title={<>心境、节律精力和代谢精力</>} placement="bottom">
               <span className="ai0-top-vital-strip" tabIndex={0}>
                 <span className={"ai0-status-dot" + (targetMode === "sandbox" ? " is-sandbox" : "")} />
                 {props.vitalSummary}

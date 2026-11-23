@@ -6,7 +6,6 @@ import {
 import { useState, type ReactElement } from "react";
 
 import { useConsole } from "../context/ConsoleContext.js";
-import { MountedShellStageHost } from "../design-system/domain-visualizers/MountedShellStageHost.js";
 import { CompactInput, CompactSelect, JellySwitch, RippleButton } from "../design-system/primitives/index.js";
 import { MainRoundedCardOutlet } from "../design-system/shell/index.js";
 import { renderConsoleIcon } from "../design-system/tokens/index.js";
@@ -221,15 +220,6 @@ export function Domain2ShellsPage(props: Domain2ShellsPageProps): ReactElement {
             </WorkspaceGrid>
           </WorkspaceSection>
         </WorkspacePage>
-      </MainRoundedCardOutlet>
-    );
-  }
-
-  if (route?.id === "shells.stage") {
-    const pluginId = route.params.shellPluginId ?? "builtin.webchat";
-    return (
-      <MainRoundedCardOutlet domainId="shells" activePath={props.pathname} onNavigate={props.onNavigate}>
-        <MountedShellStageHost shellPluginId={pluginId} snapshot={snap} />
       </MainRoundedCardOutlet>
     );
   }

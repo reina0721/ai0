@@ -8,7 +8,6 @@ import {
   HandshakeAckSchema,
   HandshakeManifestSchema,
   PerceptionEnvelopeSchema,
-  PrincipalTrustSchema,
   computeSpokenCharOffsetFromAudioMs,
   type AudienceScope,
   type DeliveryReceipt,
@@ -33,6 +32,11 @@ export interface ScopedCapabilityClaims {
   max_audience_privacy_ceiling: AudienceScope;
   allowed_modalities: string[];
   expires_at_ts_ms: number;
+  principal_id?: string;
+  soul_id?: string;
+  target?: "live" | "sandbox";
+  plugin_id?: string;
+  generation?: string;
 }
 
 export class ScopedCapabilityTokenError extends Error {
@@ -58,6 +62,11 @@ function validateClaims(value: unknown): ScopedCapabilityClaims {
     shell_id: value.shell_id,
     max_audience_privacy_ceiling: value.max_audience_privacy_ceiling as AudienceScope,
     allowed_modalities: [...value.allowed_modalities] as string[],
+    ...(typeof value.soul_id === "string" ? { soul_id: value.soul_id } : {}),
+    ...(typeof value.principal_id === "string" ? { principal_id: value.principal_id } : {}),
+    ...(value.target === "sandbox" || value.target === "live" ? { target: value.target } : {}),
+    ...(typeof value.plugin_id === "string" ? { plugin_id: value.plugin_id } : {}),
+    ...(typeof value.generation === "string" ? { generation: value.generation } : {}),
     expires_at_ts_ms: value.expires_at_ts_ms
   };
 }
@@ -117,6 +126,8 @@ export interface ShellProtocolGatewayOptions {
 }
 
 interface ShellSession {
+  lastSeen: number;
+  target: "live" | "sandbox";
   direction: "inbound" | "outbound";
   manifest: HandshakeManifest;
   claims: ScopedCapabilityClaims;
@@ -172,8 +183,10 @@ export class ShellProtocolGateway {
     const manifest = HandshakeManifestSchema.parse(manifestInput);
     const claims = verifyScopedCapabilityToken(manifest.auth_token, secretKey);
     if (claims.shell_id !== manifest.shell_id) throw new ScopedCapabilityTokenError("INVALID_CLAIMS");
+    manifest.current_audience.scope = enforceAudienceScope(manifest.current_audience.scope, claims.max_audience_privacy_ceiling);
+    manifest.capabilities.sensors = manifest.capabilities.sensors.filter(sensor => claims.allowed_modalities.includes(sensor));
     const sessionId = randomUUID();
-    const session: ShellSession = { direction, manifest, claims,
+    const session: ShellSession = { lastSeen: Date.now(), target: claims.target ?? "live", direction, manifest, claims,
       debounce: new TurnDebounceAggregator(this.clock, SHELL_DEBOUNCE_WINDOW_MS), debounceState: "IDLE" };
     this.sessions.set(sessionId, session);
     const ack = HandshakeAckSchema.parse({ session_id: sessionId, accepted_version: "0.1.0",
@@ -181,6 +194,51 @@ export class ShellProtocolGateway {
       max_audience_privacy_ceiling: claims.max_audience_privacy_ceiling,
       entity_nature: "artificial_intelligence_digital_life", server_virtual_ts_ms: this.clock.nowMs() });
     return { ack, sessionId };
+  }
+
+  listConnections(target: string) {
+    const result = [];
+    for (const [id, session] of this.sessions) {
+      if (Date.now() >= Math.min(session.claims.expires_at_ts_ms, session.lastSeen + 45_000)) {
+        this.sessions.delete(id);
+        continue;
+      }
+      if (session.target !== (target === "live" ? "live" : "sandbox")) continue;
+      result.push({ session_id: id, shell_id: session.manifest.shell_id, venue_type: session.manifest.venue_type,
+        audience_scope: session.manifest.current_audience.scope, modality: session.manifest.capabilities.sensors[0],
+        capabilities: session.manifest.capabilities, last_active_ts_ms: session.lastSeen });
+    }
+    return result;
+  }
+
+  connectionForGrant(id: string, token: string) {
+    const session = this.sessions.get(id);
+    if (!session || session.manifest.auth_token !== token ||
+        Date.now() >= Math.min(session.lastSeen + 45_000, session.claims.expires_at_ts_ms)) return undefined;
+    return { target: session.target, shell: session.manifest.shell_id, audience: session.manifest.current_audience.scope,
+      actuators: session.manifest.capabilities.actuators, principal: session.claims.principal_id ?? "unknown" };
+  }
+
+  updateConnection(id: string, token: string, close: boolean, capabilities?: HandshakeManifest["capabilities"]) {
+    const session = this.sessions.get(id);
+    if (!session || session.manifest.auth_token !== token || session.lastSeen + 45_000 <= Date.now()
+        || session.claims.expires_at_ts_ms <= Date.now()) return false;
+    if (close) this.sessions.delete(id);
+    else {
+      if (capabilities) {
+        const updated = HandshakeManifestSchema.parse({ ...session.manifest, capabilities });
+        updated.capabilities.sensors = updated.capabilities.sensors.filter(sensor => session.claims.allowed_modalities.includes(sensor));
+        session.manifest = updated;
+      }
+      session.lastSeen = Date.now();
+    }
+    return true;
+  }
+
+  disconnectPlugin(id: string, target: string) {
+    for (const [key, session] of this.sessions) {
+      if (session.target === target && session.claims.plugin_id === id) this.sessions.delete(key);
+    }
   }
 
   handlePerception(sessionId: string, input: PerceptionEnvelope | Record<string, unknown>): {
@@ -195,7 +253,7 @@ export class ShellProtocolGateway {
       ? envelope.extensions["ext.gateway.context.v1"] as Record<string, unknown> : {};
     const claimedAudience = AudienceScopeSchema.parse(
       original.audience_scope ?? extension.audience_scope ?? session.manifest.current_audience.scope);
-    const claimedTrust = PrincipalTrustSchema.parse(original.principal_trust ?? extension.principal_trust ?? "stranger");
+    const claimedTrust = session.claims.principal_id === "owner:local" ? "owner_verified" : "stranger";
     const audience = enforceAudienceScope(claimedAudience, session.claims.max_audience_privacy_ceiling);
     const sanitized: GatewayPerceptionEnvelope = { ...envelope, audience_scope: audience,
       principal_trust: audience === claimedAudience ? claimedTrust : "stranger" };
@@ -272,7 +330,8 @@ export class ShellProtocolGateway {
   private requireSession(sessionId: string): ShellSession {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error("UNKNOWN_SHELL_SESSION");
-    if (session.claims.expires_at_ts_ms <= Date.now()) throw new ScopedCapabilityTokenError("EXPIRED");
+    if (Math.min(session.lastSeen + 45_000, session.claims.expires_at_ts_ms) <= Date.now()) throw new ScopedCapabilityTokenError("EXPIRED");
+    session.lastSeen = Date.now();
     return session;
   }
 }

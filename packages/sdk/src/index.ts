@@ -1,3 +1,5 @@
+export * from "./composition.js";
+import type { ExtensionScope } from "./composition.js";
 import {
   Ai0ExtensionManifestSchema,
   SkillMarkdownFrontmatterSchema,
@@ -25,11 +27,13 @@ export interface Ai0ShellStageHostState {
   readonly error?: string;
   readonly protocolBasePath: string;
   readonly authToken: string;
+  readonly journal?: readonly { title: string; date: string; content: string }[];
   readonly recentTraces?: readonly VerifiableTurnTrace[];
 }
 
 /** Framework-agnostic host bridge passed to mounted slot.shells.mounted_stage plugins. */
 export interface Ai0ShellStageHostBridge {
+  readonly contributions?: ExtensionScope;
   readonly extensionId: string;
   readonly shellId: string;
   getState(): Ai0ShellStageHostState;
@@ -44,6 +48,20 @@ export interface Ai0ShellStageHostBridge {
   }): Promise<VerifiableTurnTrace | undefined>;
 }
 
+export type ConsolePageState = Pick<Ai0ShellStageHostState,
+  "mode" | "targetInstance" | "soulId" | "personaName" | "soulTheme" | "appearance" | "journal">;
+
+export interface ConsolePageHost {
+  readonly extensionId: string;
+  readonly contributions: ExtensionScope;
+  readonly shell?: Ai0ShellStageHostBridge;
+  getState(): ConsolePageState;
+  subscribe(listener: (state: ConsolePageState) => void): () => void;
+  showToast(message: string): void;
+}
+export interface ConsolePageModule<TContainer = unknown> {
+  mountPage(container: TContainer, host: ConsolePageHost): Ai0ShellStageCleanup | Promise<Ai0ShellStageCleanup>;
+}
 export type Ai0ShellStageCleanup = (() => void) | { unmount(): void };
 
 export interface Ai0ShellStageModule<TContainer = unknown> {

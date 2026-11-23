@@ -64,14 +64,14 @@
 为此，本架构将系统扩展体系设计为 **《八大功能扩展总线（Where it hooks） × 五阶多态异构扩展载体（How it's built & played）》**（详细接口规范见 `docs/architecture/05-eight-dimension-extension-system.md`）：
 
 ### 3.1 八大功能扩展总线（The 8 Functional Buses）
-1. **`ext.shell`（具身运行环境总线 — 系统核心一等交互架构层）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers` 含动态表现力词典 `expression_vocabulary`）与什么端侧身体动作（`Actuators`）”（桌宠、Live2D/3D、微信/QQ/Discord、Minecraft 等游戏、以及挂载在控制台内的 Web 交互舞台插件如 `plugins/shells/webchat`）。
+1. **`ext.shell`（具身运行环境总线 — 系统核心一等交互架构层）**：决定“她在哪里存在、拥有什么感官探针（`Sensors`）、什么多模态表达渲染器（`Realizers` 含动态表现力词典 `expression_vocabulary`）与什么端侧身体动作（`Actuators`）”（桌宠、Live2D/3D、微信/QQ/Discord、Minecraft 等游戏、以及挂载在控制台内的 网页交互插件如 `plugins/shells/webchat`）。
 2. **`ext.media_pipeline`（多模态音视频与感官管线总线）**：位于躯壳与大脑之间的信号加工厂——如流式 ASR 语音识别、情感 TTS 语音合成（GPT-SoVITS / FishAudio / ElevenLabs）、声线滤镜、摄像头微表情语义提取器。
 3. **`ext.cognitive_organ`（大脑认知器官与生命周期钩子总线）**：允许社区研究者插拔或新增大脑内部的认知子系统（三大钩子：`contributeToBlackboard` / `onTurnCompleted` / `onSleepCycleWakeup`）——如自定义情绪动力学算法、睡眠期梦境日记器官、塔罗心境器官。
 4. **`ext.action_mcp_skill`（外部行动工具与复合技能包总线）**：决定“她能调用什么外部软件工作流协助或陪伴使用者完成任务”（标准 MCP Servers、HTTP Webhook/OpenAPI 桥接器与包含角色内执行姿态的复合 `SKILL.md` 行动技能手册）。
 5. **`ext.memory_knowledge`（内建混合 RAG 知识库与外部活体知识连接器总线）**：在内核**开箱即用内建混合 RAG 引擎（PDF/MD/代码分块 + `sqlite-vec` 稠密向量 + FTS5 BM25 稀疏检索 + Reranker）**基础上，支持热插拔连接 Obsidian 笔记库、Notion、本地代码库、游戏/番剧设定 Wiki，并在卸载时自动浓缩生成 `<150` 字 `CrystallizedGistCard` 常识卡。
 6. **`ext.model_provider`（模型推理后端与角色 LoRA 总线）**：接入各类云端 API、本地推理引擎（Ollama / vLLM / llama.cpp）、Embedding/Reranker、本地安全危机分类器以及角色专属 **LoRA 权重热切换器**。
 7. **`ext.soul_asset`（灵魂模板、世界观词库、关系里程碑与评测剧本总线）**：支持社区零代码安全分享不含私人记忆的“纯净角色基因包（`.soul-template`）”、SillyTavern 角色卡（V2/V3）、动态世界观词库（`Lorebook`）、关系羁绊里程碑与纪念日正向剧情触发包（`milestones_and_rituals.yaml`）及回归测试剧本（`.scenario.yaml`）。
-8. **`ext.console_ui`（控制台动态 UI 视图、专属配置页与 Web 躯壳挂载槽总线）**：允许任何扩展在 WebUI 控制台中动态注册自己的专属配置面板、实时状态监控卡片、独立路由页面（`/extensions/custom/:pluginId`）或挂载 Web 具身躯壳互动舞台（`/shells/stage/:shellPluginId`）。
+8. **`ext.console_ui`** 允许插件声明页面和配置表单。页面可向其他插件提供扩展点。
 
 ### 3.2 五阶多态异构扩展载体（The 5 Polymorphic Extension Carriers）
 * **载体 I（零代码声明式资产包 `.yaml / .json / .png`）**：角色卡、`.soul-template`、`Lorebook`、`milestones_and_rituals.yaml`、`.scenario.yaml`，网页拖拽即食；
@@ -90,7 +90,7 @@
    系统的核心本体永远是无头（Headless）的**数字生命认知微内核**，而 `WebUI 控制台（@ai0/console-webui）` 是系统标配的**内建实体控制平面**，默认根路由首屏为 **`/dashboard`（数字生命全景态势、活跃 `Shells` 星图与系统总览大盘）**。
 2. **正本清源 `Shell（具身运行环境）` 的一等架构地位，剥离 `plugins/shells/webchat` 的越位层级**：
    * 系统真正的顶层交互架构层是 **`Shell（具身运行环境，ext.shell）`**（作为控制台第 2 大核心一级导航域 `/shells/*`，统领所有桌宠、Live2D/3D、IM、游戏与 Web 躯壳的双向连接、三平面能力、注意力焦点仲裁、丘脑门控与媒体管线）。
-   * **`plugins/shells/webchat` 绝不是控制台的一个顶层架构层面或顶栏模式**——它仅仅是遵循 `Shell` 架构与 `Protocol v0` 的一个默认预装插件，启用后通过 `ext.console_ui` 在 `/shells/stage/builtin.webchat` 下动态挂载一个普通子路由页面（与社区开发的 Web Live2D/3D 舞台插件 100% 平权，可随时替换或禁用，绝不绑架控制台本身架构）。
+   * WebChat 通过自己的 `/webchat` 页面提供网页会话，通过躯壳协议接入网关。
 3. **后端全量设计 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形层 -> Tier-V2 紧凑表单层 -> Tier-V3 权威源码层`）**：
    * 采用 **`ai0` 第一方紧凑二次封装 MD3 设计语言**（无边框 L 型环境底板 + 单一 `16px` 圆角主画布、5 级动态灵魂色调表面、紧凑 `32px` 控件、单色 `currentColor` SVG 图标、真实指针水波纹与弹簧/果冻物理缓动），将后端全量认知机制、五阶多态扩展配置与系统基建 100% 零阉割投射至前端 **8 大一级导航域 × 30 条专职子路由**。
 
@@ -100,7 +100,7 @@
 
 * **关键工程边界：“运行扩展”在后台内核，“管理扩展”在网页控制台**：
   * **前 7 大功能总线（`ext.shell` 至 `ext.soul_asset`）由后台无头守护进程 `@ai0/kernel` & `@ai0/daemon` 宿主运行**；关闭浏览器丝毫不影响数字生命与后台扩展持续运转；
-  * **只有第 8 总线 `ext.console_ui`（插件贡献的配置表单、监控卡片或挂载在 `/shells/stage/:id` 的 Web 躯壳页面）才在打开控制台对应路由时按需渲染**。
+   * 页面模块在访问插件声明的路由时挂载。
 
 ### 4.3 常驻多态应用外壳、`LIVE / SANDBOX` 二元实例环境隔离与 `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet`）
 
@@ -117,7 +117,7 @@
 
 | 视图结构母版 (View Archetype) | 在 `<main>` 圆角卡片大盒子内部的结构与交互特征 | 承载的 8 大一级导航域与核心专职子路由 | 对应的内核与扩展架构层 |
 | :--- | :--- | :--- | :--- |
-| **母版 I：插件挂载互动舞台与伴生白盒检视态**<br/>*(Mounted Shell Stage & Companion Inspector)* | `<main>` 圆角卡片盒子内渲染已挂载的 Web `Shell` 舞台或虚拟躯壳模拟器；点击右上角或话轮联动展开右侧 `400px` **8 步可验证决策轨迹**与 `SpoilerMask` 毛玻璃潜台词剧透副栏 | • `/shells/stage/:shellPluginId`（如挂载零特权 `builtin.webchat` 或社区 Web Live2D/3D 舞台插件）<br/>• `/shells/simulator`（内置免客户端虚拟躯壳与多模态感官调试模拟器） | `ext.shell` + `Protocol v0` 网关 + 只读审计轨迹表 |
+| **母版 I：插件页面** | 主工作区加载插件声明的网页模块。 | WebChat 与社区页面 |
 | **母版 II：高密度态势指标带与多轨实时流监控态**<br/>*(Telemetry Strip, Topology & Multi-Stream Terminal)* | `<main>` 圆角卡片盒子内上方为紧凑水平态势指标带或连接拓扑星图，下方通过 `1px` 分割线无缝衔接高对比暗色等宽四轨融合终端或状态机看板 | • **域 1 首页** `/dashboard`（数字生命全景态势总览默认根首屏）<br/>• **域 2 躯壳** `/shells/topology`（双向具身网关与在线 `Shell` 三平面星图：`Sensors` 视神经感官覆盖桶 `live_foveal/stale` TTL、`Realizers` 动态表现力词典、`Actuators` 动态热更新）<br/>• **域 7 运行时** `/runtime/coordinator-agency`（MVCC 五域水位、机会池 `InteractionOpportunity` 与 `W2` 8步行动看板）& `/runtime/terminal`（四轨融合遥测终端） | `@ai0/gateway` + MVCC 协调器 + 四路 Worker + 8 步行动认知环 |
 | **母版 III：主从分节 Schema 配置器、降维曲线与版本 Diff 审批态**<br/>*(Master-Detail Configurator, Visual Curve & Diff Approval)* | `<main>` 圆角卡片盒子内左侧为二级锚点栏，右侧为 `Tier-V1` 拖拽曲线/积木矩阵 + `Tier-V2` 紧凑 `32px` 表单 + `Tier-V3` 源码切换，底部内嵌粘性 `FloatingDirtyDiffBar` 与双栏 Diff 审批器 | • **域 1 黑板** `/dashboard/blackboard`（`<2500 Token` 认知黑板槽位积木编排器与公私场合 70% 社交面具模拟器）<br/>• **域 2 感官与媒体** `/shells/attention-arbitration` & `/shells/thalamic-gate` & `/shells/media-pipeline`（三锚点关键帧排练台）<br/>• **域 3 灵魂** `/soul/persona`（三层人格与演化双栏 Diff 审批）& `/soul/lorebooks`（激活模拟器）& `/soul/homeostasis`（24h 生物钟与二阶情绪拖拽画布）<br/>• **域 4 检索** `/memory/retrieval-sleep`（混合检索公式沙盒、睡眠防反刍与 `W3` 好奇心外部冲浪源）<br/>• **域 5 算力** `/models/providers` & `/models/routing`（五脑区路由、算力代谢犯困降级环与声线漂移雷达图）<br/>• **域 6 扩展配置** `/extensions/configurator`（动态 `config_schema` 热重载与 `D1~D5` 黑板域权限矩阵）& `/extensions/cognitive-organs`（大脑器官三钩子工作台）<br/>• **域 8 系统底座** `/system/safety-sb243` & `/system/settings-security`（认证、Secrets Vault 密钥保险箱与网络代理） | 黑板编译器 + 五脑区路由器 + 内稳态与 `VirtualClock` + `ext.media_pipeline` + Tier 0 安全层 |
 | **母版 IV：交互式全幅拓扑画布与时间线资产治理态**<br/>*(Interactive Graph Canvas & Timeline Governance)* | `<main>` 圆角卡片盒子内上方为多维溯源过滤栏，中央为全幅可缩放 DAG 拓扑画布/时间轴/规则连线画布，右侧内嵌节点手术台抽屉 | • **域 4 记忆与关系** `/memory/lineage`（四级溯源血缘 DAG、双时态 `supersedes` 折叠链、`CommonGround` 默契三态、`Hard Forget` 五表擦除与 `redaction_ledger` 墓碑手术台）& `/memory/relationship`（关系雷达、心结48h一键释怀、共同经历里程碑画廊 `milestones_and_rituals.yaml` 与跨平台身份绑定图谱）<br/>• **域 6 流程编排** `/extensions/flows-eca`（跨插件 `When->If->Then` ECA 联动积木与 `.flow.yaml` 蓝图编排器）<br/>• **域 8 实例与快照** `/system/instances-storage`（多 `.soul` 实例、Git 快照回档弥合与 SQLite WAL/vec/FTS5 健康中心） | `.soul` 存储底座 + 血缘 DAG 引擎 + 关系里程碑引擎 + 跨插件编排引擎 |

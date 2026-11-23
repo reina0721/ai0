@@ -1,0 +1,196 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
+import { afterEach, expect, it } from "vitest";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer, createUnifiedDaemonHttpApp } from "./index.js";
+import { createDefaultConsoleStudioConfig, readConsoleStudioConfig, readSoulArchiveConfig } from "@ai0/storage";
+
+const cleanups: Array<() => void> = [];
+afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), "ai0-composition-"));
+  cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+  const soulDir = join(root, "person.soul"), builtinPluginsDir = join(root, "plugins");
+  const ownerMasterToken = randomUUID();
+  const start = () => createDefaultDaemonRuntime({ soulDir, builtinPluginsDir, ownerMasterToken });
+  let runtime = start();
+  let app = createUnifiedDaemonHttpApp(runtime);
+  cleanups.push(() => runtime.close());
+  const request = (path: string, method = "GET", data?: unknown, token = ownerMasterToken as string) =>
+    app.request(path, { method, headers: { authorization: "Bearer " + token,
+      "x-ai0-owner-token": token === ownerMasterToken ? token : "", "content-type": "application/json" },
+      ...(data !== undefined ? { body: JSON.stringify(data) } : {}) });
+  return { root, soulDir, builtinPluginsDir, request,
+    get runtime() { return runtime; },
+    restart() { runtime.close(); runtime = start(); app = createUnifiedDaemonHttpApp(runtime); }
+  };
+}
+
+it("keeps discovery, presence, confirmed messages and identity independent across removal and restart", async () => {
+  const f = fixture();
+  const snapshot = () => f.runtime.buildConsoleLiveSnapshot();
+  const empty = await snapshot();
+  expect(empty).toMatchObject({ activeConnections: 0, eventsCount: 0, conversations: [], extensions: [] });
+  expect(empty.studioConfig?.agency.activeTasks).toEqual([]);
+  const root = join(f.builtinPluginsDir, "view");
+  mkdirSync(root, { recursive: true });
+  const file = join(root, "ai0.extension.json");
+  writeFileSync(file, JSON.stringify({ extension_id: "test.view", dimension: "ext.shell",
+    console_contributions: { ui_slots: [{ slot_target: "slot.shells.mounted_stage", widget_type: "web_stage_module",
+      title: "View", shell_id: "view.default", entry_module: "./dist/view.js" }] } }));
+  expect((await snapshot()).extensions[0]).toMatchObject({ missingAssets: ["./dist/view.js"], uiSlots: [] });
+  expect((await f.request("/api/plugins/test.view/stage-token", "POST")).status).toBe(409);
+  mkdirSync(join(root, "dist"));
+  writeFileSync(join(root, "dist/view.js"), "export function mountShellStage() {}");
+  const token = (await (await f.request("/api/plugins/test.view/stage-token", "POST")).json()).token;
+  expect(typeof token).toBe("string");
+  const sandboxToken = (await (await f.request("/api/plugins/test.view/stage-token?mode=sandbox", "POST")).json()).token;
+  expect(await f.runtime.reloadExtension("test.view", "sandbox", { theme: "blue" }, 0)).toBe(1);
+  expect((await f.request("/protocol/v0/shell/history?mode=sandbox", "GET", undefined, sandboxToken)).status).toBe(401);
+  expect((await f.request("/protocol/v0/shell/history?mode=live", "GET", undefined, token)).status).toBe(200);
+  expect(f.runtime.sandboxExtensionHost.listExtensions()[0]?.config).toMatchObject({ theme: "blue" });
+  expect((await snapshot()).activeConnections).toBe(0);
+
+  const grant = async (shellId: string, audience: string) => {
+    const response = await f.request("/api/studio/shell-grants", "POST",
+      { shellId, audience, principalId: "owner:local", externalUserId: "verified-account" });
+    expect(response.status).toBe(200);
+    return (await response.json()).token as string;
+  };
+  const qq = await grant("qq.adapter", "group:lab");
+  const avatar = await grant("live2d.avatar", "only_owner");
+  async function connect(shell_id: string, token: string, scope: string) {
+    const response = await f.request("/protocol/v0/shell/connections", "POST", { protocol_version: "0.1.0",
+      shell_id, shell_kind: "im_bridge", display_name: shell_id, venue_type: scope === "only_owner" ? "private_1on1" : "group_chat",
+      current_audience: { scope, member_count: 1 }, latency_budget_ms: 300,
+      capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] } }, token);
+    expect(response.status).toBe(200);
+    return (await response.json()).session_id;
+  }
+  await connect("view.default", token, "only_owner");
+  await connect("qq.adapter", qq, "group:lab");
+  const avatarId = await connect("live2d.avatar", avatar, "only_owner");
+  expect((await snapshot()).activeConnections).toBe(3);
+
+  async function send(token: string, text: string) {
+    const requestId = randomUUID();
+    const response = await f.request("/protocol/v0/shell/runs", "POST", { text, mode: "live", requestId }, token);
+    expect(response.status).toBe(200);
+    const frames = (await response.text()).split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
+    const reply = frames.filter(frame => frame.type === "text-delta").map(frame => frame.delta).join("");
+    expect(reply).not.toBe("");
+    return { id: requestId, reply };
+  }
+  const actuators = [{ actuator_id: "avatar.nod", description: "Nod", parameters_json_schema: {}, requires_local_user_consent: false }];
+  await f.request("/protocol/v0/shell/connections/" + avatarId, "PATCH", {
+    capabilities: { sensors: ["text"], supported_extensions: [], actuators }
+  }, avatar);
+  const dispatch = await f.request("/api/studio/shell-actions", "POST", { sessionId: avatarId, actuatorId: "avatar.nod" });
+  expect(dispatch.status).toBe(201);
+  const action = await dispatch.json();
+  const actionPath = "/protocol/v0/shell/connections/" + avatarId + "/actions";
+  expect(await (await f.request(actionPath, "GET", undefined, avatar)).json()).toMatchObject({ actions: [{ intent_id: action.intent_id }] });
+  const privateTurn = { id: randomUUID() };
+  const qqTurn = send(qq, "今天群内公开讨论。");
+  const stream = await f.request("/protocol/v0/shell/runs", "POST", {
+    requestId: privateTurn.id, mode: "live", text: "昨天网页上的私密交谈。"
+  }, token);
+  const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let frames = "";
+  while (!frames.includes('"type":"text-delta"')) {
+    const chunk = await reader.read();
+    expect(chunk.done).toBe(false);
+    frames += chunk.value;
+  }
+  rmSync(file);
+  await f.runtime.refreshCapabilities();
+  while (true) { const chunk = await reader.read(); if (chunk.done) break; frames += chunk.value; }
+  expect(frames).not.toContain('"type":"text-end"');
+  const publicTurn = await qqTurn;
+  const after = await snapshot();
+  expect(after.activeConnections).toBe(2);
+  expect(after.extensions).toHaveLength(0);
+  expect((await f.request("/protocol/v0/shell/history?mode=live", "GET", undefined, token)).status).toBe(401);
+  expect(after.conversations?.map(row => row.messageCount)).toEqual([1, 1]);
+  const receipt = { mode: "live", spokenCharOffset: Array.from(publicTurn.reply).length };
+  for (let i = 0; i < 2; i++) expect((await f.request("/protocol/v0/shell/runs/" + publicTurn.id + "/receipt", "POST", receipt, qq)).status).toBe(200);
+  expect((await f.request("/protocol/v0/shell/connections/" + avatarId, "PATCH", {
+    capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] }
+  }, avatar)).status).toBe(200);
+  const outcome = { intent_id: action.intent_id, chunk_seq: 0, status: "completed", actuator_outcome: { success: true, result_summary: "点头完成" } };
+  expect((await f.request(actionPath, "POST", outcome, qq)).status).toBe(403);
+  for (let attempt = 0; attempt < 2; attempt++) expect((await f.request(actionPath, "POST", outcome, avatar)).status).toBe(200);
+  expect(f.runtime.storage.getEventById("evt_action_" + action.intent_id)?.summary_text).toBe("点头完成");
+  const latest = await snapshot();
+  expect(latest.conversations?.find(row => row.platform === "qq.adapter")?.messageCount).toBe(2);
+  const conversation = latest.conversations!.find(row => row.platform === "view.default")!.umo;
+  const historyPath = "/api/studio/conversations/history?conversation=" + encodeURIComponent(conversation);
+  expect((await (await f.request(historyPath)).json()).messages[0]).toMatchObject({ evidenceId: "evt_shell_" + privateTurn.id, deliveryStatus: "unknown" });
+  f.restart();
+  expect(await snapshot()).toMatchObject({ soulId: empty.soulId, activeConnections: 0, stateRev: latest.stateRev });
+  expect((await (await f.request(historyPath)).json()).messages).toHaveLength(1);
+  expect((await (await f.request("/protocol/v0/shell/history?mode=live", "GET", undefined, qq)).json()).turns)
+    .toMatchObject([{ userText: "今天群内公开讨论。" }]);
+  // A separate, non-browser process uses a new shell grant bound to the same person.
+  const terminal = await grant("builtin.terminal.default", "only_owner");
+  const server = createUnifiedDaemonHttpServer(f.runtime);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const child = spawn(process.execPath, ["plugins/shells/terminal/client.mjs"], { windowsHide: true,
+      env: { ...process.env, AI0_URL: "http://127.0.0.1:" + (server.address() as AddressInfo).port, AI0_SHELL_TOKEN: terminal } });
+    let output = "", errors = "";
+    child.stdout.on("data", chunk => { output += chunk; });
+    child.stderr.on("data", chunk => { errors += chunk; });
+    const ended = once(child, "close");
+    child.stdin.end("换个载体继续聊。\n");
+    expect((await ended)[0], errors).toBe(0);
+    expect(output.trim()).not.toBe("");
+    const rows = (await snapshot()).conversations!;
+    expect(rows.find(row => row.platform === "builtin.terminal.default")).toMatchObject({ label: "owner:local", messageCount: 2 });
+    expect(rows).toHaveLength(3);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+  const created = await f.request("/api/studio/instances", "POST", { slug: "another", displayName: "另一位", primaryRole: "best_friend" });
+  expect(created.status).toBe(200);
+  expect(readSoulArchiveConfig(join(f.root,"another.soul")).manifest.soul_id).not.toBe(empty.soulId);
+});
+
+it("preserves invalid originals and backs up legacy configuration before migration", () => {
+  const f = fixture();
+  const configPath = join(f.soulDir, "config", "console_studio.json");
+  const source = { ...createDefaultConsoleStudioConfig("名字"), version: 4 };
+  writeFileSync(configPath, JSON.stringify(source));
+  expect(readConsoleStudioConfig(f.soulDir).soulStudio.displayName).toBe("名字");
+  const backup = readdirSync(join(f.soulDir, "config")).find(name => name.endsWith(".bak"))!;
+  expect(JSON.parse(readFileSync(join(f.soulDir, "config", backup), "utf8"))).toEqual(source);
+  writeFileSync(configPath, "damaged original");
+  expect(() => readConsoleStudioConfig(f.soulDir)).toThrow();
+  expect(readFileSync(configPath, "utf8")).toBe("damaged original");
+});
+
+it("links task completion to a real executor and W3 memory to its source", async () => {
+  const f = fixture();
+  async function task(action: string, taskId?: string) {
+    return (await f.request("/api/studio/co-work-task", "POST", { action, taskId, title: "research", subAgentId: "sub_research_scholar" })).json();
+  }
+  const id = (await task("create")).task.id;
+  expect((await task("approve", id)).task.status).toBe("queued");
+  expect((await task("complete", id)).ok).toBe(false);
+  const result = (await task("execute", id)).task;
+  expect(JSON.parse(f.runtime.storage.getEventById(result.evidenceId)!.payload_json)).toMatchObject({ query: "research", chunk_ids: [] });
+  expect((await task("execute", id)).task.evidenceId).toBe(result.evidenceId);
+  const turn = await f.runtime.handleShellTurn({ text: "记录今天的研究", principalId: "owner:local" });
+  const report = f.runtime.workers.w3.runSleepMemoryConsolidation();
+  expect(report).toBe(1);
+  expect(f.runtime.workers.w3.runSleepMemoryConsolidation()).toBe(0);
+  expect(f.runtime.storage.sqlite.prepare("SELECT visibility_scope FROM memories WHERE memory_id=?")
+    .get("mem_consolidated_" + turn.trace.turn_event_id)?.visibility_scope).toBe("only_owner");
+});

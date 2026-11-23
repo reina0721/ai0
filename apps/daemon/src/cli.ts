@@ -1,3 +1,4 @@
+import { registerShellActions } from "./shell-actions.js";
 import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
@@ -11,16 +12,18 @@ import { streamSSE } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { GOLDEN_REGRESSION_SCENARIO_V1, runScenarioPlaybook } from "@ai0/kernel";
-import type { AudienceScope, SensorModality, VenueType } from "@ai0/protocol";
+import { AudienceScopeSchema, HandshakeManifestSchema, type AudienceScope, type SensorModality, type VenueType } from "@ai0/protocol";
 import {
   compileStudioPromptPreview,
   readConsoleStudioConfig,
+  readSoulArchiveConfig,
   type RelationshipArchetype
 } from "@ai0/storage";
 
 import { createDefaultDaemonRuntime, type Ai0DaemonRuntime } from "./index.js";
 import { registerShellProtocolRunRoutes } from "./shell-runs.js";
 import {
+  readConversation,
   createNewSoulInstance,
   createPrivacyScrubbedReleasePackage,
   dispatchOrAdvanceCoWorkTask,
@@ -132,9 +135,28 @@ export function createUnifiedDaemonHttpApp(
     const patch = (
       typeof body.patch === "object" && body.patch !== null ? body.patch : body
     ) as Record<string, unknown>;
+    if ("ecosystem" in patch && !isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const saved = updateStudioConfig(runtime, patch);
     const snapshot = await runtime.buildConsoleLiveSnapshot("live");
     return c.json({ ok: true, config: saved, snapshot });
+  });
+
+  app.post("/api/studio/plugin-enabled", async (c) => {
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
+    const { id, enabled } = await readJsonObject(c);
+    if (typeof id !== "string" || typeof enabled !== "boolean") return c.json({ error: "INVALID_PLUGIN_SETTING" }, 400);
+    const plugin = runtime.pluginLoader.getPlugin(id);
+    if (!plugin) return c.json({ error: "PLUGIN_NOT_FOUND" }, 404);
+    const { plugins } = readConsoleStudioConfig(runtime.soulDir).ecosystem;
+    const existing = plugins.find(item => item.id === id);
+    if (existing) existing.enabled = enabled;
+    else {
+      const { display_name: name, version, dimension: bus, carrier_kind: carrier } = plugin.manifest;
+      plugins.push({ id, name, version, bus, carrier, enabled, description: "", configFields: [] });
+    }
+    updateStudioConfig(runtime, { ecosystem: { plugins } });
+    await runtime.refreshCapabilities();
+    return c.json({ ok: true });
   });
 
   app.post("/api/studio/prompt-preview", async (c) => {
@@ -177,7 +199,7 @@ export function createUnifiedDaemonHttpApp(
   app.post("/api/studio/co-work-task", async (c) => {
     const body = await readJsonObject(c);
     const result = dispatchOrAdvanceCoWorkTask(runtime, {
-      action: (body.action as "create" | "approve" | "complete" | "pause") ?? "create",
+      action: (body.action as "create" | "approve" | "complete" | "execute" | "pause") ?? "create",
       taskId: typeof body.taskId === "string" ? body.taskId : undefined,
       title: typeof body.title === "string" ? body.title : undefined,
       subAgentId: typeof body.subAgentId === "string" ? body.subAgentId : undefined
@@ -292,7 +314,7 @@ export function createUnifiedDaemonHttpApp(
     return c.json({ ok: true, config: saved });
   });
 
-  app.all("/api/studio/*", (c) => c.json({ error: "UNKNOWN_STUDIO_ENDPOINT" }, 404));
+
 
   // ---------------------------------------------------------------------------
   // Dynamic Plugin Discovery, Manifest & Self-Contained Asset Hosting (/api/plugins/*)
@@ -308,6 +330,38 @@ export function createUnifiedDaemonHttpApp(
     return new Map(studio.ecosystem.plugins.map((entry) => [entry.id, entry.enabled]));
   };
 
+  app.use("/api/plugins/*", async (_c, next) => { await runtime.refreshCapabilities(); await next(); });
+  app.post("/api/studio/shell-grants", async c => {
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
+    const body = await readJsonObject(c);
+    const { shellId, externalUserId, principalId } = body;
+    const audience = AudienceScopeSchema.safeParse(body.audience);
+    if (typeof shellId !== "string" || !/^[a-z0-9][a-z0-9._-]{1,95}$/i.test(shellId) ||
+        typeof externalUserId !== "string" || !externalUserId.trim() ||
+        typeof principalId !== "string" || !principalId.trim() || !audience.success ||
+        (audience.data === "only_owner" && principalId !== "owner:local")) {
+      return c.json({ error: "INVALID_BINDING" }, 400);
+    }
+    const target = body.mode === "sandbox" ? "sandbox" : "live";
+    const db = (target === "live" ? runtime.storage : runtime.sandboxStorage).sqlite;
+    db.prepare("INSERT OR IGNORE INTO shell_principal_bindings VALUES (?,?,?)").run(shellId, externalUserId, principalId);
+    const bound = db.prepare("SELECT principal_id FROM shell_principal_bindings WHERE shell_id=? AND external_id=?").get(shellId, externalUserId);
+    if (bound?.principal_id !== principalId) return c.json({ error: "BINDING_CONFLICT" }, 409);
+    const token = runtime.shellGateway.issueScopedCapabilityToken({
+      shell_id: shellId, principal_id: principalId, soul_id: readSoulArchiveConfig(runtime.soulDir).manifest.soul_id,
+      target, max_audience_privacy_ceiling: audience.data, allowed_modalities: ["text"],
+      expires_at_ts_ms: Date.now() + 3600000
+    }, runtime.ownerMasterToken);
+    return c.json({ token, shellId, principalId, target });
+  });
+  app.get("/api/studio/conversations/history", c => {
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
+    const before = Number(c.req.query("before") ?? Number.MAX_SAFE_INTEGER);
+    const conversation = c.req.query("conversation");
+    if (!conversation || !Number.isSafeInteger(before)) return c.json({ error: "INVALID_CURSOR" }, 400);
+    const storage = c.req.query("mode") === "sandbox" ? runtime.sandboxStorage : runtime.storage;
+    return c.json({ messages: readConversation(storage, conversation, before) });
+  });
   app.get("/api/plugins", (c) =>
     c.json({ ok: true, plugins: runtime.pluginLoader.listDescriptors(enabledOverrideMap()) })
   );
@@ -319,23 +373,34 @@ export function createUnifiedDaemonHttpApp(
     return c.json({ ok: true, plugin: descriptor });
   });
 
-  app.post("/api/plugins/:extensionId/stage-token", (c) => {
+  app.on("POST", ["/api/plugins/:extensionId/shell-token", "/api/plugins/:extensionId/stage-token"], (c) => {
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const extensionId = decodeURIComponent(c.req.param("extensionId"));
     const descriptor = runtime.pluginLoader.getDescriptor(extensionId, enabledOverrideMap());
     if (!descriptor || !descriptor.enabled) return c.json({ error: "PLUGIN_NOT_AVAILABLE" }, 404);
-    const stageSlot = descriptor.ui_slots.find((slot) => slot.slot_target === "slot.shells.mounted_stage");
-    const shellId = stageSlot?.shell_id ?? `${descriptor.extension_id}.default`;
+    const pagePath = c.req.query("page");
+    const pages = descriptor.pages?.filter(page => page.shell_id && (!pagePath || page.path === pagePath)) ?? [];
+    if (pages.length !== 1) return c.json({ error: "UI_ENTRY_UNAVAILABLE" }, 409);
+    const shellId = pages[0]!.shell_id!;
+    const target = parseMode(c.req.query("mode"));
+    const host = target === "live" ? runtime.extensionHost : runtime.sandboxExtensionHost;
+    if (!host.listExtensions().some(item => item.id === extensionId)) return c.json({ error: "PLUGIN_INACTIVE" }, 409);
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
     const token = runtime.shellGateway.issueScopedCapabilityToken(
       {
         shell_id: shellId,
-        max_audience_privacy_ceiling: "only_owner",
+        principal_id: "owner:local",
+        soul_id: readSoulArchiveConfig(runtime.soulDir).manifest.soul_id,
+        plugin_id: extensionId,
+        generation: runtime.generation(extensionId, target),
+        target,
+        max_audience_privacy_ceiling: runtime.pluginLoader.getPlugin(extensionId)!.manifest.permissions.max_audience_scope,
         allowed_modalities: ["text", "typing_activity", "vad_activity", "window_focus"],
-        expires_at_ts_ms: Date.now() + 24 * 60 * 60 * 1000
+        expires_at_ts_ms: expiresAt
       },
       runtime.ownerMasterToken
     );
-    return c.json({ ok: true, extensionId, shellId, token });
+    return c.json({ ok: true, extensionId, shellId, token, expiresAt });
   });
 
   app.get("/api/plugins/:extensionId/assets/*", (c) => {
@@ -405,25 +470,52 @@ export function createUnifiedDaemonHttpApp(
   // ---------------------------------------------------------------------------
   // Channel A: Protocol v0 Bidirectional Shell Bridge (/protocol/v0/shell/*)
   // ---------------------------------------------------------------------------
+  registerShellActions(app, runtime, isOwnerRequest);
+  app.post("/protocol/v0/shell/connections", async c => {
+    const raw = await readJsonObject(c);
+    const token = (c.req.header("authorization") ?? "").replace(/^Bearer /i, "");
+    const parsed = HandshakeManifestSchema.safeParse({ ...raw, auth_token: token });
+    if (!parsed.success) return c.json({ error: "INVALID_HANDSHAKE" }, 400);
+    try {
+      const claims = runtime.shellGateway.verifyScopedCapabilityToken(token, runtime.ownerMasterToken);
+      if (claims.soul_id && claims.soul_id !== readSoulArchiveConfig(runtime.soulDir).manifest.soul_id) return c.json({ error: "SOUL_MISMATCH" }, 403);
+      if (claims.plugin_id && claims.generation !== runtime.generation(claims.plugin_id, claims.target)) return c.json({ error: "PLUGIN_REMOVED" }, 403);
+      return c.json(runtime.shellGateway.handleHandshake(parsed.data, runtime.ownerMasterToken));
+    } catch { return c.json({ error: "HANDSHAKE_REJECTED" }, 403); }
+  });
+  app.on(["PATCH", "DELETE"], "/protocol/v0/shell/connections/:id", async c => {
+    const token = (c.req.header("authorization") ?? "").replace(/^Bearer /i, "");
+    const closing = c.req.method === "DELETE";
+    const body = closing ? {} : await readJsonObject(c);
+    const capabilities = HandshakeManifestSchema.shape.capabilities.safeParse(body.capabilities);
+    if (body.capabilities && !capabilities.success) return c.json({ error: "INVALID_CAPABILITIES" }, 400);
+    const ok = runtime.shellGateway.updateConnection(c.req.param("id"), token, closing, capabilities.data);
+    return c.json({ ok }, ok ? 200 : 404);
+  });
+
   registerShellProtocolRunRoutes(app, runtime);
 
   app.post("/protocol/v0/shell/perception", async (c) => {
     const body = await readJsonObject(c);
     const text = String(body.text ?? body.summary_text ?? "").trim();
     if (!text) return c.json({ error: "EMPTY_PERCEPTION_TEXT" }, 400);
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const turn = await runtime.handleShellTurn({
+      principalId: "owner:local",
+      thread: typeof body.thread === "string" ? body.thread : undefined,
       shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
       text,
       venue_type: (body.venue_type as VenueType | undefined) ?? "private_1on1",
       audience_scope: body.audience_scope as AudienceScope | undefined,
       modality: (body.modality as SensorModality | undefined) ?? "text",
       mode: body.mode === "sandbox" ? "sandbox" : "live"
-    });
+    }, { deferDeliveryReceipt: true });
     return c.json(turn);
   });
 
   app.post("/protocol/v0/shell/receipt", async (c) => {
     const body = await readJsonObject(c);
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const receipt = runtime.handleShellInterrupt({
       shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
       intent_id: String(body.intent_id ?? "int_shell"),
@@ -501,7 +593,7 @@ async function runCli(): Promise<void> {
   const runtime = createDefaultDaemonRuntime({
     soulDir,
     ownerMasterToken,
-    seedIfEmpty: true,
+    seedIfEmpty: process.argv.includes("--demo"),
     llmConfig: llmApiKey
       ? {
           provider:

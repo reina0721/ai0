@@ -18,7 +18,6 @@ export function InternalStickySubNav(props: InternalStickySubNavProps): ReactEle
   const ctx = useConsole();
   const group = findSidebarContext(props.activePath);
   const active = resolveConsoleRoute(props.activePath);
-  const dedicatedStage = active?.id === "shells.stage";
   const siblings = group ? CONSOLE_ROUTES_30.filter((route) =>
     findSidebarContext(route.defaultConcretePath ?? route.path)?.item.id === group.item.id
   ) : [];
@@ -29,7 +28,7 @@ export function InternalStickySubNav(props: InternalStickySubNavProps): ReactEle
   };
 
   return (
-    <nav aria-label="当前工作区" className="ai0-internal-sticky-sub-nav" data-chat-navigation={dedicatedStage || undefined}>
+    <nav aria-label="当前工作区" className="ai0-internal-sticky-sub-nav">
       <div className="ai0-workspace-heading">
         <div className="ai0-breadcrumb">
           {group ? renderConsoleIcon(group.item.icon, 14) : null}
@@ -75,14 +74,14 @@ export function InternalStickySubNav(props: InternalStickySubNavProps): ReactEle
           </>
         ) : null}
       </div>
-      {!dedicatedStage ? <HoverTooltip content="运行检视" interactiveChild>
+      {<HoverTooltip content="运行检视" interactiveChild>
         <RippleButton variant="ghost" size="sm" className="ai0-workspace-inspector-button"
           data-open-inspector="trace" ariaLabel="打开或关闭运行检视"
           onClick={props.onToggleInspector ?? ctx?.toggleInspector}>
           {renderConsoleIcon("inspector", 15)}
           <span>运行检视</span>
         </RippleButton>
-      </HoverTooltip> : null}
+      </HoverTooltip>}
     </nav>
   );
 }

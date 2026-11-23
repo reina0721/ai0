@@ -1,3 +1,4 @@
+import { composerActions, type ComposerCommand } from "../contracts.js";
 import {
   ActionBarPrimitive, AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive,
   ThreadPrimitive, useAui, useAuiState, useExternalStoreRuntime,
@@ -192,6 +193,16 @@ function Welcome({ inputRef }: { inputRef: RefObject<HTMLTextAreaElement | null>
   );
 }
 
+
+function ContributedActions({ host }: { host: Ai0ShellStageHostBridge }) {
+  const [commands, setCommands] = useState<ComposerCommand[]>([]);
+  useEffect(() => host.contributions?.define(composerActions, command => {
+    setCommands(current => [...current, command]);
+    return () => setCommands(current => current.filter(item => item !== command));
+  }), [host]);
+  return <>{commands.map((command, index) => <Button key={index} onClick={command.run}>{command.label}</Button>)}</>;
+}
+
 function WebChatThread({ mode, visible, host, hostState, soulId }: {
   mode: Ai0StageMode;
   visible: boolean;
@@ -256,6 +267,19 @@ function WebChatThread({ mode, visible, host, hostState, soulId }: {
     onNew,
     onCancel: session.stop
   });
+  // Keep a tab-local draft when the host disposes the target's plugin scope.
+  useEffect(() => {
+    if (!soulId) return;
+    const key = JSON.stringify(["ai0.webchat.draft", soulId, host.shellId, mode]);
+    const composer = runtime.thread.composer;
+    const previous = sessionStorage.getItem(key);
+    if (previous) composer.setText(previous);
+    return composer.subscribe(() => {
+      const text = composer.getState().text;
+      if (text) sessionStorage.setItem(key, text);
+      else sessionStorage.removeItem(key);
+    });
+  }, [soulId, host.shellId, mode, runtime]);
   const restoreText = useCallback((text: string) => {
     const composer = runtime.thread.composer;
     const draft = composer.getState().text;
@@ -391,6 +415,7 @@ function WebChatThread({ mode, visible, host, hostState, soulId }: {
                   </div>
                 ) : null}
                 <ComposerPrimitive.Root className="ai0-chat-composer">
+                  {visible && <ContributedActions host={host} />}
                   <ComposerPrimitive.Input
                     asChild
                     ref={inputRef}
@@ -439,6 +464,42 @@ export function WebChatWorkspace({ host, hostState }: {
   host: Ai0ShellStageHostBridge;
   hostState: Ai0ShellStageHostState;
 }) {
+  const [lease, setLease] = useState("");
+  const { authToken, protocolBasePath } = hostState;
+  useEffect(() => {
+    if (!authToken) return;
+    let active = true;
+    let sessionId = "";
+    let timer: ReturnType<typeof setTimeout>;
+    const base = protocolBasePath + "/connections";
+    const headers = { authorization: "Bearer " + authToken, "content-type": "application/json" };
+    const close = (id: string) => fetch(base + "/" + id, { method: "DELETE", headers, keepalive: true }).catch(() => {});
+    const maintain = async () => {
+      try {
+        if (sessionId) {
+          const renewed = await fetch(base + "/" + sessionId, { method: "PATCH", headers, body: "{}" });
+          if (!renewed.ok) throw new Error("Lease expired");
+        } else {
+          const response = await fetch(base, { method: "POST", headers, body: JSON.stringify({
+            protocol_version: "0.1.0", shell_id: host.shellId, shell_kind: "webchat", display_name: "WebChat",
+            venue_type: "private_1on1", current_audience: { scope: "only_owner", member_count: 1 },
+            latency_budget_ms: 1200, capabilities: { sensors: ["text"], supported_extensions: [],
+              expression_vocabulary: {}, actuators: [] }
+          }) });
+          if (!response.ok) throw new Error("Handshake refused");
+          sessionId = (await response.json()).session_id;
+          if (!active) { await close(sessionId); return; }
+        }
+        if (active) setLease(authToken);
+      } catch {
+        if (active) setLease("");
+        sessionId = "";
+      }
+      if (active) timer = setTimeout(() => void maintain(), sessionId ? 15000 : 3000);
+    };
+    void maintain();
+    return () => { active = false; clearTimeout(timer); if (sessionId) void close(sessionId); };
+  }, [authToken, protocolBasePath, host]);
   const mode = hostState.mode;
   const soulId = hostState.soulId;
   const [identity, setIdentity] = useState({ soulId, revision: 0 });
@@ -453,14 +514,14 @@ export function WebChatWorkspace({ host, hostState }: {
   }, [mode]);
 
   return (
-    <section className="mounted-shell-stage-host ai0-webchat" data-shell-plugin-id={host.extensionId} aria-label="WebChat 对话舞台">
+    <section className="mounted-shell-stage-host ai0-webchat" data-shell-plugin-id={host.extensionId} aria-label="WebChat 会话">
       {(["live", "sandbox"] as const).filter((target) => target === mode || visited.includes(target)).map((target) => (
         <div key={`${identity.revision}:${target}`} className="ai0-chat-workspace" hidden={target !== mode}>
           <WebChatThread
             mode={target}
             visible={target === mode}
             host={host}
-            hostState={hostState}
+            hostState={{ ...hostState, connected: Boolean(lease && lease === authToken) }}
             soulId={identity.soulId || "default.soul"}
           />
         </div>

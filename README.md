@@ -17,6 +17,7 @@
 ```bash
 # 1. 安装依赖并校验六大架构边界不变量
 pnpm install
+pnpm --filter @ai0/console-webui exec playwright install chromium
 pnpm verify:all
 
 # 2. (可选) 复制环境变量模板配置任意 OpenAI / Anthropic / Gemini / Ollama 兼容模型接口
@@ -30,6 +31,8 @@ pnpm dev
 # 4. 独立运行 .scenario.yaml 5 步端到端黄金回归评测剧本（私密记忆 -> +38h 睡眠整理 -> 直播间防泄密 -> 五表真遗忘 -> 回档防复活）
 pnpm replay:golden
 ```
+
+开发模式会先构建随仓插件。在控制台侧栏的「插件页面」打开 WebChat，或访问 <http://127.0.0.1:4173/webchat>。在「插件与扩展管理」可以停用和重新启用它。接入其他客户端时，「接入通道」显示网关观测到的连接，「会话记录」显示存档中的对话。
 
 ---
 

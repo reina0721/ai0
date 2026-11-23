@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -11,7 +12,6 @@ import {
   readConsoleStudioConfig,
   readSoulArchiveConfig,
   ROLE_ARCHETYPE_PRESETS,
-  seedDefaultSoulAwakeningData,
   writeConsoleStudioConfig,
   type CoordinatorStorageMutator,
   type RelationshipArchetype,
@@ -88,46 +88,50 @@ export function listAvailableSoulInstances(activeSoulDir: string): Array<{
   return results;
 }
 
-export function buildConversationsList(
-  storage: CoordinatorStorageMutator,
-  studio: SoulConsoleStudioConfig
-) {
-  const events = storage.listEvents({ limit: 80 });
-  const grouped = new Map<
-    string,
-    { platform: string; audienceScope: "only_owner" | "fixed_group" | "public_all"; count: number; lastSummary: string; lastTs: number }
-  >();
-  for (const evt of events) {
-    const scope = evt.audience_scope === "only_owner" ? "only_owner" : evt.audience_scope === "public_all" ? "public_all" : "fixed_group";
-    const key = `${evt.source_shell_id}:${scope}`;
-    const existing = grouped.get(key);
-    if (!existing) {
-      grouped.set(key, {
-        platform: evt.source_shell_id,
-        audienceScope: scope,
-        count: 1,
-        lastSummary: evt.summary_text.slice(0, 70),
-        lastTs: evt.virtual_ts_ms
-      });
-    } else {
-      existing.count += 1;
-    }
-  }
-  const sessions = studio.customRules.map((rule) => {
-    const matched = grouped.get(`${rule.platform}:${rule.audienceScope}`);
-    const profile = studio.profiles.find((p) => p.id === rule.profileId);
+// Both list and detail queries project the same accepted and delivered messages.
+const conversationMessages = `WITH turns AS (
+  SELECT e.event_id, e.event_seq, e.wall_ts_ms, e.source_shell_id, e.audience_scope, e.principal_id,
+    e.summary_text, json_array(e.source_shell_id, e.audience_scope,
+      COALESCE(json_extract(e.payload_json,'$.thread'), CASE WHEN e.audience_scope='only_owner' THEN e.principal_id ELSE e.audience_scope END)) AS conversation,
+    json_extract(t.step7_emitted_intent_json,'$.fallback_text') AS generated,
+    json_extract(t.step8_delivery_receipt_json,'$.spoken_char_offset') AS delivered,
+    json_extract(t.step8_delivery_receipt_json,'$.status') AS delivery_status
+  FROM event_log e LEFT JOIN turn_decision_traces t ON t.turn_event_id=e.event_id
+  WHERE e.event_category='perception_committed' AND e.redacted_at_ts_ms IS NULL
+    AND COALESCE(json_extract(e.payload_json,'$.origin'),'') <> 'demo'
+), messages AS (
+  SELECT *, 0 AS direction, summary_text AS content FROM turns
+  UNION ALL SELECT *, 1 AS direction, substr(generated,1,delivered) AS content FROM turns
+  WHERE delivered>0 AND delivery_status IN ('completed','interrupted')
+)`;
+
+export function readConversation(storage: CoordinatorStorageMutator, conversation: string, before: number) {
+  return storage.sqlite.prepare(conversationMessages + `
+    SELECT event_id AS evidenceId, event_seq*2+direction AS cursor, direction, content, principal_id,
+      wall_ts_ms, CASE WHEN generated IS NOT NULL THEN COALESCE(delivery_status,'unknown') END AS deliveryStatus
+    FROM messages WHERE conversation=? AND event_seq*2+direction < ? ORDER BY cursor DESC LIMIT 50
+  `).all(conversation, before);
+}
+
+export function buildConversationsList(storage: CoordinatorStorageMutator, studio: SoulConsoleStudioConfig) {
+  const rows = storage.sqlite.prepare(conversationMessages + `, ranked AS (
+    SELECT *, COUNT(*) OVER (PARTITION BY conversation) AS count,
+      ROW_NUMBER() OVER (PARTITION BY conversation ORDER BY event_seq DESC,direction DESC) AS rank FROM messages
+  ) SELECT * FROM ranked WHERE rank=1 ORDER BY event_seq DESC`).all();
+  return rows.map(row => {
+    const platform = String(row.source_shell_id);
+    const audienceScope = row.audience_scope === "only_owner" ? "only_owner" as const :
+      row.audience_scope === "public_all" ? "public_all" as const : "fixed_group" as const;
+    const rule = studio.customRules.find(item => item.umo === row.conversation);
     return {
-      umo: rule.umo,
-      label: rule.label,
-      platform: rule.platform,
-      audienceScope: rule.audienceScope,
-      profileName: profile?.name ?? rule.profileId,
-      messageCount: matched?.count ?? (rule.audienceScope === "only_owner" ? events.length : 0),
-      lastSummary: matched?.lastSummary ?? "暂无消息，规则已就绪等待连接触发",
-      lastActiveAt: matched ? new Date(matched.lastTs).toISOString().slice(11, 19) : "待机中"
+      umo: String(row.conversation), platform, audienceScope,
+      canOpenOwnerThread: audienceScope === "only_owner" && JSON.parse(String(row.conversation))[2] === "owner:local",
+      label: rule?.label ?? String(JSON.parse(String(row.conversation))[2]),
+      profileName: studio.profiles.find(profile => profile.id === rule?.profileId)?.name ?? "默认策略",
+      messageCount: Number(row.count), lastSummary: String(row.content),
+      lastActiveAt: new Date(Number(row.wall_ts_ms)).toISOString(), evidenceId: String(row.event_id)
     };
   });
-  return sessions;
 }
 
 function getVaultKeysPath(soulDir: string): string {
@@ -197,7 +201,7 @@ export function updateStudioConfig(
   // Sync display_name back to identity.yaml when modified
   try {
     const identityPath = join(runtime.soulDir, "identity.yaml");
-    if (existsSync(identityPath)) {
+    if (saved.soulStudio.displayName !== current.soulStudio.displayName && existsSync(identityPath)) {
       const identityObj = JSON.parse(readFileSync(identityPath, "utf8")) as Record<string, unknown>;
       identityObj.display_name = saved.soulStudio.displayName;
       writeFileSync(identityPath, `${JSON.stringify(identityObj, null, 2)}\n`, "utf8");
@@ -285,27 +289,20 @@ export async function pingStudioProvider(
   if (!provider) return { ok: false, error: "PROVIDER_NOT_FOUND" };
 
   const started = Date.now();
-  let latencyMs = provider.lastLatencyMs || 180;
-  let status: "ready" | "error" = "ready";
-  let detail = `已校验 ${provider.vendor} (${provider.modelId}) 接入配置`;
-
-  if (/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(provider.baseUrl)) {
+  let latencyMs = 0;
+  let status: "ready" | "error" | "configured" = "configured";
+  let detail = "已配置；尚未测量模型调用延迟";
+  if (URL.canParse(provider.baseUrl) && ["127.0.0.1", "localhost", "[::1]"].includes(new URL(provider.baseUrl).hostname)) {
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 900);
-      await fetch(provider.baseUrl, { signal: controller.signal }).catch(() => undefined);
-      clearTimeout(timer);
-      latencyMs = Math.max(8, Date.now() - started);
-      detail = `本地推理端点探测完成 (${latencyMs}ms)`;
+      const response = await fetch(provider.baseUrl, { method: "HEAD", signal: AbortSignal.timeout(900) });
+      latencyMs = Date.now() - started;
+      status = response.ok ? "ready" : "error";
+      detail = "HTTP " + response.status + "，端点响应耗时 " + latencyMs + " ms";
     } catch {
-      latencyMs = Math.max(12, Date.now() - started);
-      detail = `本地推理配置已就绪 (离线回退可用)`;
+      status = "error";
+      detail = "端点未响应";
     }
-  } else {
-    latencyMs = 140 + ((provider.id.length * 29) % 190);
-    detail = `${provider.vendor} 配置校验通过 · 预估首字延迟 ${latencyMs}ms`;
   }
-
   const nextProviders = studio.providers.map((item) =>
     item.id === providerId ? { ...item, lastLatencyMs: latencyMs, status } : item
   );
@@ -316,7 +313,7 @@ export async function pingStudioProvider(
 export function dispatchOrAdvanceCoWorkTask(
   runtime: Ai0DaemonRuntime,
   input: {
-    action: "create" | "approve" | "complete" | "pause";
+    action: "create" | "approve" | "complete" | "execute" | "pause";
     taskId?: string;
     title?: string;
     subAgentId?: string;
@@ -329,72 +326,53 @@ export function dispatchOrAdvanceCoWorkTask(
   if (input.action === "create") {
     const subAgent = studio.agency.subAgents.find((s) => s.id === input.subAgentId) ?? studio.agency.subAgents[0];
     const newTask = {
-      id: `task_${Date.now()}`,
+      id: "task_" + randomUUID(),
       title: (input.title || "协助整理项目文档并提炼 3 条核心建议").trim(),
       subAgentId: subAgent?.id ?? "sub_code_reviewer",
-      status: "running" as const,
-      currentStep: 3,
-      totalSteps: 8,
-      stepLabel: `步骤 3/8 · ${subAgent?.icon ?? "🤖"} ${subAgent?.name ?? "子代理"} 正在检索知识库并拆解执行计划`,
+      status: "waiting_approval" as const,
+      currentStep: 0,
+      totalSteps: 1,
+      stepLabel: "等待批准",
       riskLevel: "read_only_safe" as const,
       createdAt: "刚刚",
-      outputSummary: "后台并发推进中，前台聊天零阻塞。"
+      outputSummary: ""
     };
     tasks.unshift(newTask);
-    const saved = updateStudioConfig(runtime, { agency: { activeTasks: tasks.slice(0, 12) } });
+    const saved = updateStudioConfig(runtime, { agency: { activeTasks: tasks } });
     runtime.adminServer.broadcastTelemetry("[AGENCY]", { action: "task_created", task: newTask }, "live", nowMs);
     return { ok: true, task: newTask, studioConfig: saved };
   }
 
-  const target = tasks.find((t) => t.id === input.taskId) ?? tasks[0];
+  const target = tasks.find(task => task.id === input.taskId);
   if (!target) return { ok: false, error: "TASK_NOT_FOUND" };
-
-  if (input.action === "pause") {
-    target.status = "paused";
-    target.stepLabel = "已暂停等待主人恢复";
-  } else {
-    // approve or complete -> finish 8/8 and crystallize into episodic experience memory!
+  if (input.action === "complete") return { ok: false, error: "EXECUTION_RESULT_REQUIRED" };
+  if (input.action === "execute") {
+    const evidenceId = "evt_task_" + target.id;
+    const recorded = runtime.storage.getEventById(evidenceId);
+    if (!recorded && target.status !== "queued") return { ok: false, error: "TASK_NOT_QUEUED" };
+    if (target.subAgentId !== "sub_research_scholar") return { ok: false, error: "NO_TASK_EXECUTOR" };
+    if (!recorded) {
+      const hits = runtime.storage.queryKnowledgeChunksByFts({ query_text: target.title, limit: 10 });
+      runtime.storage.appendEvent({
+        event_id: evidenceId, event_category: "action_episode_completed", principal_trust: "tool_output",
+        wall_ts_ms: Date.now(), virtual_ts_ms: nowMs, source_shell_id: "knowledge.search",
+        principal_id: "executor:knowledge.search", audience_scope: "only_owner", venue_type: "internal_background",
+        modality: "text", summary_text: "知识库检索完成，返回 " + hits.length + " 个片段",
+        payload_json: JSON.stringify({ task_id: target.id, query: target.title, chunk_ids: hits.map(hit => hit.chunk_id) }),
+        state_rev_after: runtime.coordinator.getSnapshot().state_rev, active_modules_mask: 31
+      });
+    }
     target.status = "completed";
-    target.currentStep = 8;
-    target.stepLabel = "步骤 8/8 · 已完成并自动沉淀为共同经历记忆";
-    target.outputSummary = target.outputSummary || "已完成核查与结构化总结，结果已同步至对话上下文。";
-    const eventId = `evt_cowork_${nowMs}`;
-    const memoryId = `mem_cowork_${nowMs}`;
-    target.crystallizedMemoryId = memoryId;
-    runtime.storage.appendEvent({
-      event_id: eventId,
-      wall_ts_ms: Date.now(),
-      virtual_ts_ms: nowMs,
-      source_shell_id: runtime.defaultStageShellId(),
-      principal_id: "owner:local",
-      principal_trust: "owner_verified",
-      venue_type: "private_1on1",
-      audience_scope: "only_owner",
-      event_category: "action_episode_completed",
-      modality: "text",
-      summary_text: `共同完成后台协作任务：${target.title}`,
-      payload_json: JSON.stringify(target),
-      state_rev_after: runtime.coordinator.getSnapshot().state_rev,
-      active_modules_mask: 31
-    });
-    runtime.storage.insertMemoryWithLineage(
-      {
-        memory_id: memoryId,
-        memory_tier: "episodic_experience",
-        epistemic_type: "observed_firsthand",
-        attributed_principal: "owner:local",
-        visibility_scope: "only_owner",
-        taint_level: "trusted_owner",
-        content_text: `共同经历：和主人一起完成了「${target.title}」，输出了结构化结论并得到主人认可。`,
-        created_virtual_ts: nowMs,
-        last_recalled_ts: nowMs,
-        valid_from_virtual_ts: nowMs,
-        created_at_rev: runtime.coordinator.getSnapshot().state_rev
-      },
-      [{ parent_type: "event", parent_id: eventId, relation_type: "derived_from" }]
-    );
+    target.currentStep = target.totalSteps;
+    target.stepLabel = "知识库检索已完成";
+    target.outputSummary = runtime.storage.getEventById(evidenceId)!.summary_text;
+    target.evidenceId = evidenceId;
+    return { ok: true, task: target, studioConfig: updateStudioConfig(runtime, { agency: { activeTasks: tasks } }) };
   }
-
+  if (!["approve", "pause"].includes(input.action)) return { ok: false, error: "UNKNOWN_TASK_ACTION" };
+  if (target.status === "completed") return { ok: false, error: "TASK_ALREADY_COMPLETED" };
+  target.status = input.action === "pause" ? "paused" : "queued";
+  target.stepLabel = input.action === "pause" ? "已暂停" : "已批准，等待执行器";
   const saved = updateStudioConfig(runtime, { agency: { activeTasks: tasks } });
   return { ok: true, task: target, studioConfig: saved };
 }
@@ -425,16 +403,18 @@ export function runManualSleepReflection(runtime: Ai0DaemonRuntime) {
   const studio = readConsoleStudioConfig(runtime.soulDir);
   const nowMs = runtime.virtualClock.nowMs();
   const timeStr = new Date(nowMs).toISOString().slice(11, 16);
+  const sources: string[] = [];
+  const accepted = runtime.workers.w3.runSleepMemoryConsolidation(id => sources.push(id));
   const newDream = {
-    id: `drm_${Date.now()}`,
+    id: "drm_" + randomUUID(),
     date: `刚刚 ${timeStr}`,
     title: "🌙 睡梦整理完成 · Level-0 原始对话巩固",
-    content: `已从最近 ${runtime.storage.listEvents({ limit: 50 }).length} 条原始事件中过滤掉玩笑语用，巩固核心默契，并沿授权订阅源写下一段关于「长期数字伴侣边界美学」的读书小随笔。`,
+    content: "本次 W3 巩固接受了 " + accepted + " 项记忆提议。",
     kind: "curiosity_note" as const
   };
   const nextJournal = [newDream, ...studio.evolution.dreamJournal].slice(0, 12);
   runtime.storage.appendEvent({
-    event_id: `evt_sleep_${nowMs}`,
+    event_id: "evt_sleep_" + randomUUID(),
     wall_ts_ms: Date.now(),
     virtual_ts_ms: nowMs,
     source_shell_id: "kernel.w3.sleep",
@@ -444,8 +424,8 @@ export function runManualSleepReflection(runtime: Ai0DaemonRuntime) {
     audience_scope: "only_owner",
     event_category: "sleep_consolidation_run",
     modality: "text",
-    summary_text: "手动执行一次 W3 睡眠记忆巩固与好奇心冲浪整理",
-    payload_json: JSON.stringify(newDream),
+    summary_text: newDream.content,
+    payload_json: JSON.stringify({ ...newDream, source_event_ids: sources, memory_ids: sources.map(id => "mem_consolidated_" + id) }),
     state_rev_after: runtime.coordinator.getSnapshot().state_rev,
     active_modules_mask: 31
   });
@@ -611,7 +591,9 @@ export function createNewSoulInstance(
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "") || `soul-${Date.now()}`;
   const targetDir = resolve(dirname(runtime.soulDir), `${safeSlug}.soul`);
-  const layout = initializeSoulDirectory(targetDir);
+  try { mkdirSync(targetDir); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("SOUL_ALREADY_EXISTS"); throw error; }
+  initializeSoulDirectory(targetDir);
   const preset = ROLE_ARCHETYPE_PRESETS[input.primaryRole] ?? ROLE_ARCHETYPE_PRESETS.best_friend;
   const studio = readConsoleStudioConfig(targetDir, input.displayName || safeSlug);
   studio.soulStudio.displayName = input.displayName || safeSlug;
@@ -622,12 +604,6 @@ export function createNewSoulInstance(
   studio.soulStudio.maxBlackboardTokens = preset.tokenBudget;
   writeConsoleStudioConfig(targetDir, studio);
 
-  // Seed its database so it awakens immediately when switched
-  const { CoordinatorStorageMutator } = requireStorageMutator(runtime);
-  const tempStorage = new CoordinatorStorageMutator(layout.soulCoreDatabasePath);
-  seedDefaultSoulAwakeningData(tempStorage, runtime.virtualClock.nowMs());
-  tempStorage.close();
-
   return {
     ok: true,
     id: `${safeSlug}.soul`,
@@ -636,19 +612,14 @@ export function createNewSoulInstance(
   };
 }
 
-function requireStorageMutator(runtime: Ai0DaemonRuntime) {
-  return {
-    CoordinatorStorageMutator: runtime.storage.constructor as new (dbPath: string) => CoordinatorStorageMutator
-  };
-}
-
 export function buildLivePromptPreviews(
   runtime: Ai0DaemonRuntime,
   studio: SoulConsoleStudioConfig,
   memories: Array<{ content_text: string; visibility_scope: string }>,
-  narrativeText: string
+  narrativeText: string,
+  mode: "live" | "sandbox" = "live"
 ) {
-  const snap = runtime.coordinator.getSnapshot();
+  const snap = (mode === "live" ? runtime.coordinator : runtime.sandboxCoordinator).getSnapshot();
   const affect = snap.D2_HOMEOSTASIS_AFFECT;
   const privateMemories = memories.slice(0, 3).map((m) => `[${m.visibility_scope}] ${m.content_text}`);
   const publicMemories = memories
@@ -659,7 +630,7 @@ export function buildLivePromptPreviews(
   const promptPreviewPrivate = compileStudioPromptPreview(studio, {
     audienceScope: "only_owner",
     venueType: "private_1on1",
-    platform: runtime.defaultStageShellId(),
+    platform: runtime.fallbackShellId(),
     moodValence: affect.instant_valence,
     circadianEnergy: affect.circadian_energy,
     metabolicEnergy: affect.metabolic_energy,
@@ -669,11 +640,11 @@ export function buildLivePromptPreviews(
   const promptPreviewPublic = compileStudioPromptPreview(studio, {
     audienceScope: "public_all",
     venueType: "public_livestream",
-    platform: "shell.bilibili.live",
+    platform: "公开场合预览",
     moodValence: Number((affect.instant_valence * 0.3).toFixed(2)),
     circadianEnergy: affect.circadian_energy,
     metabolicEnergy: affect.metabolic_energy,
-    narrativeSummary: narrativeText.slice(0, 180),
+    narrativeSummary: "",
     recalledMemories: publicMemories
   });
 

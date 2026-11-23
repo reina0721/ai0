@@ -1,9 +1,10 @@
+import { registeredPages } from "../router/plugin-pages.js";
 import {
   WorkspaceChoice, WorkspaceCode, WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspaceLink,
   WorkspacePage, WorkspaceRow, WorkspaceSection, WorkspaceSplit, WorkspaceStatus, WorkspaceTable,
   WorkspaceTableBody, WorkspaceTableCell, WorkspaceTableHead, WorkspaceTableRow
 } from "./workspace-layout.js";
-import { useState, type MouseEvent, type ReactElement } from "react";
+import { useEffect, useState, type MouseEvent, type ReactElement } from "react";
 
 import { useConsole } from "../context/ConsoleContext.js";
 import {
@@ -25,6 +26,44 @@ export interface Domain1DashboardPageProps {
   dirtyDiffCount?: number;
   onDiscardChanges?: () => void;
   onApplyChanges?: () => void;
+}
+
+function ConversationHistory({ conversation }: { conversation: string }) {
+  const ctx = useConsole();
+  const [open, setOpen] = useState(false);
+  const [before, setBefore] = useState<number>();
+  type Message = { cursor: number; direction: number; content: string; evidenceId: string; deliveryStatus?: string };
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [error, setError] = useState("");
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    if (!open || !ctx?.ownerToken) return;
+    const abort = new AbortController();
+    const query = new URLSearchParams({ conversation, mode: ctx.mode });
+    if (before) query.set("before", String(before));
+    void fetch("/api/studio/conversations/history?" + query, {
+      headers: { "x-ai0-owner-token": ctx.ownerToken }, signal: abort.signal
+    }).then(async response => {
+      if (!response.ok) throw new Error("读取记录失败");
+      const result = await response.json() as { messages: Message[] };
+      if (abort.signal.aborted) return;
+      setMessages(prev => before ? [...prev, ...result.messages] : result.messages);
+      setMore(result.messages.length === 50);
+      setError("");
+    }).catch(err => { if (!abort.signal.aborted) setError(String(err)); });
+    return () => abort.abort();
+  }, [open, conversation, before, ctx?.ownerToken, ctx?.mode]);
+  return <details onToggle={event => {
+    setOpen(event.currentTarget.open);
+    if (!event.currentTarget.open) { setBefore(undefined); setMessages([]); }
+  }}><summary>查看记录</summary>
+    {error && <small role="alert">{error}</small>}
+    {messages.map(message => <p key={message.cursor}>
+      <strong>{message.direction ? "已交付" : "已接收"}</strong> {message.content}
+      <small> · {message.evidenceId}{message.deliveryStatus === "unknown" && " · 回复交付未知"}</small>
+    </p>)}
+    {more && <button onClick={() => { setMore(false); setBefore(messages.at(-1)?.cursor); }}>更早记录</button>}
+  </details>;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -348,14 +387,8 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
               </WorkspaceTableHead>
               <WorkspaceTableBody>
                 {conversations.map((conv) => {
-                  const stagePlugin = snap?.extensions.find((ext) =>
-                    ext.enabled && ext.uiSlots?.some((slot) =>
-                      slot.slot_target === "slot.shells.mounted_stage" &&
-                      (slot.shell_id === conv.platform || conv.platform.startsWith(ext.id))
-                    )
-                  );
-                  const stageSlot = stagePlugin?.uiSlots?.find((slot) => slot.slot_target === "slot.shells.mounted_stage");
-                  const stageHref = stageSlot?.route_path ?? (stagePlugin ? `/shells/stage/${stagePlugin.id}` : undefined);
+                  const page = registeredPages(snap).find(item => item.shell_id === conv.platform);
+                  const stageHref = page?.path;
                   return (
                   <WorkspaceTableRow key={conv.umo}>
                     <WorkspaceTableCell>
@@ -382,13 +415,14 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                     <WorkspaceTableCell className="ai0-workspace-table-summary">{conv.lastSummary}</WorkspaceTableCell>
                     <WorkspaceTableCell>
                       <div className="ai0-workspace-actions">
-                        {stageHref ? <WorkspaceLink
+                        <ConversationHistory key={JSON.stringify([snap?.soulId, snap?.targetInstance, conv.umo])} conversation={conv.umo} />
+                        {stageHref && conv.canOpenOwnerThread ? <WorkspaceLink
                           href={stageHref}
                           onClick={navClick(stageHref)}
 
                           data-size="sm"
                         >
-                          <span className="ai0-workspace-link-content">打开 {stageSlot?.title ?? stagePlugin?.displayName ?? "舞台"}</span>
+                          <span className="ai0-workspace-link-content">打开 {page?.title}</span>
                         </WorkspaceLink> : null}
                         <WorkspaceLink
                           href="/profiles/rules"
@@ -414,8 +448,6 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
   // Default: System Overview
   const primaryRoleLabel = ROLE_LABELS[studio?.soulStudio.primaryRole ?? "best_friend"] ?? "日常挚友";
   const workRoleLabel = ROLE_LABELS[studio?.soulStudio.workVenueRole ?? "digital_employee"] ?? "专业助理";
-  const connectedPlatforms = (studio?.platforms ?? []).filter((p) => p.connected).length;
-  const totalPlatforms = studio?.platforms.length;
   const pendingGrowth = (studio?.evolution.growthProposals ?? []).filter((p) => p.status === "pending");
   const activeTasks = (studio?.agency.activeTasks ?? []).filter((t) => t.status !== "completed");
   const policy = studio?.metabolicPolicy;
@@ -427,7 +459,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     try {
       if (kind === "task") {
         await ctx.postStudio("/api/studio/co-work-task", { action: "approve", taskId: id });
-        ctx.showToast("任务已完成并沉淀为情景记忆");
+        ctx.showToast("任务已批准，等待执行器");
       } else {
         await ctx.postStudio("/api/studio/growth-proposal", { proposalId: id, decision: "approved" });
         ctx.showToast("演化提案已批准并合入存档");
@@ -440,15 +472,10 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     }
   };
 
-  const primaryStagePlugin = snap?.extensions.find(
-    (ext) => ext.enabled && ext.uiSlots?.some((slot) => slot.slot_target === "slot.shells.mounted_stage")
-  );
-  const primaryStageSlot = primaryStagePlugin?.uiSlots?.find(
-    (slot) => slot.slot_target === "slot.shells.mounted_stage"
-  );
-  const primaryStageHref =
-    primaryStageSlot?.route_path ?? (primaryStagePlugin ? `/shells/stage/${primaryStagePlugin.id}` : "/shells/topology");
-  const primaryStageLabel = primaryStageSlot ? `打开 ${primaryStageSlot.title}` : "查看接入通道";
+  const shellPages = registeredPages(snap).filter(page => page.shell_id);
+  const primaryPage = shellPages.length === 1 ? shellPages[0] : undefined;
+  const primaryStageHref = primaryPage?.path ?? "/shells/topology";
+  const primaryStageLabel = primaryPage ? "打开 " + primaryPage.title : "查看接入通道";
 
   return (
     <MainRoundedCardOutlet domainId="dashboard" activePath={props.pathname} onNavigate={props.onNavigate}>
@@ -493,12 +520,12 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
             <div className="ai0-workspace-metric">
               <span className="ai0-workspace-metric__label">{renderConsoleIcon("cpu", 14)}今日算力预算</span>
               <strong className="ai0-workspace-metric__value">{remainPct === undefined ? "—" : `${remainPct}%`}</strong>
-              <small>{policy ? `已消耗 ${(policy.usedTokensToday / 1000).toFixed(1)}k / ${(policy.dailyTokenBudget / 1000).toFixed(0)}k Tokens` : "等待预算状态"}</small>
+              <small>{policy ? `配置用量 ${(policy.usedTokensToday / 1000).toFixed(1)}k / ${(policy.dailyTokenBudget / 1000).toFixed(0)}k Tokens` : "等待预算状态"}</small>
             </div>
             <div className="ai0-workspace-metric">
-              <span className="ai0-workspace-metric__label">{renderConsoleIcon("shells", 14)}已连接适配器</span>
+              <span className="ai0-workspace-metric__label">{renderConsoleIcon("shells", 14)}在线连接</span>
               <strong className="ai0-workspace-metric__value">
-                {totalPlatforms === undefined ? "—" : `${connectedPlatforms} / ${totalPlatforms}`}
+                {snap?.activeConnections ?? "—"}
               </strong>
               <small>{(studio?.customRules ?? []).length} 条会话路由规则</small>
             </div>

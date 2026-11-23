@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { ThemeColorPresetSchema } from "@ai0/protocol";
 import { z } from "zod";
@@ -36,8 +37,8 @@ export const ModelProviderEntrySchema = z.object({
   temperature: z.number().min(0).max(2).default(0.75),
   maxTokens: z.number().int().min(64).max(128000).default(2048),
   enabled: z.boolean().default(true),
-  lastLatencyMs: z.number().int().nonnegative().default(220),
-  status: z.enum(["ready", "configured", "untested", "error"]).default("ready")
+  lastLatencyMs: z.number().int().nonnegative().default(0),
+  status: z.enum(["ready", "configured", "untested", "error"]).default("untested")
 });
 export type ModelProviderEntry = z.infer<typeof ModelProviderEntrySchema>;
 
@@ -121,13 +122,14 @@ export const CoWorkTaskEntrySchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   subAgentId: z.string(),
-  status: z.enum(["running", "waiting_approval", "completed", "paused"]),
-  currentStep: z.number().int().min(1).max(8),
+  status: z.enum(["queued", "running", "waiting_approval", "completed", "paused"]),
+  currentStep: z.number().int().min(0).max(8),
   totalSteps: z.number().int().default(8),
   stepLabel: z.string(),
   riskLevel: z.enum(["read_only_safe", "needs_owner_confirm", "high_risk"]),
   createdAt: z.string(),
   outputSummary: z.string().optional(),
+  evidenceId: z.string().optional(),
   crystallizedMemoryId: z.string().optional()
 });
 export type CoWorkTaskEntry = z.infer<typeof CoWorkTaskEntrySchema>;
@@ -206,7 +208,7 @@ export const SoulConsoleStudioConfigSchema = z.object({
   }),
   metabolicPolicy: z.object({
     dailyTokenBudget: z.number().int().min(10000).max(10000000).default(300000),
-    usedTokensToday: z.number().int().nonnegative().default(27400),
+    usedTokensToday: z.number().int().nonnegative().default(0),
     sleepyThresholdPct: z.number().int().min(5).max(50).default(25),
     emergencyReservePct: z.number().int().min(1).max(15).default(5),
     autoDowngradeEnabled: z.boolean().default(true)
@@ -408,7 +410,7 @@ export const ROLE_ARCHETYPE_PRESETS: Record<
 
 export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConsoleStudioConfig {
   return {
-    version: 5,
+    version: 6,
     onboardingCompleted: true,
     soulStudio: {
       displayName,
@@ -546,7 +548,7 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
           locked: false,
           audienceMode: "all",
           educationalTip: "挂载 W2 后台 SubAgent 任务的实时步进状态与认知器官输出（如睡眠反思余温），使前台对话环（W1）能够非阻塞地同步任务进度。",
-          template: "[后台异步任务] {{activeTasksSummary}}\n[认知器官摘要] 昨夜海港天文台观测笔记整理已完成。"
+          template: "[后台异步任务] {{activeTasksSummary}}\n[认知器官摘要] 见后台任务记录。"
         }
       ],
       maxBlackboardTokens: 2200,
@@ -614,8 +616,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0.78,
         maxTokens: 4096,
         enabled: true,
-        lastLatencyMs: 245,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       },
       {
         id: "prov_claude_sonnet",
@@ -628,8 +630,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0.45,
         maxTokens: 8192,
         enabled: true,
-        lastLatencyMs: 390,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       },
       {
         id: "prov_ollama_local",
@@ -642,8 +644,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0.65,
         maxTokens: 2048,
         enabled: true,
-        lastLatencyMs: 118,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       },
       {
         id: "prov_bge_embed",
@@ -656,8 +658,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0,
         maxTokens: 512,
         enabled: true,
-        lastLatencyMs: 34,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       },
       {
         id: "prov_bge_rerank",
@@ -670,8 +672,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0,
         maxTokens: 512,
         enabled: true,
-        lastLatencyMs: 76,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       },
       {
         id: "prov_fish_tts",
@@ -684,8 +686,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0.7,
         maxTokens: 1024,
         enabled: true,
-        lastLatencyMs: 185,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       },
       {
         id: "prov_sensevoice_stt",
@@ -698,8 +700,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0,
         maxTokens: 1024,
         enabled: true,
-        lastLatencyMs: 92,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       },
       {
         id: "prov_local_guard_lora",
@@ -712,8 +714,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         temperature: 0,
         maxTokens: 256,
         enabled: true,
-        lastLatencyMs: 6,
-        status: "ready"
+        lastLatencyMs: 0,
+        status: "untested"
       }
     ],
     brainRouting: {
@@ -725,29 +727,12 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
     },
     metabolicPolicy: {
       dailyTokenBudget: 300000,
-      usedTokensToday: 27400,
+      usedTokensToday: 0,
       sleepyThresholdPct: 25,
       emergencyReservePct: 5,
       autoDowngradeEnabled: true
     },
-    platforms: [
-      {
-        id: "builtin.webchat.default",
-        kind: "webchat",
-        name: "WebChat (内置官方通道)",
-        endpoint: "ws://127.0.0.1:4173/protocol/v0/shell",
-        enabled: true,
-        connected: true,
-        rttMs: 4,
-        defaultProfileId: "profile_private_owner",
-        sensors: ["text.stream"],
-        realizers: ["text.chunk", "ext.affect.v1"],
-        actuators: [],
-        sensorTtlSeconds: 30,
-        debounceMs: 0,
-        messagesToday: 0
-      }
-    ],
+    platforms: [],
     attentionPolicy: {
       focusHysteresisMs: 4000,
       neverBroadcastAll: true,
@@ -792,25 +777,7 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
         tokenBudgetPreset: 1600
       }
     ],
-    customRules: [
-      {
-        id: "rule_owner_webchat",
-        umo: "webchat:private:owner_local",
-        label: "WebChat 主通道",
-        platform: "builtin.webchat.default",
-        audienceScope: "only_owner",
-        profileId: "profile_private_owner",
-        triggerAt: false,
-        triggerNickname: false,
-        triggerKeywords: [],
-        proactiveReplyRatePct: 100,
-        continuousWindowSec: 300,
-        opportunityExpireSec: 60,
-        rateLimitPerMin: 30,
-        allowExternalTools: true,
-        enabled: true
-      }
-    ],
+    customRules: [],
     evolution: {
       sleepFirewall: {
         level0Only: true,
@@ -834,44 +801,8 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
           enabled: true
         }
       ],
-      dreamJournal: [
-        {
-          id: "drm_01",
-          date: "03:20",
-          title: "睡眠巩固摘要 · 海港观测与代码评审记忆归档",
-          content: "完成夜间情景事件去重与语义归纳，合并观星记录与架构边界讨论为两条稳定长期记忆片段。",
-          kind: "dream"
-        },
-        {
-          id: "cur_note_01",
-          date: "08:15",
-          title: "只读订阅阅读笔记 · 离线记忆重放与读写分离机制",
-          content: "摘要整理自授权只读信息源：慢波睡眠期将短期海马体情景事件异步压缩写入长期皮层，避免干扰日间低延迟响应。",
-          kind: "curiosity_note"
-        }
-      ],
-      growthProposals: [
-        {
-          id: "prop_growth_01",
-          title: "叙事演进提案：更新重要评审前的协作辅助策略",
-          targetFile: "narrative.md",
-          sourceEventSummary: "源自近 3 次架构筹备对话 (evt_seed_04_stargazing_ritual)",
-          beforeText: "讨论技术问题时注重架构清晰与边界严谨。",
-          afterText: "讨论技术问题时注重架构清晰与边界严谨；在重要评审前优先在后台核对资料清单，并以简洁温和的节奏协助复盘。",
-          status: "pending",
-          createdAt: "08:30"
-        },
-        {
-          id: "prop_growth_02",
-          title: "身份契约提案：工作场景协作称呼自动适配",
-          targetFile: "identity.yaml",
-          sourceEventSummary: "源自近期 4 次跨场景协作与知识库查询记录",
-          beforeText: "工作协作与日常闲聊使用统一中性称呼。",
-          afterText: "日常私密场景保持轻松口吻，进入代码与文档协同通道时自动切换为干练协作搭档风格。",
-          status: "pending",
-          createdAt: "23:45"
-        }
-      ]
+      dreamJournal: [],
+      growthProposals: []
     },
     ragSettings: {
       chunkSize: 500,
@@ -917,102 +848,11 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
           enabled: true
         }
       ],
-      activeTasks: [
-        {
-          id: "task_seed_arch_checklist",
-          title: "核对周二架构评审的核心边界清单并整理问答提纲",
-          subAgentId: "sub_code_reviewer",
-          status: "waiting_approval",
-          currentStep: 4,
-          totalSteps: 8,
-          stepLabel: "步骤 4/8 · 三维权限矩阵确认：等待主人批准写入本地评审清单摘要",
-          riskLevel: "needs_owner_confirm",
-          createdAt: "10 分钟前",
-          outputSummary: "已检索知识库 3 份文档，整理出 5 个高频评审问题与对应证据链。"
-        },
-        {
-          id: "task_seed_stargazing_log",
-          title: "整理海港天文台观测记录与仙后座参考坐标",
-          subAgentId: "sub_research_scholar",
-          status: "completed",
-          currentStep: 8,
-          totalSteps: 8,
-          stepLabel: "步骤 8/8 · 已完成并沉淀为共同经历记忆",
-          riskLevel: "read_only_safe",
-          createdAt: "昨晚 22:15",
-          outputSummary: "已生成结构化观测笔记并同步写入情景记忆。",
-          crystallizedMemoryId: "mem_seed_04_stargazing"
-        }
-      ],
-      scheduledPromises: [
-        {
-          id: "prm_review_followup",
-          kind: "user_upcoming_event",
-          title: "周二下午架构评审结束后，第一时间主动问主人结果并庆祝",
-          scheduleExpr: "2026-11-24 15:30",
-          status: "pending",
-          note: "若因关机错过时间窗，下次上线后自动主动致歉并关心情况"
-        },
-        {
-          id: "prm_rest_reminder",
-          kind: "agent_promise",
-          title: "晚上 23:30 温柔提醒喝温水、停下写代码早点休息",
-          scheduleExpr: "每天 23:30",
-          status: "pending",
-          note: "恪守离场零挽留原则，只关怀不施压"
-        },
-        {
-          id: "prm_morning_brief",
-          kind: "cron_job",
-          title: `每日 08:30 汇总订阅的科技/天文小发现并以 ${displayName} 口吻早安播报`,
-          scheduleExpr: "30 8 * * *",
-          status: "pending",
-          note: "使用 W3 低成本模型与只读订阅源执行"
-        }
-      ]
+      activeTasks: [],
+      scheduledPromises: []
     },
     ecosystem: {
-      plugins: [
-        {
-          id: "builtin.webchat",
-          name: "内置 WebChat 互动舞台",
-          version: "1.0.0",
-          bus: "ext.shell + ext.console_ui",
-          carrier: "原生插件 (零后门标准协议)",
-          enabled: true,
-          description: "严格走 Protocol v0 标准协议的官方内置对话与派活舞台，支持流式打断字数回执。",
-          configFields: [
-            { key: "stream_char_ms", label: "流式打字速度 (ms/字)", type: "number", value: 20 },
-            { key: "show_subtext_toggle", label: "允许呼出内心潜台词抽屉", type: "boolean", value: true }
-          ]
-        },
-        {
-          id: "community.organ.dream-journal",
-          name: "睡眠梦境日记器官 (Dream Journal)",
-          version: "0.9.2",
-          bus: "ext.cognitive_organ",
-          carrier: "大脑认知器官三钩子插件",
-          enabled: true,
-          description: "在 W3 睡眠反思期间生成富有诗意的梦境余温片段，并注入意识黑板第 9 槽位。",
-          configFields: [
-            { key: "max_blackboard_tokens", label: "黑板注入 Token 配额", type: "number", value: 96 },
-            { key: "poetic_style", label: "梦境文风", type: "text", value: "海港星夜 · 温暖克制" }
-          ]
-        },
-        {
-          id: "builtin.media.emotion-tts-sideband",
-          name: "情感语音合成与单字时间戳管线",
-          version: "1.0.0",
-          bus: "ext.media_pipeline",
-          carrier: "多模态媒体管线",
-          enabled: true,
-          description: "对接 FishAudio / GPT-SoVITS 生成带情感标签的语音与口型 Visemes，精确反算打断字数偏移。",
-          configFields: [
-            { key: "voice_id", label: "默认角色声线 ID", type: "text", value: "ai0_warm_neutral" },
-            { key: "api_secret", label: "TTS 服务密钥 (Vault)", type: "secret", value: "••••••••" }
-          ]
-        }
-      ],
+      plugins: [],
       commands: [
         { id: "cmd_help", command: "/help", aliases: ["/菜单", "/指令"], description: "显示当前场景下可用的全部指令与技能说明", permission: "all", enabled: true },
         { id: "cmd_sid", command: "/sid", aliases: ["/会话ID"], description: "返回当前群聊或私聊的统一会话标识 (UMO)，用于绑定自定义规则", permission: "admin", enabled: true },
@@ -1116,6 +956,26 @@ function normalizeDeepSeekModels(config: SoulConsoleStudioConfig): SoulConsoleSt
   };
 }
 
+// Full-record fingerprints of the shipped v5 fixtures. Edited records retain their original classification.
+const shippedDemoRecords = new Set([
+  "375ad728922e158243e95af26819c935a15b3228ada9b5a032404d90b552c1ff", // task_seed_arch_checklist
+  "64fcaf26ad6ec7d000aaf170c34c64147b1a0c510fc7eaa427c013fcd423a45a", // task_seed_stargazing_log
+  "a4426f490cd5bb91394c293a73c48a9ef47b5c24ef430ac3bab1d604626346d2", // prm_review_followup
+  "9bc4769c57d291057ced3edcd3d8216090854aa405caad3da0bc6c96b46d5934", // prm_rest_reminder
+  "1b98c90373153fc42c6a8d2784afa5c179b688ee214a984fd85e3a5a43b6910a", // prm_morning_brief
+  "1f30c155462d9e7b73417f3dd59f0e9489186ff973ecb1f68fe1e5ac2bcc8394", // drm_01
+  "99228374efd8efb5f059b06464e74303b0a4693bc0b7521b1523df7462ccf458", // cur_note_01
+  "c9c3d3ae326f37d9d661abacbc73505d7267846b84e3f5b298501f173397ab56", // prop_growth_01
+  "384810ca48c6b707b2bee4a603087347570bac1985c233a9fd61c69a51288ae4", // prop_growth_02
+]);
+function isShippedDemoRecord(record: unknown): boolean {
+  const canonical = JSON.stringify(record, (_key, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))
+      : value);
+  return shippedDemoRecords.has(createHash("sha256").update(canonical).digest("hex"));
+}
+
 export function readConsoleStudioConfig(
   soulDirPath: string,
   fallbackDisplayName = "Mio"
@@ -1126,42 +986,46 @@ export function readConsoleStudioConfig(
     writeConsoleStudioConfig(soulDirPath, seeded);
     return seeded;
   }
-  try {
-    const raw = JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
-    const ver = Number(raw.version ?? 0);
-    if (ver < 4) {
-      const migrated = createDefaultConsoleStudioConfig(fallbackDisplayName);
-      writeConsoleStudioConfig(soulDirPath, migrated);
-      return migrated;
-    }
-    if (ver < 5) {
-      const fresh = createDefaultConsoleStudioConfig(fallbackDisplayName);
-      const parsed = SoulConsoleStudioConfigSchema.parse({
-        ...raw,
-        version: 5,
-        platforms: fresh.platforms,
-        profiles: fresh.profiles,
-        customRules: fresh.customRules
-      });
-      writeConsoleStudioConfig(soulDirPath, parsed);
-      return parsed;
-    }
-    return normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse(raw));
-  } catch {
-    const seeded = createDefaultConsoleStudioConfig(fallbackDisplayName);
-    writeConsoleStudioConfig(soulDirPath, seeded);
-    return seeded;
+  const raw = JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new TypeError("Invalid studio configuration");
+  if (Number(raw.version ?? 0) > 6) throw new Error("Unsupported studio configuration version");
+  if (Number(raw.version ?? 0) === 6) return normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse(raw));
+  const defaults = createDefaultConsoleStudioConfig(fallbackDisplayName);
+  function fillMissing(defaultValue: unknown, value: unknown): unknown {
+    if (value === undefined) return defaultValue;
+    if (!value || typeof value !== "object" || Array.isArray(value) ||
+        !defaultValue || typeof defaultValue !== "object" || Array.isArray(defaultValue)) return value;
+    const merged = { ...value } as Record<string, unknown>;
+    for (const [key, fallback] of Object.entries(defaultValue)) merged[key] = fillMissing(fallback, merged[key]);
+    return merged;
   }
+  const migrated = SoulConsoleStudioConfigSchema.parse(fillMissing(defaults, { ...raw, version: 6 }));
+  migrated.agency.activeTasks = migrated.agency.activeTasks.filter(record => !isShippedDemoRecord(record));
+  migrated.agency.scheduledPromises = migrated.agency.scheduledPromises.filter(record => !isShippedDemoRecord(record));
+  migrated.evolution.dreamJournal = migrated.evolution.dreamJournal.filter(record => !isShippedDemoRecord(record));
+  migrated.evolution.growthProposals = migrated.evolution.growthProposals.filter(record => !isShippedDemoRecord(record));
+  return raw.version === 5 ? migrated : writeConsoleStudioConfig(soulDirPath, migrated);
 }
 
 export function writeConsoleStudioConfig(
   soulDirPath: string,
   config: SoulConsoleStudioConfig
 ): SoulConsoleStudioConfig {
-  const validated = normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse({ ...config, version: 5 }));
+  const validated = normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse({ ...config, version: 6 }));
   const filePath = getConsoleStudioConfigPath(soulDirPath);
   mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, `${JSON.stringify(validated, null, 2)}\n`, "utf8");
+  if (existsSync(filePath)) {
+    const original = JSON.parse(readFileSync(filePath, "utf8"));
+    if (Number(original.version) > 6) throw new Error("Unsupported studio configuration version");
+    if (original.version !== 6) copyFileSync(filePath, filePath + "." + randomUUID() + ".bak");
+  }
+  const temporary = filePath + "." + randomUUID() + ".tmp";
+  try {
+    writeFileSync(temporary, JSON.stringify(validated, null, 2) + "\n", { flag: "wx" });
+    renameSync(temporary, filePath);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
   return validated;
 }
 
@@ -1202,24 +1066,20 @@ export function compileStudioPromptPreview(
     "{{catchphrases}}": config.soulStudio.catchphrases.join(" / "),
     "{{bannedCliches}}": config.soulStudio.bannedCliches.join("、"),
     "{{narrativeSummary}}": options.narrativeSummary ?? "保持安静克制的长期协作与陪伴边界。",
-    "{{platform}}": options.platform ?? "builtin.webchat.default",
+    "{{platform}}": options.platform ?? "未指定",
     "{{venueType}}": options.venueType ?? (isPublic ? "public_livestream" : "private_1on1"),
     "{{audienceScope}}": options.audienceScope,
     "{{socialMaskInstruction}}": socialMaskInstruction,
-    "{{desktopWindow}}": "WebChat (builtin.webchat.default · 在线文字会话)",
+    "{{desktopWindow}}": options.platform ?? "未上报",
     "{{moodValence}}": (options.moodValence ?? 0.48).toFixed(2),
     "{{circadianPct}}": String(Math.round((options.circadianEnergy ?? 0.86) * 100)),
     "{{metabolicPct}}": String(Math.round((options.metabolicEnergy ?? 0.91) * 100)),
     "{{gapMoeIntensity}}": String(config.soulStudio.temperament.gapMoeIntensity),
-    "{{recalledMemories}}": (options.recalledMemories?.length
-      ? options.recalledMemories
-      : isPublic
-        ? ["[公开常识] 海港天文台仙后座观测指南"]
-        : ["[私密记录] 协作默契：专注编码期间保持安静低打扰", "[私密记录] 下周二下午有重要架构评审"]
+    "{{recalledMemories}}": (options.recalledMemories ?? []
     ).join("；"),
-    "{{unsaidRemainder}}": options.unsaidRemainder || "无（上一轮输出已完整送达）",
-    "{{duePromises}}": config.agency.scheduledPromises.slice(0, 2).map((p) => p.title).join("；"),
-    "{{activeTasksSummary}}": config.agency.activeTasks
+    "{{unsaidRemainder}}": options.unsaidRemainder || "无可核实的未交付文本",
+    "{{duePromises}}": isPublic ? "" : config.agency.scheduledPromises.slice(0, 2).map((p) => p.title).join("；"),
+    "{{activeTasksSummary}}": isPublic ? "" : config.agency.activeTasks
       .filter((t) => t.status !== "completed")
       .map((t) => `${t.title} (${t.stepLabel})`)
       .join("；") || "当前无进行中的后台异步任务"

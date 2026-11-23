@@ -147,7 +147,7 @@ it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces 
     await vi.waitFor(async () => {
       const archivedHistory = await fetch(url + "/history?mode=live", { headers: scopedHeaders });
       expect((await archivedHistory.json()).turns).toEqual(expect.arrayContaining([
-        expect.objectContaining({ requestId: streamingId, assistantText: longReply })
+        expect.objectContaining({ requestId: streamingId, assistantText: "", generatedText: longReply, deliveryStatus: "unknown" })
       ]));
     });
     longGeneration.mockRestore();
@@ -268,6 +268,11 @@ it("discovers out-of-tree community plugins and serves only compiled dist assets
     const directPkgRes = await fetch(`${baseUrl}/api/plugins/community.live2d.stage/assets/package.json`);
     expect(directPkgRes.status).toBe(404);
 
+    const config = (await runtime.buildConsoleLiveSnapshot()).studioConfig!;
+    await fetch(baseUrl + "/api/studio/config", { method: "POST",
+      headers: { "x-ai0-owner-token": ownerToken, "content-type": "application/json" },
+      body: JSON.stringify({ ecosystem: { plugins: config.ecosystem.plugins.map(plugin =>
+        plugin.id === "community.live2d.stage" ? { ...plugin, enabled: true } : plugin) } }) });
     // Stage token endpoint issues a shell-scoped capability token bound to community.live2d.default
     const tokenRes = await fetch(`${baseUrl}/api/plugins/community.live2d.stage/stage-token`, {
       method: "POST",

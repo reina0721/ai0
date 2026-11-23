@@ -396,6 +396,7 @@ function assertFiniteTimestamp(value: number, label: string): void {
  * AuthoritativeStateCoordinator should retain this class.
  */
 export class CoordinatorStorageMutator implements ReadOnlyStorageView {
+  includeDemoData = true;
   get sqlite(): DatabaseSync {
     return this.#database;
   }
@@ -941,6 +942,7 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
       ? "INNER JOIN memories_vec v ON v.memory_id = m.memory_id"
       : "";
     const conditions = ["m.invalidated_at_ts IS NULL"];
+    if (!this.includeDemoData) conditions.push("m.memory_id NOT IN (SELECT memory_id FROM demo_derived_memories)");
     if (
       query.audience_scope === "only_owner" &&
       query.principal_trust === "owner_verified"
@@ -1043,7 +1045,9 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
   listShellDecisionTraces(
     shellId: string,
     limit = 50,
-    audienceScope: AudienceScope = "only_owner"
+    audienceScope: AudienceScope = "only_owner",
+    principalId?: string,
+    thread?: string
   ): VerifiableTurnTrace[] {
     const rows = this.#database
       .prepare(
@@ -1052,9 +1056,11 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
          WHERE event.source_shell_id = ?
            AND event.audience_scope = ?
            AND event.redacted_at_ts_ms IS NULL
-         ORDER BY trace.virtual_ts_ms DESC, trace.trace_id DESC LIMIT ?`
+           AND (? IS NULL OR event.principal_id = ?)
+           AND (json_extract(event.payload_json,'$.thread') IS ?)
+         ORDER BY event.event_seq DESC LIMIT ?`
       )
-      .all(shellId, audienceScope, clampLimit(limit));
+      .all(shellId, audienceScope, principalId ?? null, principalId ?? null, thread ?? null, clampLimit(limit));
     return rows.map((row) => this.deserializeTurnTrace(row));
   }
 

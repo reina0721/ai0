@@ -72,14 +72,14 @@ describe("ai0 compact Material console", () => {
     expect(await guard.canTransition("/memory/lineage")).toBe(false);
     expect(await guard.canTransition("/memory/lineage", "discard")).toBe(true);
 
-    // Full document render check for WebChat stage and Sandbox lab
+    // Without a plugin snapshot even old bookmarks must resolve to the unavailable page.
     const webchatDoc = renderConsoleDocumentHtml({
       pathname: "/shells/stage/builtin.webchat",
       soulTheme: "sakura-pink",
       mode: "live",
       inspectorMode: "trace"
     });
-    expect(webchatDoc).toContain("builtin.webchat");
+    expect(webchatDoc).toContain("页面不可用");
     expect(webchatDoc).toContain("ai0-main-rounded-card-outlet");
 
     const sandboxDoc = renderConsoleDocumentHtml({

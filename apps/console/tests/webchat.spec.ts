@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-const stagePath = "/shells/stage/builtin.webchat";
+const stagePath = "/webchat";
 const runPath = "/protocol/v0/shell/runs";
 
 test("persists one private WebChat turn and keeps drafts isolated by target", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
-  await page.goto(stagePath);
+  await page.goto("/dashboard");
+  await page.getByRole("navigation", { name: "控制台主导航" }).getByRole("link", { name: "WebChat", exact: true }).click();
   const live = page.locator('[data-webchat-target="live"]');
   const composer = live.getByRole("textbox", { name: "输入聊天消息" });
   const original = `你好，我是浏览器测试 ${crypto.randomUUID()}`;

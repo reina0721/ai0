@@ -16,12 +16,12 @@
 
 ---
 
-## ADR-007：外置插件生命周期隔离、动态舞台挂载桥（`Ai0ShellStageHostBridge`）与标杆同构铁律
+## ADR-007　外置插件的发现与依赖隔离
 
 - **背景**：若官方参考插件 `plugins/shells/webchat` 将 UI 实现、第三方 npm 依赖或专属流式后端路由耦合在 `apps/console`、`apps/daemon` 或 `packages/storage` 中，社区开发者将被迫修改宿主源码树与 `package.json` 才能接入新插件；一旦官方上游迭代更新（`git pull` 或镜像升级），用户自建插件将爆发严重的依赖冲突或被覆盖，且违背 `plugins/shells/webchat` 零特权官方参考样板的定位。
 - **决断**：
   1. **源码树与外置用户插件目录物理隔离**：`@ai0/daemon` 通过 `RuntimePluginLoader` 统一扫描官方参考目录 `plugins/*/*`、灵魂级插件目录 `<soulDir>/plugins/*` 及外置用户目录（`user-plugins/*`、`AI0_PLUGINS_DIR`），社区与用户插件完全驻留于官方 Git 树之外，天然免疫上游更新冲突。
-  2. **自包含 UI 产物与标准宿主桥接协议（`Ai0ShellStageHostBridge`）**：Web 躯壳插件在自身包内独立闭环管理第三方依赖并构建 `./dist/ui/stage.js` + `./dist/ui/stage.css`（或 `sandboxed_iframe_stage`），由 Daemon 安全托管 `dist/` 资产于 `/api/plugins/:id/assets/*` 并签发绑定 `shell_id` 的 Channel A `ScopedCapabilityToken`；控制台 `MountedShellStageHost` 在运行时零编译期依赖地动态挂载插件舞台。
+  2. 插件随包构建页面资源，daemon 托管 `dist/`，持有者授权的 shell 页面可申请作用域令牌。现行页面协议见 ADR-008。
   3. **Channel A 通用具身流式会话协议**：将流式对话、阶段进度、中途打断字符偏移回执与会话历史恢复全部下沉为按 `shell_id` 参数化的通用 `/protocol/v0/shell/*` 端点与 `@ai0/storage` 通用接口（`listShellDecisionTraces` / `markShellRunEnded`），确保官方参考插件与任意社区 `ext.shell` 插件 100% 平权同构。
 
 ---
@@ -75,3 +75,32 @@
      - 控制台设计系统统一收口于 `console-theme.css`、`--ai0-*` CSS 变量、`.ai0-*` 类名与 45 项无外部前缀的纯语义组件（Layer 1 原语 `RippleButton` … `HoverTooltip` 与 Layer 2–4 命名风格完全一致）；
      - 协议主题枚举与无头内核默认模型/算力路由 ID 采用中性自解释命名（`sakura-pink` / `astral-blue` / `cyber-emerald`，并保留对遗留 `"cerasus-pink"` 存档值的 Schema 向后兼容映射；内核路由 ID 统一采用 `ai0-*` 命名空间）；
      - 默认示例灵魂存档（`soul.mio` / `Mio`）作为独立样例数据层，与前端设计系统、协议枚举及内核基础设施物理正交解耦。
+
+## ADR-008　插件组合、躯壳接入与个体连续性
+
+**躯壳**是通过协议为一个数字个体提供感知、表达或动作能力的外部载体。网页聊天、终端、群聊机器人和虚拟形象都可以是躯壳。控制台的“接入通道”展示实际连接与可用入口，“会话记录”读取存档，“躯壳协议模拟器”独立调试协议。
+
+| 决策及上游依据 | ai0 的实现与验证 |
+| --- | --- |
+| 由上下文记录可撤销效果，并在依赖出现或消失时激活或停止消费方。[时空可组合性论文](https://arxiv.org/abs/2608.25512) | SDK 固定依赖 `@deepseek-ai/cordis@4.1.0`。daemon 的正式与沙盒运行时分别创建上下文，浏览器按个体和目标挂载。SDK 测试覆盖三级依赖的六种安装顺序、激活失败、局部卸载和资源释放。 |
+| 允许插件公开可继续扩展的位置。[DSH 模型选择菜单](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-model-selection/README.md) · [VS Code 贡献点](https://code.visualstudio.com/api/references/contribution-points) | `ExtensionPoint<T>` 以 `owner/name/version` 标识，提供方验证输入。`scope.contribute(point, value, child => ...)` 的 `child` 可继续定义子菜单。控制台浏览器测试从三个独立目录装载页面、按钮和菜单。 |
+| 一个持久个体允许多条会话。[Letta 持久个体](https://docs.letta.com/concepts/stateful-agents) | `.soul` 保存个体标识、已绑定人物、受众、事件和协调器检查点。连接按租约统计。会话按载体、受众与线程区分，已接收发言和已确认交付文本共用查询口径。`composition-e2e.test.ts` 在卸载、重启和切换终端后读取同一份历史。 |
+| 客户端在运行中提供动作并按标识返回结果。[Neuro SDK 协议](https://github.com/VedalAI/neuro-sdk/blob/main/API/SPECIFICATION.md) | ai0 的租约用 `PATCH` 更新能力。持有者提交的动作绑定到具体连接，载体按 `intent_id` 去重执行并履行本地同意要求。回执成为 `action_episode_completed` 事件。端到端用例在网页输出中断后继续提交另一载体的回执。 |
+
+### 插件作者入口
+
+将页面资源放入插件的 `dist/`，在 `console_contributions.pages` 中声明 `path`、`title`、`entry_module` 和可选的 `navigation`、`shell_id`。模块导出 `mountPage(container, host)`。WebChat 提供 `/webchat`，梦境手记提供 `/dream-journal`。扩展其他页面的插件在 `console_contributions.modules` 中列出模块路径，每个模块导出 `activate(scope)`。缺少构建产物时，插件详情列出缺失文件。
+
+WebChat 在输入框旁公开 `@ai0/plugin-shell-webchat/contracts` 的 `composerActions`。其参数为 `{ label, run }`。安装该契约的插件可调用 `scope.contribute(composerActions, command)`。在 `scope.effect` 内取得订阅、定时器或 DOM 资源，并返回清理函数。模块级副作用和自行启动的外部进程须由作者显式管理。同源原生模块需要持有者信任；Cordis 的作用域负责生命周期。
+
+### 无网页客户端
+
+持有者向 `POST /api/studio/shell-grants` 提交 `shellId`、已核实的 `externalUserId` 和 `principalId`、`audience` 及 `mode`，并附 `x-ai0-owner-token`。给终端配置 `AI0_URL`、`AI0_SHELL_ID`、`AI0_SHELL_TOKEN`、`AI0_MODE` 后，执行 `node plugins/shells/terminal/client.mjs`。终端只接收限定作用域的令牌。它在输出写入完成后提交字符偏移；缺少回执时，存档把交付列为未知。
+
+`POST /protocol/v0/shell/connections` 建立连接，`PATCH` 续约或变更能力，`DELETE` 主动断开。租约有效期为 45 秒，同时受令牌有效期限制。持有者通过 `POST /api/studio/shell-actions` 指定 `sessionId` 与已公布的 `actuatorId`。客户端通过 `GET /protocol/v0/shell/connections/:id/actions` 领取指令，并在同一地址 `POST` 交付回执。连接到期后，新连接独立协商动作；相同动作标识的终态回执只产生一条事件。
+
+### 存档与验收
+
+新建个体获得独立 ID。`--demo` 显式载入示例经历。旧版配置按完整指纹识别随仓发布的示例任务和日志，编辑过的条目保留。v5 读取时先生成兼容视图，首次保存前备份原件；新格式校验后通过同目录临时文件替换。损坏或更高版本的配置会返回错误。
+
+安装浏览器一次后运行 `pnpm verify:all`。该命令执行依赖边界检查、构建、类型检查、单元与 HTTP 验收，以及三级扩展和 WebChat 的 Chromium 验收。浏览器安装命令为 `pnpm --filter @ai0/console-webui exec playwright install chromium`。`pnpm replay:golden` 独立运行内核回放。群聊与形象设备在自动验收中使用协议客户端，终端验收实际启动独立 Node 进程。

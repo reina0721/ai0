@@ -168,13 +168,13 @@ export class BlackboardCompiler {
     }
     const content: Record<BlackboardSlotId, string> = {
       "slot.tier0_safety_invariants": policy.tier0_safety_invariants,
-      "slot.tier1_working_turn": textOf(state.D1_WORKING_TURN),
+      "slot.tier1_working_turn": socialMask ? "" : textOf(state.D1_WORKING_TURN),
       "slot.tier1_homeostasis_affect": textOf(visibleAffect),
       "slot.tier1_memory_projection": policy.memory_projection_text
-        ?? textOf(state.D3_MEMORY_PROJECTION),
-      "slot.tier1_commitments_tasks": textOf(state.D4_COMMITMENTS_TASKS),
+        ?? (socialMask ? "" : textOf(state.D3_MEMORY_PROJECTION)),
+      "slot.tier1_commitments_tasks": socialMask ? "" : textOf(state.D4_COMMITMENTS_TASKS),
       "slot.tier2_narrative_self": policy.narrative_self_text
-        ?? textOf(state.D5_IDENTITY_NARRATIVE),
+        ?? (socialMask ? "" : textOf(state.D5_IDENTITY_NARRATIVE)),
       "slot.offline_background_activity": offline,
     };
     const slots: CompiledBlackboardSlot[] = [];

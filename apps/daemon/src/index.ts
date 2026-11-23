@@ -1,4 +1,5 @@
-import { randomBytes } from "node:crypto";
+import { ExtensionComposition } from "@ai0/sdk";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -25,6 +26,7 @@ import {
   W3SleepReflectionWorker,
   W4MultimodalAnalyzerWorker,
   type CoordinatorStorageMutator as KernelCoordinatorStorageMutator,
+  type ReadOnlyCognitiveSnapshot,
   type KernelMemoryRetriever,
   type KernelReadOnlyStorageView,
   type LlmProviderConfig,
@@ -41,6 +43,7 @@ import {
   ROLE_ARCHETYPE_PRESETS,
   SoulArchiveManager,
   initializeSoulDirectory,
+  labelLegacyDemoEvents,
   readConsoleStudioConfig,
   readSoulArchiveConfig,
   seedDefaultSoulAwakeningData
@@ -88,6 +91,43 @@ function createCoordinatorStorage(
   traces: KernelTurnTrace[]
 ): KernelCoordinatorStorageMutator {
   return {
+    latestStateRevision() {
+      const db = getStorage().sqlite;
+      return Number(db.prepare("SELECT MAX(rev) AS n FROM (SELECT MAX(state_rev_after) AS rev FROM event_log UNION ALL SELECT MAX(state_rev) FROM cognitive_state_checkpoints)").get()?.n ?? 0);
+    },
+    loadCoordinatorState() {
+      const cp = getStorage().getLatestCheckpoint();
+      if (!cp) return undefined;
+      const data = JSON.parse(cp.working_memory_json);
+      if (data.format !== "ai0.coordinator.v1") return undefined;
+      return data.snapshot as ReadOnlyCognitiveSnapshot;
+    },
+    checkpointCoordinatorState(snapshot) {
+      const affect = snapshot.D2_HOMEOSTASIS_AFFECT;
+      const eventId = snapshot.D1_WORKING_TURN.recent_turns.at(-1)?.event_id.replace(/:w1$/, "") ?? "";
+      getStorage().saveCheckpoint({
+        ...affect, mood_attr_scope: affect.mood_attr_scope === "public_all" || affect.mood_attr_scope === "public" ? "public_all" :
+          affect.mood_attr_scope.startsWith("group:") ? affect.mood_attr_scope as AudienceScope : "only_owner",
+        state_rev: snapshot.state_rev, virtual_ts_ms: getStorage().getEventById(eventId)?.virtual_ts_ms ?? 0,
+        caused_by_event_id: eventId, relationship_json: "{}", user_model_json: "{}",
+        working_memory_json: JSON.stringify({ format: "ai0.coordinator.v1", snapshot })
+      });
+    },
+    applyMemoryProjection(proposal) {
+      if (!proposal.source_event_ids.length || typeof proposal.content_text !== "string") return;
+      const event = getStorage().getEventById(proposal.source_event_ids[0]!);
+      if (!event || event.redacted_at_ts_ms !== null) return;
+      const firsthand = proposal.epistemic_type === "observed_firsthand";
+      const id = (firsthand ? "mem_consolidated_" : "mem_reported_") + event.event_id;
+      if (getStorage().sqlite.prepare("SELECT 1 FROM memories WHERE memory_id=?").get(id)) return;
+      getStorage().insertMemoryWithLineage({
+        memory_id: id, memory_tier: "episodic_experience", epistemic_type: firsthand ? "observed_firsthand" : "reported_hearsay",
+        attributed_principal: event.principal_id, visibility_scope: event.audience_scope,
+        taint_level: firsthand && event.principal_trust === "owner_verified" ? "trusted_owner" : "untrusted_external",
+        content_text: proposal.content_text, created_virtual_ts: event.virtual_ts_ms,
+        last_recalled_ts: event.virtual_ts_ms, valid_from_virtual_ts: event.virtual_ts_ms, created_at_rev: event.state_rev_after
+      }, proposal.source_event_ids.map(parent_id => ({ parent_type: "event", parent_id, relation_type: "derived_from" })));
+    },
     getEventById(eventId) {
       const event = getStorage().getEventById(eventId);
       return event && {
@@ -109,7 +149,9 @@ function createReadOnlyView(getStorage: () => CoordinatorStorageMutator): Kernel
   const record = (value: object): Readonly<Record<string, unknown>> =>
     Object.fromEntries(Object.entries(value));
   return {
-    listEvents: () => getStorage().listEvents().map(record),
+    listEvents: query => query?.archived === false
+      ? getStorage().sqlite.prepare("SELECT e.* FROM event_log e WHERE COALESCE(json_extract(e.payload_json,'$.origin'),'') <> 'demo' AND event_category='perception_committed' AND redacted_at_ts_ms IS NULL AND NOT EXISTS (SELECT 1 FROM memories WHERE memory_id='mem_consolidated_' || e.event_id) ORDER BY event_seq").all()
+      : getStorage().listEvents().filter(event => event.redacted_at_ts_ms === null).map(record),
     getEventById: (eventId) => {
       const event = getStorage().getEventById(eventId);
       return event ? record(event) : undefined;
@@ -119,6 +161,7 @@ function createReadOnlyView(getStorage: () => CoordinatorStorageMutator): Kernel
 
 function createKernelRetriever(
   getRetriever: () => HybridMemoryRetriever,
+  storage: () => CoordinatorStorageMutator,
   clock: VirtualClock
 ): KernelMemoryRetriever {
   return {
@@ -139,7 +182,7 @@ function createKernelRetriever(
           taint_level: memory.taint_level,
           score: memory.score,
           content_text: memory.content_text,
-          source_event_ids: []
+          source_event_ids: storage().getMemoryLineage(memory.memory_id).filter(edge => edge.child_memory_id === memory.memory_id && edge.parent_type === "event").map(edge => edge.parent_id)
         }))
       };
     }
@@ -147,6 +190,24 @@ function createKernelRetriever(
 }
 
 export class Ai0DaemonRuntime {
+  private readonly revoked = new Map<string, AbortController>();
+  private readonly capabilityTimer: ReturnType<typeof setInterval>;
+  generation(id: string, mode: "live" | "sandbox" = "live") {
+    return this.pluginLoader.generation(mode === "live" ? this.extensionHost : this.sandboxExtensionHost, id);
+  }
+  private revoke(id: string, mode: "live" | "sandbox") {
+    const key = JSON.stringify([id, mode]);
+    this.revoked.get(key)?.abort();
+    this.revoked.delete(key);
+    this.shellGateway.disconnectPlugin(id, mode);
+  }
+  pluginSignal(pluginId: string, mode: "live" | "sandbox"): AbortSignal {
+    const id = JSON.stringify([pluginId, mode]);
+    let controller = this.revoked.get(id);
+    if (!controller) { controller = new AbortController(); this.revoked.set(id, controller); }
+    return controller.signal;
+  }
+
   private lastIntentEventId = new Map<string, string>();
 
   constructor(
@@ -173,11 +234,53 @@ export class Ai0DaemonRuntime {
     readonly adminServer: PrivilegedAdminServer,
     readonly coordinatorTraces: KernelTurnTrace[],
     readonly mutableState: DaemonMutableState,
-    readonly pluginLoader: RuntimePluginLoader
-  ) {}
+    readonly pluginLoader: RuntimePluginLoader,
+    private readonly compositions: ExtensionComposition[]
+  ) {
+    this.capabilityTimer = setInterval(() => {
+      void this.refreshCapabilities().catch(error => this.adminServer.broadcastTelemetry("[SYS]",
+        { action: "capability_refresh_failed", error: String(error) }, "live", Date.now()));
+    }, 2000);
+    this.capabilityTimer.unref();
+  }
 
-  defaultStageShellId(): string {
-    return this.pluginLoader.findDefaultStageShellId() ?? "shell.default";
+  private pendingRefresh?: Promise<void>;
+  async refreshCapabilities(): Promise<void> {
+    if (this.pendingRefresh) return this.pendingRefresh;
+    const before = this.pluginLoader.listPlugins();
+    const revision = this.pluginLoader.revision;
+    const config = readConsoleStudioConfig(this.soulDir);
+    this.pluginLoader.reload(new Map(config.ecosystem.plugins.map(item => [item.id, item.enabled])));
+    for (const prior of before) {
+      if (prior.generation !== this.pluginLoader.getPlugin(prior.manifest.extension_id)?.generation) {
+        this.revoke(prior.manifest.extension_id, "live");
+        this.revoke(prior.manifest.extension_id, "sandbox");
+      }
+    }
+    this.pendingRefresh = Promise.all([
+      this.pluginLoader.mountIntoHost(this.extensionHost, this.compositions[0]!),
+      this.pluginLoader.mountIntoHost(this.sandboxExtensionHost, this.compositions[1]!)
+    ]).then(() => {
+      if (revision !== this.pluginLoader.revision) this.adminServer.broadcastTelemetry("[SYS]",
+        { action: "capabilities_changed", revision: this.pluginLoader.revision }, "live", Date.now());
+    }).finally(() => { this.pendingRefresh = undefined; });
+    return this.pendingRefresh;
+  }
+
+  async reloadExtension(id: string, mode: "live" | "sandbox", config: Readonly<Record<string, unknown>>, expected: number) {
+    await this.refreshCapabilities();
+    const host = mode === "live" ? this.extensionHost : this.sandboxExtensionHost;
+    const rev = this.pluginLoader.configure(host, id, config, expected);
+    this.revoke(id, mode);
+    await this.refreshCapabilities();
+    const error = this.pluginLoader.activationError(host, id);
+    if (error) throw new Error(error);
+    this.adminServer.broadcastTelemetry("[SYS]", { action: "capabilities_changed", revision: this.pluginLoader.revision }, mode === "live" ? "live" : "sandbox:console");
+    return rev;
+  }
+
+  fallbackShellId(): string {
+    return "shell.default";
   }
 
   get storage(): CoordinatorStorageMutator {
@@ -199,6 +302,8 @@ export class Ai0DaemonRuntime {
   }
 
   async handleShellTurn(input: {
+    principalId?: string;
+    thread?: string;
     shell_id?: string;
     text: string;
     venue_type?: VenueType;
@@ -214,28 +319,28 @@ export class Ai0DaemonRuntime {
     const w1 = isSandbox ? this.sandboxW1 : this.workers.w1;
     const target: "live" | `sandbox:${string}` = isSandbox ? "sandbox:console" : "live";
 
-    const shellId = input.shell_id?.trim() || this.defaultStageShellId();
+    const shellId = input.shell_id?.trim() || this.fallbackShellId();
     const venue: VenueType = input.venue_type ?? "private_1on1";
     const audience: AudienceScope =
       input.audience_scope ?? (venue === "public_livestream" ? "public_all" : "only_owner");
-    const principal = audience === "only_owner" ? "owner_verified" : "stranger";
+    const principal = input.principalId === "owner:local" ? "owner_verified" : "stranger";
     const modality: SensorModality = input.modality ?? "text";
     const nowMs = clock.nowMs();
-    const eventId = options.eventId ?? `evt_shell_${nowMs}_${storage.listEvents({ limit: 1000 }).length + 1}`;
+    const eventId = options.eventId ?? "evt_shell_" + randomUUID();
 
     storage.appendEvent({
       event_id: eventId,
       wall_ts_ms: Date.now(),
       virtual_ts_ms: nowMs,
       source_shell_id: shellId,
-      principal_id: principal === "owner_verified" ? "owner:local" : `guest:${shellId}`,
+      principal_id: input.principalId ?? "unknown",
       principal_trust: principal,
       venue_type: venue,
       audience_scope: audience,
       event_category: "perception_committed",
       modality,
       summary_text: input.text,
-      payload_json: JSON.stringify({ venue, audience, modality }),
+      payload_json: JSON.stringify({ venue, audience, modality, thread: input.thread }),
       state_rev_after: coordinator.getSnapshot().state_rev,
       active_modules_mask: 31
     });
@@ -255,7 +360,7 @@ export class Ai0DaemonRuntime {
       .filter((entry) => entry.enabled && entry.keys.some((k) => k && input.text.includes(k)))
       .map((entry) => ({ title: entry.title, content: entry.content }));
     const compiledStudioPrompt = compileStudioPromptPreview(studioConfig, {
-      audienceScope: audience === "public_all" ? "public_all" : "only_owner",
+      audienceScope: audience === "only_owner" && principal === "owner_verified" ? "only_owner" : "public_all",
       venueType: venue,
       platform: shellId,
       moodValence: snapBefore.D2_HOMEOSTASIS_AFFECT.instant_valence,
@@ -299,11 +404,11 @@ export class Ai0DaemonRuntime {
         dynamicLlmConfig,
         maxTotalTokens: studioConfig.soulStudio.maxBlackboardTokens
       }
-    }, options);
+    }, { ...options, deferDeliveryReceipt: true });
 
     storage.runInTransaction(() => {
       storage.saveTurnDecisionTrace(turn.trace);
-      if (audience === "only_owner" && input.text.trim().length >= 8 && !/(忘掉|遗忘|forget)/iu.test(input.text)) {
+      if (principal === "owner_verified" && audience === "only_owner" && input.text.trim().length >= 8 && !/(忘掉|遗忘|forget)/iu.test(input.text)) {
         storage.insertMemoryWithLineage(
           {
             memory_id: `mem_${eventId}`,
@@ -334,6 +439,28 @@ export class Ai0DaemonRuntime {
     };
   }
 
+  commitDelivery(mode: "live" | "sandbox", eventId: string, status: "completed" | "interrupted", offset: number) {
+    const storage = mode === "live" ? this.storage : this.sandboxStorage;
+    const coordinator = mode === "live" ? this.coordinator : this.sandboxCoordinator;
+    const event = storage.getEventById(eventId);
+    const trace = storage.getDecisionTraceByEvent(eventId);
+    if (!event || event.redacted_at_ts_ms !== null || !trace) throw new Error("UNKNOWN_TURN");
+    const existing = trace.steps.step8_delivery_receipt;
+    if (existing) return existing;
+    const text = Array.from(trace.steps.step7_emitted_intent.fallback_text);
+    const receipt = { status, spoken_char_offset: Math.min(text.length, Math.max(0, offset)), degraded_extensions: [] };
+    storage.runInTransaction(() => {
+      storage.updateTurnTraceDeliveryReceipt(eventId, receipt);
+      if (receipt.spoken_char_offset) coordinator.submitProposal({
+        proposal_id: "delivery:" + eventId, domain: "D1_WORKING_TURN",
+        base_rev: coordinator.getSnapshot().domain_revs.D1_WORKING_TURN, source_event_ids: [eventId],
+        payload: { append_turn: { event_id: eventId + ":w1", role: "assistant",
+          text: text.slice(0, receipt.spoken_char_offset).join("") } }
+      });
+    });
+    return receipt;
+  }
+
   handleShellInterrupt(input: {
     shell_id?: string;
     intent_id: string;
@@ -343,32 +470,12 @@ export class Ai0DaemonRuntime {
   }, eventId?: string) {
     const isSandbox = input.mode === "sandbox";
     const storage = isSandbox ? this.sandboxStorage : this.liveStorage;
-    const w1 = isSandbox ? this.sandboxW1 : this.workers.w1;
-    const chars = Array.from(input.full_text);
-    const offset = Math.max(0, Math.min(chars.length, Math.floor(input.spoken_char_offset)));
-    const unsaidRemainder = chars.slice(offset).join("");
     const turnEventId = eventId ?? this.lastIntentEventId.get(input.intent_id);
-
-    w1.recordInterruption({
-      intent_id: input.intent_id,
-      chunk_seq: 0,
-      spoken_char_offset: offset,
-      unsaid_remainder: unsaidRemainder,
-      interrupted_by_event_id: turnEventId
-    });
-
-    if (turnEventId) {
-      try {
-        storage.updateTurnTraceDeliveryReceipt(turnEventId, {
-          status: "interrupted",
-          spoken_char_offset: offset,
-          degraded_extensions: [],
-          ...(unsaidRemainder ? { unsaid_remainder: unsaidRemainder } : {})
-        } as never);
-      } catch {
-        // Ignore if trace was already redacted.
-      }
-    }
+    const trace = turnEventId ? storage.getDecisionTraceByEvent(turnEventId) : undefined;
+    if (!turnEventId || !trace || trace.steps.step7_emitted_intent.intent_id !== input.intent_id) throw new Error("UNKNOWN_TURN");
+    const receipt = this.commitDelivery(isSandbox ? "sandbox" : "live", turnEventId, "interrupted", input.spoken_char_offset);
+    const offset = receipt.spoken_char_offset;
+    const unsaidRemainder = Array.from(trace.steps.step7_emitted_intent.fallback_text).slice(offset).join("");
 
     this.adminServer.broadcastTelemetry(
       "[TRACE]",
@@ -394,6 +501,7 @@ export class Ai0DaemonRuntime {
   }
 
   async buildConsoleLiveSnapshot(mode: "live" | "sandbox" = "live"): Promise<ConsoleLiveSnapshot> {
+    await this.refreshCapabilities();
     const isSandbox = mode === "sandbox";
     const storage = isSandbox ? this.sandboxStorage : this.liveStorage;
     const clock = isSandbox ? this.sandboxClock : this.virtualClock;
@@ -403,7 +511,7 @@ export class Ai0DaemonRuntime {
     const snapshot = coordinator.getSnapshot();
     const archiveConfig = readSoulArchiveConfig(this.soulDir);
 
-    const events = storage.listEvents({ limit: 50 });
+    const events = storage.listEvents({ limit: 50 }).filter(event => storage.includeDemoData || JSON.parse(event.payload_json).origin !== "demo");
     const memories = storage.queryMemoriesWithAudienceGuard({
       audience_scope: "only_owner",
       principal_trust: "owner_verified",
@@ -430,7 +538,7 @@ export class Ai0DaemonRuntime {
       )
       .all() as Array<{ collection_id: string; documents: number; citations: number; sample_text: string }>;
 
-    const traces = storage.listDecisionTraces(20);
+    const traces = storage.listDecisionTraces(20).filter(trace => storage.includeDemoData || JSON.parse(storage.getEventById(trace.turn_event_id)?.payload_json ?? "{}").origin !== "demo");
     const compiled = await compiler.compile(
       snapshot,
       {
@@ -444,13 +552,13 @@ export class Ai0DaemonRuntime {
     );
 
     const redactionCount = await readRedactionLedgerCount(this.soulDir);
-    const milestones = storage.listMilestones(20).map((item) => ({
+    const milestones = storage.listMilestones(20).filter(item => storage.includeDemoData || JSON.parse(storage.getEventById(item.trigger_event_id ?? "")?.payload_json ?? "{}").origin !== "demo").map((item) => ({
       id: item.milestone_id,
       title: item.title,
       moment: new Date(item.unlocked_virtual_ts).toISOString().slice(0, 10),
       note: item.category,
       completed: true,
-      conditions: ["Repeated owner consent", "Positive growth only", "Audited in SQLite ledger"]
+      conditions: []
     }));
 
     const recentTranscript: ConsoleLiveSnapshot["recentTranscript"] = [];
@@ -463,17 +571,17 @@ export class Ai0DaemonRuntime {
         text: trace.steps.step1_perception.summary_text,
         timestamp: new Date(trace.virtual_ts_ms).toISOString().slice(11, 19)
       });
+      if (!delivered || !["completed", "interrupted"].includes(delivered.status) || !delivered.spoken_char_offset) continue;
       recentTranscript.push({
         id: `${trace.turn_event_id}:a`,
         role: "assistant",
-        text: delivered?.status === "interrupted"
-          ? Array.from(generated).slice(0, delivered.spoken_char_offset).join("")
-          : generated,
+        text: Array.from(generated).slice(0, delivered.spoken_char_offset).join(""),
         timestamp: new Date(trace.virtual_ts_ms).toISOString().slice(11, 19)
       });
     }
 
     const telemetryEntries: ConsoleLiveSnapshot["telemetryEntries"] = this.mutableState.telemetryFrames
+      .filter(frame => frame.target_instance === (isSandbox ? "sandbox:console" : "live"))
       .slice(-40)
       .map((frame) => ({
         id: `tel_${frame.sequence}`,
@@ -497,8 +605,18 @@ export class Ai0DaemonRuntime {
       this,
       studioConfig,
       memories,
-      archiveConfig.narrative
+      archiveConfig.narrative,
+      mode
     );
+    for (const plugin of this.pluginLoader.listPlugins()) {
+      const manifest = plugin.manifest;
+      if (!studioConfig.ecosystem.plugins.some(item => item.id === manifest.extension_id)) {
+        studioConfig.ecosystem.plugins.push({ id: manifest.extension_id, name: manifest.display_name,
+          version: manifest.version, bus: manifest.dimension, carrier: manifest.carrier_kind,
+          enabled: plugin.enabled, description: "", configFields: [] });
+      }
+    }
+    const connections = this.shellGateway.listConnections(mode);
     const conversations = buildConversationsList(storage, studioConfig);
     const availableSouls = listAvailableSoulInstances(this.soulDir);
 
@@ -510,16 +628,19 @@ export class Ai0DaemonRuntime {
       stateRev: snapshot.state_rev,
       virtualTsMs: clock.nowMs(),
       virtualOffsetHours: isSandbox ? this.mutableState.virtualOffsetHours : 0,
-      eventsCount: events.length,
-      memoriesCount: memories.length,
-      tracesCount: traces.length,
+      capabilityRevision: this.pluginLoader.revision,
+      activeConnections: connections.length,
+      connectedShellIds: [...new Set(connections.map(session => session.shell_id))],
+      eventsCount: Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM event_log WHERE redacted_at_ts_ms IS NULL AND (? OR COALESCE(json_extract(payload_json,'$.origin'),'') <> 'demo')").get(Number(storage.includeDemoData))?.n),
+      memoriesCount: Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM memories WHERE invalidated_at_ts IS NULL AND (? OR memory_id NOT IN (SELECT memory_id FROM demo_derived_memories))").get(Number(storage.includeDemoData))?.n),
+      tracesCount: Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM turn_decision_traces").get()?.n),
       redactionLedgerCount: redactionCount,
       metabolicEnergy: snapshot.D2_HOMEOSTASIS_AFFECT.metabolic_energy,
       circadianEnergy: snapshot.D2_HOMEOSTASIS_AFFECT.circadian_energy,
       moodValence: snapshot.D2_HOMEOSTASIS_AFFECT.instant_valence,
       socialLonging: snapshot.D2_HOMEOSTASIS_AFFECT.drive_social_longing,
-      frictionTension: snapshot.D5_IDENTITY_NARRATIVE.active_tensions.filter((t) => !t.resolved).length * 22,
-      trustBond: 84,
+      frictionTension: snapshot.D5_IDENTITY_NARRATIVE.active_tensions.filter((t) => !t.resolved).length,
+
       blackboardSlots: compiled.slots.map((slot, idx) => ({
         id: slot.slot_id,
         label: slot.slot_id.replace(/^slot\./, "").replaceAll("_", " "),
@@ -551,29 +672,20 @@ export class Ai0DaemonRuntime {
         sampleText: row.sample_text
       })),
       milestones,
-      extensions: extHost.listExtensions().map((ext) => {
-        const discovered = this.pluginLoader.getPlugin(ext.id);
-        const studioEntry = studioConfig.ecosystem.plugins.find((entry) => entry.id === ext.id);
-        const enabled =
-          studioEntry !== undefined
-            ? studioEntry.enabled
-            : (ext as { organEnabled?: boolean }).organEnabled !== false && (discovered?.enabled ?? true);
-        return {
-          id: ext.id,
-          ...(discovered ? {
-            displayName: discovered.manifest.display_name,
-            version: discovered.manifest.version,
-            origin: discovered.origin,
-            uiSlots: [...discovered.uiSlots]
-          } : {}),
-          carrier: ext.carrier,
-          buses: [...ext.buses],
-          enabled,
-          rev: ext.rev,
-          readDomains: [...(ext.readDomains ?? [])],
-          proposeDomains: [...(ext.proposeDomains ?? [])]
-        };
+      extensions: this.pluginLoader.listPlugins().map(plugin => {
+        const id = plugin.manifest.extension_id;
+        const mounted = extHost.listExtensions().find(item => item.id === id);
+        return { id, displayName: plugin.manifest.display_name, version: plugin.manifest.version,
+          origin: plugin.origin, pages: plugin.pages, moduleUrls: plugin.moduleUrls, uiSlots: [...plugin.uiSlots], missingAssets: plugin.missingAssets,
+          generation: this.generation(id, mode), activationError: this.pluginLoader.activationError(extHost, id), carrier: plugin.manifest.carrier_kind,
+          buses: mounted ? [...mounted.buses] : [plugin.manifest.dimension], enabled: !!mounted,
+          rev: mounted?.rev ?? 0, readDomains: [...plugin.manifest.permissions.read_blackboard_domains],
+          proposeDomains: [...plugin.manifest.permissions.propose_mutation_domains] };
       }),
+      sleepJournal: isSandbox
+        ? events.filter(event => event.event_category === "sleep_consolidation_run").map(event => ({
+            title: "睡眠整理", date: new Date(event.wall_ts_ms).toISOString(), content: event.summary_text }))
+        : studioConfig.evolution.dreamJournal.map(({ title, date, content }) => ({ title, date, content })),
       recentTraces: traces,
       latestTrace: traces[0],
       telemetryEntries,
@@ -591,6 +703,9 @@ export class Ai0DaemonRuntime {
   }
 
   close(): void {
+    clearInterval(this.capabilityTimer);
+    for (const controller of this.revoked.values()) controller.abort();
+    for (const composition of this.compositions) void composition.dispose();
     this.liveStorage.close();
     this.sandboxStorage.close();
     for (const forkStorage of this.mutableState.sandboxForks.values()) {
@@ -606,9 +721,11 @@ export function createDefaultDaemonRuntime(
   const soulDir = resolve(options.soulDir ?? "souls/default.soul");
   const layout = initializeSoulDirectory(soulDir);
   let liveStorage = new CoordinatorStorageMutator(layout.soulCoreDatabasePath);
+  liveStorage.includeDemoData = options.seedIfEmpty === true;
   const virtualClock = new VirtualClock({ targetInstance: targetInstanceOf(options.targetInstance) });
 
-  if (options.seedIfEmpty !== false) {
+  labelLegacyDemoEvents(liveStorage);
+  if (options.seedIfEmpty === true) {
     seedDefaultSoulAwakeningData(liveStorage, virtualClock.nowMs());
   }
 
@@ -616,7 +733,8 @@ export function createDefaultDaemonRuntime(
   const sandboxSoulDir = join(sandboxDir, "sandbox.soul");
   const sandboxLayout = initializeSoulDirectory(sandboxSoulDir);
   const sandboxStorage = new CoordinatorStorageMutator(sandboxLayout.soulCoreDatabasePath);
-  seedDefaultSoulAwakeningData(sandboxStorage, virtualClock.nowMs());
+  sandboxStorage.includeDemoData = options.seedIfEmpty === true;
+  if (options.seedIfEmpty) seedDefaultSoulAwakeningData(sandboxStorage, virtualClock.nowMs());
 
   const soulArchiveManager = new SoulArchiveManager(soulDir);
   let liveRetriever = new HybridMemoryRetriever(liveStorage);
@@ -654,8 +772,8 @@ export function createDefaultDaemonRuntime(
   });
   const extensionHost = new PolymorphicExtensionHost();
   const sandboxExtensionHost = new PolymorphicExtensionHost();
-  pluginLoader.mountIntoHost(extensionHost);
-  pluginLoader.mountIntoHost(sandboxExtensionHost);
+  const compositions = [new ExtensionComposition(), new ExtensionComposition()];
+
 
   const brainRegionRouter = new BrainRegionRouter({
     W1_fast_dialogue: { primary_model_id: "ai0-dialogue-fast", fallback_model_id: "ai0-compact" },
@@ -671,28 +789,6 @@ export function createDefaultDaemonRuntime(
   const ownerMasterToken = options.ownerMasterToken ?? randomBytes(32).toString("base64url");
   if (!ownerMasterToken) throw new TypeError("ownerMasterToken must not be empty.");
 
-  const initialShellSessions = new Map<string, {
-    session_id: string;
-    shell_id: string;
-    venue_type: VenueType;
-    audience_scope: AudienceScope;
-    modality: SensorModality;
-    last_active_ts_ms: number;
-  }>();
-  for (const plugin of pluginLoader.listPlugins()) {
-    const stageSlot = plugin.uiSlots.find((slot) => slot.slot_target === "slot.shells.mounted_stage");
-    if (stageSlot?.shell_id) {
-      initialShellSessions.set(stageSlot.shell_id, {
-        session_id: `sess_${plugin.manifest.extension_id.replace(/[^a-z0-9_]+/gi, "_")}`,
-        shell_id: stageSlot.shell_id,
-        venue_type: "private_1on1",
-        audience_scope: "only_owner",
-        modality: "text",
-        last_active_ts_ms: virtualClock.nowMs()
-      });
-    }
-  }
-
   const mutableState: DaemonMutableState = {
     virtualOffsetHours: 0,
     debounceWindowMs: 1_200,
@@ -701,7 +797,6 @@ export function createDefaultDaemonRuntime(
       { hour: 14, energy: 1.0 },
       { hour: 23, energy: 0.32 }
     ],
-    activeShellSessions: initialShellSessions,
     telemetryFrames: [],
     sandboxForks: new Map()
   };
@@ -726,7 +821,7 @@ export function createDefaultDaemonRuntime(
     w1: new W1FastDialogueWorker(
       coordinator,
       readOnlyView,
-      createKernelRetriever(() => liveRetriever, virtualClock),
+      createKernelRetriever(() => liveRetriever, () => liveStorage, virtualClock),
       virtualClock,
       {
         blackboardCompiler,
@@ -745,7 +840,7 @@ export function createDefaultDaemonRuntime(
   const sandboxW1 = new W1FastDialogueWorker(
     sandboxCoordinator,
     sandboxReadOnlyView,
-    createKernelRetriever(() => sandboxRetriever, sandboxClock),
+    createKernelRetriever(() => sandboxRetriever, () => sandboxStorage, sandboxClock),
     sandboxClock,
     {
       blackboardCompiler: sandboxBlackboardCompiler,
@@ -769,6 +864,8 @@ export function createDefaultDaemonRuntime(
 
   let runtimeRef: Ai0DaemonRuntime | undefined;
   const handlerContext: DaemonHandlerContext = {
+    reloadExtension: (id, mode, config, expected) => runtimeRef!.reloadExtension(id, mode, config, expected),
+    shellGateway,
     soulDir,
     get storage() { return liveStorage; },
     sandboxStorage,
@@ -791,7 +888,9 @@ export function createDefaultDaemonRuntime(
     state: mutableState,
     emitTelemetry,
     replaceLiveStorage(nextStorage) {
+      nextStorage.includeDemoData = liveStorage.includeDemoData;
       liveStorage = nextStorage;
+      coordinator.restoreCheckpoint();
       liveRetriever = new HybridMemoryRetriever(nextStorage);
       liveHardForget = new HardForgetEngine(nextStorage.sqlite);
       runtimeRef?.replaceLiveStorage(nextStorage);
@@ -834,7 +933,8 @@ export function createDefaultDaemonRuntime(
     adminServer,
     coordinatorTraces,
     mutableState,
-    pluginLoader
+    pluginLoader,
+    compositions
   );
   return runtimeRef;
 }

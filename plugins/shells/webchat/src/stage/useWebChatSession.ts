@@ -180,13 +180,6 @@ export function useWebChatSession(
       if (controller.signal.aborted) return;
       const targetHistory = history.filter((turn) => turn.targetInstance === targetInstance);
       setTurns((current) => mergeHistory(targetHistory.map(fromHistory), current));
-      const latest = targetHistory.at(-1);
-      if (!active.current && latest?.requestId && !latest.receipt && !readHiddenTurns(storageKey).includes(latest.eventId)) {
-        const run = newRun(latest.requestId);
-        active.current = run;
-        setRunning(true);
-        void recover(run);
-      }
     }).catch(() => {
       if (!controller.signal.aborted) setHistoryError(true);
     }).finally(() => {
