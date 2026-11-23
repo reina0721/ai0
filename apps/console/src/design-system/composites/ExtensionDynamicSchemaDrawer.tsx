@@ -25,7 +25,7 @@ export function ExtensionDynamicSchemaDrawer({
   if (!open) return null;
 
   return (
-    <aside className="w-full max-w-md border-l border-[color:color-mix(in_oklch,var(--ai0-on-surface)_18%,transparent)] bg-[var(--ai0-surface-workspace)] p-5 shadow-[-18px_0_48px_color-mix(in_oklch,var(--ai0-on-surface)_10%,transparent)]">
+    <aside className="w-full max-w-md border-l border-[color:color-mix(in_oklch,var(--ai0-on-surface)_18%,transparent)] bg-[var(--ai0-surface-main-card)] p-5 shadow-[-18px_0_48px_color-mix(in_oklch,var(--ai0-on-surface)_10%,transparent)]">
       <header className="flex items-start justify-between gap-4 border-b border-[color:color-mix(in_oklch,var(--ai0-on-surface)_14%,transparent)] pb-4">
         <div><p className="text-xs text-[var(--ai0-on-surface)] opacity-65">config_schema.json</p><h2 className="mt-1 text-base font-semibold text-[var(--ai0-on-surface)]">{extensionName}</h2></div>
         <RippleButton size="sm" variant="ghost" onClick={onClose}>Close</RippleButton>

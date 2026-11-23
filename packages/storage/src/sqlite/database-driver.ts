@@ -1040,26 +1040,34 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     return rows.map((row) => this.deserializeTurnTrace(row));
   }
 
-  listWebChatDecisionTraces(limit = 50): VerifiableTurnTrace[] {
+  listShellDecisionTraces(
+    shellId: string,
+    limit = 50,
+    audienceScope: AudienceScope = "only_owner"
+  ): VerifiableTurnTrace[] {
     const rows = this.#database
       .prepare(
         `SELECT trace.* FROM turn_decision_traces AS trace
          JOIN event_log AS event ON event.event_id = trace.turn_event_id
-         WHERE event.source_shell_id = 'builtin.webchat.default'
-           AND event.audience_scope = 'only_owner'
+         WHERE event.source_shell_id = ?
+           AND event.audience_scope = ?
            AND event.redacted_at_ts_ms IS NULL
          ORDER BY trace.virtual_ts_ms DESC, trace.trace_id DESC LIMIT ?`
       )
-      .all(clampLimit(limit));
+      .all(shellId, audienceScope, clampLimit(limit));
     return rows.map((row) => this.deserializeTurnTrace(row));
   }
 
-  markWebChatRunEnded(eventId: string, status: "cancelled" | "failed"): void {
+  markShellRunEnded(
+    shellId: string,
+    eventId: string,
+    status: "cancelled" | "failed"
+  ): void {
     this.#database.prepare(
-      `UPDATE event_log SET payload_json = json_set(payload_json, '$.webchat_run_status', ?)
-       WHERE event_id = ? AND source_shell_id = 'builtin.webchat.default'
+      `UPDATE event_log SET payload_json = json_set(payload_json, '$.shell_run_status', ?)
+       WHERE event_id = ? AND source_shell_id = ?
          AND redacted_at_ts_ms IS NULL`
-    ).run(status, eventId);
+    ).run(status, eventId, shellId);
   }
 
   getDecisionTraceByEvent(eventId: string): VerifiableTurnTrace | undefined {

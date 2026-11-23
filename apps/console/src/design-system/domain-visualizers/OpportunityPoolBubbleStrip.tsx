@@ -27,7 +27,7 @@ const priorityTint = (priority: OpportunityPoolItem["priority"]) =>
   priority === "critical"
     ? "color-mix(in oklch, var(--ai0-accent) 82%, var(--ai0-surface-container-high))"
     : priority === "high"
-      ? "color-mix(in oklch, var(--ai0-accent) 56%, var(--ai0-surface-inset))"
+      ? "color-mix(in oklch, var(--ai0-accent) 56%, var(--ai0-surface-container-low))"
       : "var(--ai0-surface-container-high)";
 
 export function OpportunityPoolBubbleStrip({
@@ -38,7 +38,7 @@ export function OpportunityPoolBubbleStrip({
   return (
     <section
       aria-label="Coordinator opportunity pool"
-      style={{ background: "var(--ai0-surface-workspace)", color: "var(--ai0-on-surface)", padding: "16px" }}
+      style={{ background: "var(--ai0-surface-main-card)", color: "var(--ai0-on-surface)", padding: "16px" }}
     >
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "14px" }}>
         <div>

@@ -41,14 +41,14 @@ export function EdibleSoulDistillerWizard({
   onScrubChange,
   onDistill,
 }: EdibleSoulDistillerWizardProps): ReactElement {
-  return <section style={{ display: "grid", gap: 14, padding: 16, border: "var(--ai0-border-subtle)", borderRadius: 14, background: "var(--ai0-surface-workspace)" }}>
+  return <section style={{ display: "grid", gap: 14, padding: 16, border: "var(--ai0-border-subtle)", borderRadius: 14, background: "var(--ai0-surface-main-card)" }}>
     <header style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
       <div><strong>Edible Soul Distiller</strong><div style={{ fontSize: 12, opacity: 0.68 }}>Four steps from character card to a bounded persona.</div></div>
       <span style={{ fontSize: 12, color: "var(--ai0-accent)" }}>{activeStep + 1} / {steps.length}</span>
     </header>
     <nav aria-label="Distiller steps" style={{ display: "grid", gridTemplateColumns: `repeat(${steps.length}, 1fr)`, gap: 6 }}>
       {steps.map((step, index) => <ButtonBase key={step.label} type="button" aria-current={index === activeStep ? "step" : undefined}
-        onClick={() => onStepChange(index)} style={{ display: "grid", justifyItems: "start", textAlign: "left", padding: 8, border: "var(--ai0-border-subtle)", borderRadius: 8, background: index === activeStep ? "var(--ai0-accent-tint)" : "var(--ai0-surface-inset)" }}>
+        onClick={() => onStepChange(index)} style={{ display: "grid", justifyItems: "start", textAlign: "left", padding: 8, border: "var(--ai0-border-subtle)", borderRadius: 8, background: index === activeStep ? "var(--ai0-accent-tint)" : "var(--ai0-surface-container-low)" }}>
         <strong style={{ fontSize: 12 }}>{index + 1}. {step.label}</strong><div style={{ fontSize: 11, opacity: 0.7 }}>{step.summary}</div>
       </ButtonBase>)}
     </nav>

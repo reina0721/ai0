@@ -38,7 +38,7 @@ export function VerifiableTraceAccordion(props: VerifiableTraceAccordionProps): 
   const receiptRemainder = props.trace.steps.step8_delivery_receipt?.unsaid_remainder;
   return <section className="ai0-verifiable-trace-accordion" aria-label="Verifiable turn trace"
     style={{ display: "grid", gap: "1px", background: "var(--ai0-border-subtle)" }}>
-    <header style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "var(--ai0-surface-inset)" }}>
+    <header style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "var(--ai0-surface-container-low)" }}>
       <StatusBadge tone="info">8-step trace</StatusBadge><code>{props.trace.trace_id}</code><small>{props.trace.target_instance}</small>
     </header>
     {STEP_KEYS.map((key, index) => {

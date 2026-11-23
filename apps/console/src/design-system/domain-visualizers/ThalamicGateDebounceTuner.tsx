@@ -47,7 +47,7 @@ export function ThalamicGateDebounceTuner(props: ThalamicGateDebounceTunerProps)
       </div>)}
     </div>
     <div role="progressbar" aria-valuemin={0} aria-valuemax={debounceMs} aria-valuenow={elapsed}
-      style={{ height: "6px", background: "var(--ai0-surface-inset)" }}>
+      style={{ height: "6px", background: "var(--ai0-surface-container-low)" }}>
       <span style={{ display: "block", width: `${elapsed / debounceMs * 100}%`, height: "100%",
         background: "var(--ai0-accent)" }} />
     </div>

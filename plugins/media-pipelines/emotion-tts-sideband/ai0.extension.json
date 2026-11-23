@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ai0.dev/schemas/ai0.extension.schema.json",
+  "manifest_version": "1.1.0",
+  "extension_id": "builtin.media.emotion-tts-sideband",
+  "display_name": "Emotion TTS Sideband",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "native_code_plugin",
+  "dimension": "ext.media_pipeline",
+  "entry": "./dist/index.js",
+  "permissions": {
+    "read_blackboard_domains": ["D2_HOMEOSTASIS_AFFECT"],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  }
+}

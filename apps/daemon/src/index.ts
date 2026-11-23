@@ -59,6 +59,7 @@ import {
   listAvailableSoulInstances,
   readVaultProviderKey
 } from "./studio-service.js";
+import { RuntimePluginLoader } from "./plugin-loader.js";
 
 export interface DefaultDaemonOptions {
   soulDir?: string;
@@ -66,6 +67,8 @@ export interface DefaultDaemonOptions {
   targetInstance?: string;
   seedIfEmpty?: boolean;
   llmConfig?: LlmProviderConfig;
+  extraPluginDirs?: readonly string[];
+  builtinPluginsDir?: string;
 }
 
 export interface DaemonWorkers {
@@ -78,45 +81,6 @@ export interface DaemonWorkers {
 function targetInstanceOf(value = "live"): TargetInstance {
   if (value === "live" || /^sandbox:.+$/.test(value)) return value as TargetInstance;
   throw new TypeError("targetInstance must be 'live' or start with 'sandbox:'.");
-}
-
-function mountStandardExtensions(host: PolymorphicExtensionHost): void {
-  host.registerExtension({
-    id: "builtin.webchat",
-    carrier: "native_code_plugin",
-    buses: ["ext.shell"],
-    extension: {
-      shellId: "builtin.webchat.default",
-      stageRoute: "/shells/stage/builtin.webchat",
-      source: "plugins/shells/webchat"
-    }
-  });
-  host.registerExtension({
-    id: "community.organ.dream-journal",
-    carrier: "native_code_plugin",
-    buses: ["ext.cognitive_organ"],
-    readDomains: ["D2_HOMEOSTASIS_AFFECT", "D3_MEMORY_PROJECTION"],
-    proposeDomains: ["D3_MEMORY_PROJECTION"],
-    extension: {
-      organId: "community.organ.dream-journal",
-      defaultEnabled: true,
-      source: "plugins/cognitive-organs/dream-journal",
-      contributeToBlackboard: () => ({
-        slot_id: "organ.dream_journal.residue",
-        text: "梦境余温：昨夜海港天文台灯塔的微光仍留在潜意识里。"
-      })
-    }
-  });
-  host.registerExtension({
-    id: "builtin.media.emotion-tts-sideband",
-    carrier: "native_code_plugin",
-    buses: ["ext.media_pipeline"],
-    extension: {
-      id: "builtin.media.emotion-tts-sideband",
-      source: "plugins/media-pipelines/emotion-tts-sideband",
-      getSupportedVocabulary: () => ({ voice_emotion_tags: ["warm_neutral", "bright", "soft_sleepy"] })
-    }
-  });
 }
 
 function createCoordinatorStorage(
@@ -208,8 +172,13 @@ export class Ai0DaemonRuntime {
     readonly shellGateway: ShellProtocolGateway,
     readonly adminServer: PrivilegedAdminServer,
     readonly coordinatorTraces: KernelTurnTrace[],
-    readonly mutableState: DaemonMutableState
+    readonly mutableState: DaemonMutableState,
+    readonly pluginLoader: RuntimePluginLoader
   ) {}
+
+  defaultStageShellId(): string {
+    return this.pluginLoader.findDefaultStageShellId() ?? "shell.default";
+  }
 
   get storage(): CoordinatorStorageMutator {
     return this.liveStorage;
@@ -229,7 +198,8 @@ export class Ai0DaemonRuntime {
     this.liveHardForget = new HardForgetEngine(nextStorage.sqlite);
   }
 
-  async handleWebChatTurn(input: {
+  async handleShellTurn(input: {
+    shell_id?: string;
     text: string;
     venue_type?: VenueType;
     audience_scope?: AudienceScope;
@@ -244,20 +214,21 @@ export class Ai0DaemonRuntime {
     const w1 = isSandbox ? this.sandboxW1 : this.workers.w1;
     const target: "live" | `sandbox:${string}` = isSandbox ? "sandbox:console" : "live";
 
+    const shellId = input.shell_id?.trim() || this.defaultStageShellId();
     const venue: VenueType = input.venue_type ?? "private_1on1";
     const audience: AudienceScope =
       input.audience_scope ?? (venue === "public_livestream" ? "public_all" : "only_owner");
     const principal = audience === "only_owner" ? "owner_verified" : "stranger";
     const modality: SensorModality = input.modality ?? "text";
     const nowMs = clock.nowMs();
-    const eventId = options.eventId ?? `evt_webchat_${nowMs}_${storage.listEvents({ limit: 1000 }).length + 1}`;
+    const eventId = options.eventId ?? `evt_shell_${nowMs}_${storage.listEvents({ limit: 1000 }).length + 1}`;
 
     storage.appendEvent({
       event_id: eventId,
       wall_ts_ms: Date.now(),
       virtual_ts_ms: nowMs,
-      source_shell_id: "builtin.webchat.default",
-      principal_id: principal === "owner_verified" ? "owner:local" : "guest:webchat",
+      source_shell_id: shellId,
+      principal_id: principal === "owner_verified" ? "owner:local" : `guest:${shellId}`,
       principal_trust: principal,
       venue_type: venue,
       audience_scope: audience,
@@ -271,7 +242,7 @@ export class Ai0DaemonRuntime {
 
     this.adminServer.broadcastTelemetry("[EVENT]", {
       event_id: eventId,
-      shell_id: "builtin.webchat.default",
+      shell_id: shellId,
       venue_type: venue,
       audience_scope: audience,
       ...(options.eventId ? {} : { summary_text: input.text })
@@ -286,7 +257,7 @@ export class Ai0DaemonRuntime {
     const compiledStudioPrompt = compileStudioPromptPreview(studioConfig, {
       audienceScope: audience === "public_all" ? "public_all" : "only_owner",
       venueType: venue,
-      platform: "builtin.webchat.default",
+      platform: shellId,
       moodValence: snapBefore.D2_HOMEOSTASIS_AFFECT.instant_valence,
       circadianEnergy: snapBefore.D2_HOMEOSTASIS_AFFECT.circadian_energy,
       metabolicEnergy: snapBefore.D2_HOMEOSTASIS_AFFECT.metabolic_energy
@@ -363,7 +334,8 @@ export class Ai0DaemonRuntime {
     };
   }
 
-  handleWebChatInterrupt(input: {
+  handleShellInterrupt(input: {
+    shell_id?: string;
     intent_id: string;
     spoken_char_offset: number;
     full_text: string;
@@ -402,6 +374,7 @@ export class Ai0DaemonRuntime {
       "[TRACE]",
       {
         event: "barge_in_interrupted",
+        ...(input.shell_id ? { shell_id: input.shell_id } : {}),
         intent_id: input.intent_id,
         spoken_char_offset: offset,
         ...(eventId ? {} : { unsaid_remainder: unsaidRemainder })
@@ -416,7 +389,7 @@ export class Ai0DaemonRuntime {
     };
   }
 
-  clearWebChatTranscript(_mode: "live" | "sandbox" = "live"): { ok: true; cleared: number } {
+  clearShellTranscript(_shellId?: string, _mode: "live" | "sandbox" = "live"): { ok: true; cleared: number } {
     return { ok: true, cleared: 0 };
   }
 
@@ -578,15 +551,29 @@ export class Ai0DaemonRuntime {
         sampleText: row.sample_text
       })),
       milestones,
-      extensions: extHost.listExtensions().map((ext) => ({
-        id: ext.id,
-        carrier: ext.carrier,
-        buses: [...ext.buses],
-        enabled: (ext as { organEnabled?: boolean }).organEnabled !== false,
-        rev: ext.rev,
-        readDomains: [...(ext.readDomains ?? [])],
-        proposeDomains: [...(ext.proposeDomains ?? [])]
-      })),
+      extensions: extHost.listExtensions().map((ext) => {
+        const discovered = this.pluginLoader.getPlugin(ext.id);
+        const studioEntry = studioConfig.ecosystem.plugins.find((entry) => entry.id === ext.id);
+        const enabled =
+          studioEntry !== undefined
+            ? studioEntry.enabled
+            : (ext as { organEnabled?: boolean }).organEnabled !== false && (discovered?.enabled ?? true);
+        return {
+          id: ext.id,
+          ...(discovered ? {
+            displayName: discovered.manifest.display_name,
+            version: discovered.manifest.version,
+            origin: discovered.origin,
+            uiSlots: [...discovered.uiSlots]
+          } : {}),
+          carrier: ext.carrier,
+          buses: [...ext.buses],
+          enabled,
+          rev: ext.rev,
+          readDomains: [...(ext.readDomains ?? [])],
+          proposeDomains: [...(ext.proposeDomains ?? [])]
+        };
+      }),
       recentTraces: traces,
       latestTrace: traces[0],
       telemetryEntries,
@@ -660,10 +647,15 @@ export function createDefaultDaemonRuntime(
     listEvents: () => sandboxStorage.listEvents().map((e) => ({ ...e }))
   });
 
+  const pluginLoader = new RuntimePluginLoader({
+    soulDir,
+    ...(options.builtinPluginsDir ? { builtinPluginsDir: options.builtinPluginsDir } : {}),
+    ...(options.extraPluginDirs ? { extraPluginDirs: options.extraPluginDirs } : {})
+  });
   const extensionHost = new PolymorphicExtensionHost();
   const sandboxExtensionHost = new PolymorphicExtensionHost();
-  mountStandardExtensions(extensionHost);
-  mountStandardExtensions(sandboxExtensionHost);
+  pluginLoader.mountIntoHost(extensionHost);
+  pluginLoader.mountIntoHost(sandboxExtensionHost);
 
   const brainRegionRouter = new BrainRegionRouter({
     W1_fast_dialogue: { primary_model_id: "ai0-dialogue-fast", fallback_model_id: "ai0-compact" },
@@ -679,6 +671,28 @@ export function createDefaultDaemonRuntime(
   const ownerMasterToken = options.ownerMasterToken ?? randomBytes(32).toString("base64url");
   if (!ownerMasterToken) throw new TypeError("ownerMasterToken must not be empty.");
 
+  const initialShellSessions = new Map<string, {
+    session_id: string;
+    shell_id: string;
+    venue_type: VenueType;
+    audience_scope: AudienceScope;
+    modality: SensorModality;
+    last_active_ts_ms: number;
+  }>();
+  for (const plugin of pluginLoader.listPlugins()) {
+    const stageSlot = plugin.uiSlots.find((slot) => slot.slot_target === "slot.shells.mounted_stage");
+    if (stageSlot?.shell_id) {
+      initialShellSessions.set(stageSlot.shell_id, {
+        session_id: `sess_${plugin.manifest.extension_id.replace(/[^a-z0-9_]+/gi, "_")}`,
+        shell_id: stageSlot.shell_id,
+        venue_type: "private_1on1",
+        audience_scope: "only_owner",
+        modality: "text",
+        last_active_ts_ms: virtualClock.nowMs()
+      });
+    }
+  }
+
   const mutableState: DaemonMutableState = {
     virtualOffsetHours: 0,
     debounceWindowMs: 1_200,
@@ -687,19 +701,7 @@ export function createDefaultDaemonRuntime(
       { hour: 14, energy: 1.0 },
       { hour: 23, energy: 0.32 }
     ],
-    activeShellSessions: new Map([
-      [
-        "builtin.webchat.default",
-        {
-          session_id: "sess_webchat_builtin",
-          shell_id: "builtin.webchat.default",
-          venue_type: "private_1on1",
-          audience_scope: "only_owner",
-          modality: "text",
-          last_active_ts_ms: virtualClock.nowMs()
-        }
-      ]
-    ]),
+    activeShellSessions: initialShellSessions,
     telemetryFrames: [],
     sandboxForks: new Map()
   };
@@ -831,11 +833,13 @@ export function createDefaultDaemonRuntime(
     shellGateway,
     adminServer,
     coordinatorTraces,
-    mutableState
+    mutableState,
+    pluginLoader
   );
   return runtimeRef;
 }
 
 export * from "./admin-handlers.js";
 export * from "./studio-service.js";
+export * from "./plugin-loader.js";
 export * from "./cli.js";

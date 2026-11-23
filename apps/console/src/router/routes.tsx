@@ -54,7 +54,7 @@ export const CONSOLE_SIDEBAR_GROUPS_16: readonly ConsoleSidebarNavGroup[] = Obje
     title: "概览与交互",
     items: [
       { id: "dashboard.overview", label: "系统概览", icon: "dashboard", path: "/dashboard", domainId: "dashboard", matchPaths: ["/dashboard"] },
-      { id: "shells.stage", label: "WebChat", icon: "chat", path: "/shells/stage/builtin.webchat", domainId: "shells", matchPaths: ["/shells/stage/builtin.webchat", "/shells/simulator"] },
+      { id: "shells.stage", label: "躯壳舞台", icon: "chat", path: "/shells/stage/builtin.webchat", domainId: "shells", matchPaths: ["/shells/stage/builtin.webchat", "/shells/simulator"] },
       { id: "dashboard.conversations", label: "会话记录", icon: "sessions", path: "/conversations", domainId: "dashboard", matchPaths: ["/conversations"] }
     ]
   },
@@ -112,7 +112,7 @@ export const CONSOLE_ROUTES_30: readonly ConsoleRoute[] = Object.freeze([
   { id: "dashboard.overview", domainId: "dashboard", label: "系统概览", path: "/dashboard" },
   { id: "dashboard.conversations", domainId: "dashboard", label: "会话记录", path: "/conversations" },
   { id: "dashboard.blackboard", domainId: "dashboard", label: "上下文黑板", path: "/dashboard/blackboard" },
-  { id: "shells.stage", domainId: "shells", label: "WebChat", path: "/shells/stage/:shellPluginId", defaultConcretePath: "/shells/stage/builtin.webchat" },
+  { id: "shells.stage", domainId: "shells", label: "躯壳舞台", path: "/shells/stage/:shellPluginId", defaultConcretePath: "/shells/stage/builtin.webchat" },
   { id: "shells.topology", domainId: "shells", label: "接入通道", path: "/shells/topology" },
   { id: "shells.profiles-rules", domainId: "shells", label: "受众与策略", path: "/profiles/rules" },
   { id: "shells.attention", domainId: "shells", label: "注意力焦点仲裁", path: "/shells/attention-arbitration" },

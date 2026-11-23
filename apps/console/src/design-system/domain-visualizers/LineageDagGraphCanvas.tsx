@@ -38,7 +38,7 @@ export function LineageDagGraphCanvas({
         gap: "10px",
         padding: "12px",
         borderBottom: "var(--ai0-border-subtle)",
-        background: "var(--ai0-surface-inset)"
+        background: "var(--ai0-surface-container-low)"
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
@@ -61,7 +61,7 @@ export function LineageDagGraphCanvas({
           height: "170px",
           borderRadius: "10px",
           border: "var(--ai0-border-subtle)",
-          background: "var(--ai0-surface-workspace)"
+          background: "var(--ai0-surface-main-card)"
         }}
       >
         {nodes.flatMap((node, index) =>

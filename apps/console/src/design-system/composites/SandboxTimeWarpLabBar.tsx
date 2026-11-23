@@ -104,7 +104,7 @@ export function SandboxTimeWarpLabBar({
           color: "var(--ai0-on-surface-muted)",
           padding: "8px 10px",
           borderRadius: "9px",
-          background: "var(--ai0-surface-inset)",
+          background: "var(--ai0-surface-container-low)",
           border: "var(--ai0-border-subtle)"
         }}
       >

@@ -23,7 +23,7 @@ export interface FirstBootOnboardingModalProps {
 const ONBOARDING_STEPS = [
   { title: "Connect a model", detail: "Configure a provider and run a latency ping." },
   { title: "Create a .soul", detail: "Distill a character card or choose the clean template." },
-  { title: "Test a Shell", detail: "Handshake with WebChat and verify expression delivery." }
+  { title: "Test a Shell", detail: "Handshake with a mounted Shell plugin and verify expression delivery." }
 ] as const;
 
 export function FirstBootOnboardingModal(

@@ -22,7 +22,7 @@ const tiers = [
 export function CompactSchemaConfigurator({ tier, value, code, onTierChange, onChange, onCodeChange }: CompactSchemaConfiguratorProps): ReactElement {
   const set = (key: keyof CompactSchemaValue, next: string) => onChange({ ...value, [key]: next });
   return (
-    <section style={{ background: "var(--ai0-surface-workspace)", border: "var(--ai0-border-subtle)", borderRadius: "14px", padding: "16px", display: "grid", gap: "14px" }}>
+    <section style={{ background: "var(--ai0-surface-main-card)", border: "var(--ai0-border-subtle)", borderRadius: "14px", padding: "16px", display: "grid", gap: "14px" }}>
       <header><strong>Schema configurator</strong><p style={{ margin: "4px 0 0", color: "var(--ai0-on-surface-muted)" }}>Move from an approachable model to authoritative source code.</p></header>
       <SegmentedPill value={tier} options={tiers} onChange={onTierChange} />
       {tier === "visual" && <div style={{ padding: "18px", border: "1px dashed color-mix(in oklch, var(--ai0-accent), transparent 76%)", borderRadius: "10px", color: "var(--ai0-on-surface-muted)" }}>Visual field map · {value.name || "Untitled schema"}</div>}

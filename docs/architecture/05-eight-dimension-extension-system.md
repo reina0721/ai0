@@ -219,6 +219,7 @@ config_schema:
   1. **自动配置表单（`config_schema`）**：在控制台 `/extensions/configurator` 中由 `ExtensionDynamicSchemaDrawer` 自动渲染 `Tier-V1/V2/V3` 配置面板，支持绑定密钥保险箱（Secrets Vault）与保存即单插件热重载；
   2. **内嵌观测卡片与页签（`ui_slots`）**：挂载于记忆域、媒体调音台或右侧伴生检视副栏；
   3. **独立插件页面与 Web 具身躯壳舞台挂载槽（`/extensions/custom/:pluginId` & `/shells/stage/:shellPluginId`）**：允许 `plugins/shells/webchat` 或社区开发的 Live2D/VRM/Galgame 网页躯壳插件作为控制台内的一个标准子路由页面动态挂载运行。
+     * **零编译期污染与双轨挂载 ABI（`web_stage_module` / `sandboxed_iframe_stage`）**：插件在自身 `package.json` 中闭环管理第三方 UI/渲染依赖，独立构建 `./dist/ui/stage.js` + `./dist/ui/stage.css`（或沙盒 HTML）并在 `ai0.extension.json` 的 `console_contributions.ui_slots` 中声明 `entry_module`、`style_sheets` 与 `shell_id`；`@ai0/daemon` 动态扫描内置目录 `plugins/*/*` 以及外置用户插件目录（`<soulDir>/plugins/*`、`user-plugins/*`、`AI0_PLUGINS_DIR`），仅安全托管各插件 `dist/` 下的构建产物于 `/api/plugins/:extensionId/assets/*`，并为每个舞台签发绑定其 `shell_id` 的 Channel A `ScopedCapabilityToken`；`@ai0/console-webui` 的 `MountedShellStageHost` 通过 `@ai0/sdk` 的 `Ai0ShellStageHostBridge` 动态挂载并同步主题、`LIVE / SANDBOX` 环境与单轮轨迹查证，实现**官方参考插件与社区外部插件 100% 标杆同构，官方上游升级绝不破坏用户自建插件**。
 
 ---
 

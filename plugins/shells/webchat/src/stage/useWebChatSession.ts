@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ConsoleMode } from "../api/client.js";
+import type { Ai0StageMode } from "@ai0/sdk";
 import {
-  createWebChatApi, isFinishedChatRun, spokenCharOffset, WebChatHttpError,
+  createWebChatProtocolApi, isFinishedChatRun, spokenCharOffset, WebChatHttpError,
   type WebChatHistoryTurn, type WebChatReceipt, type WebChatRun, type WebChatStageEvent, type WebChatStatus, type WebChatStreamChunk
 } from "./api.js";
 
@@ -74,8 +74,18 @@ function readHiddenTurns(storageKey: string): string[] {
   }
 }
 
-export function useWebChatSession(ownerToken: string, mode: ConsoleMode, soulId: string, visible: boolean) {
-  const api = useMemo(() => createWebChatApi(ownerToken, mode), [ownerToken, mode]);
+export function useWebChatSession(
+  protocolBasePath: string,
+  shellId: string,
+  authToken: string,
+  mode: Ai0StageMode,
+  soulId: string,
+  visible: boolean
+) {
+  const api = useMemo(
+    () => createWebChatProtocolApi(protocolBasePath, shellId, authToken, mode),
+    [protocolBasePath, shellId, authToken, mode]
+  );
   const targetInstance = mode === "sandbox" ? "sandbox:console" : "live";
   const storageKey = `ai0:webchat:hidden:${soulId}:${targetInstance}`;
   const active = useRef<ActiveRun | null>(null);
@@ -162,7 +172,7 @@ export function useWebChatSession(ownerToken: string, mode: ConsoleMode, soulId:
   }, [acceptStatus, api, targetInstance]);
 
   useEffect(() => {
-    if (!ownerToken || !visible) return;
+    if (!authToken || !visible) return;
     const controller = new AbortController();
     setHistoryLoading(true);
     setHistoryError(false);
@@ -183,7 +193,7 @@ export function useWebChatSession(ownerToken: string, mode: ConsoleMode, soulId:
       if (!controller.signal.aborted) setHistoryLoading(false);
     });
     return () => controller.abort();
-  }, [api, historyRequest, ownerToken, recover, storageKey, targetInstance, visible]);
+  }, [api, authToken, historyRequest, recover, storageKey, targetInstance, visible]);
 
   const reportDisplayed = useCallback((requestId: string | undefined, text: string, isVisible: boolean) => {
     const run = active.current;
@@ -202,7 +212,7 @@ export function useWebChatSession(ownerToken: string, mode: ConsoleMode, soulId:
 
   const send = useCallback(async (draft: string) => {
     const text = draft.trim();
-    if (!text || !ownerToken || active.current) return;
+    if (!text || !authToken || active.current) return;
     const run = newRun(newRequestId());
     active.current = run;
     setNotice(null);
@@ -242,7 +252,7 @@ export function useWebChatSession(ownerToken: string, mode: ConsoleMode, soulId:
       reader?.releaseLock();
     }
     if (active.current === run && !run.stopping && !run.ready) await recover(run);
-  }, [acceptStatus, api, ownerToken, recover, updateTurn]);
+  }, [acceptStatus, api, authToken, recover, updateTurn]);
 
   const stop = useCallback(async () => {
     const run = active.current;

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
@@ -18,7 +19,7 @@ import {
 } from "@ai0/storage";
 
 import { createDefaultDaemonRuntime, type Ai0DaemonRuntime } from "./index.js";
-import { registerWebChatRunRoutes } from "./webchat-runs.js";
+import { registerShellProtocolRunRoutes } from "./shell-runs.js";
 import {
   createNewSoulInstance,
   createPrivacyScrubbedReleasePackage,
@@ -245,12 +246,6 @@ export function createUnifiedDaemonHttpApp(
     return c.json(result);
   });
 
-  app.post("/api/studio/webchat/clear", async (c) => {
-    const body = await readJsonObject(c);
-    const mode = body.mode === "sandbox" ? "sandbox" : "live";
-    return c.json(runtime.clearWebChatTranscript(mode));
-  });
-
   app.post("/api/studio/onboarding", async (c) => {
     const body = await readJsonObject(c);
     const current = readConsoleStudioConfig(runtime.soulDir);
@@ -297,8 +292,70 @@ export function createUnifiedDaemonHttpApp(
     return c.json({ ok: true, config: saved });
   });
 
-  registerWebChatRunRoutes(app, runtime);
   app.all("/api/studio/*", (c) => c.json({ error: "UNKNOWN_STUDIO_ENDPOINT" }, 404));
+
+  // ---------------------------------------------------------------------------
+  // Dynamic Plugin Discovery, Manifest & Self-Contained Asset Hosting (/api/plugins/*)
+  // ---------------------------------------------------------------------------
+  const isOwnerRequest = (c: Context): boolean => {
+    const expected = Buffer.from(runtime.ownerMasterToken);
+    const provided = Buffer.from(c.req.header("x-ai0-owner-token") ?? "");
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
+  };
+
+  const enabledOverrideMap = (): Map<string, boolean> => {
+    const studio = readConsoleStudioConfig(runtime.soulDir);
+    return new Map(studio.ecosystem.plugins.map((entry) => [entry.id, entry.enabled]));
+  };
+
+  app.get("/api/plugins", (c) =>
+    c.json({ ok: true, plugins: runtime.pluginLoader.listDescriptors(enabledOverrideMap()) })
+  );
+
+  app.get("/api/plugins/:extensionId/manifest", (c) => {
+    const extensionId = decodeURIComponent(c.req.param("extensionId"));
+    const descriptor = runtime.pluginLoader.getDescriptor(extensionId, enabledOverrideMap());
+    if (!descriptor) return c.json({ error: "PLUGIN_NOT_FOUND" }, 404);
+    return c.json({ ok: true, plugin: descriptor });
+  });
+
+  app.post("/api/plugins/:extensionId/stage-token", (c) => {
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
+    const extensionId = decodeURIComponent(c.req.param("extensionId"));
+    const descriptor = runtime.pluginLoader.getDescriptor(extensionId, enabledOverrideMap());
+    if (!descriptor || !descriptor.enabled) return c.json({ error: "PLUGIN_NOT_AVAILABLE" }, 404);
+    const stageSlot = descriptor.ui_slots.find((slot) => slot.slot_target === "slot.shells.mounted_stage");
+    const shellId = stageSlot?.shell_id ?? `${descriptor.extension_id}.default`;
+    const token = runtime.shellGateway.issueScopedCapabilityToken(
+      {
+        shell_id: shellId,
+        max_audience_privacy_ceiling: "only_owner",
+        allowed_modalities: ["text", "typing_activity", "vad_activity", "window_focus"],
+        expires_at_ts_ms: Date.now() + 24 * 60 * 60 * 1000
+      },
+      runtime.ownerMasterToken
+    );
+    return c.json({ ok: true, extensionId, shellId, token });
+  });
+
+  app.get("/api/plugins/:extensionId/assets/*", (c) => {
+    const match = /^\/api\/plugins\/([^/]+)\/assets\/(.+)$/u.exec(c.req.path);
+    if (!match) return c.json({ error: "INVALID_PLUGIN_ASSET_PATH" }, 400);
+    const extensionId = decodeURIComponent(match[1]!);
+    const assetPath = match[2]!
+      .split("/")
+      .map((segment) => decodeURIComponent(segment))
+      .join("/");
+    const asset = runtime.pluginLoader.readPluginAsset(extensionId, assetPath);
+    if (!asset) return c.json({ error: "PLUGIN_ASSET_NOT_FOUND" }, 404);
+    return new Response(new Uint8Array(asset.content), {
+      status: 200,
+      headers: {
+        "content-type": asset.contentType,
+        "cache-control": "no-store"
+      }
+    });
+  });
 
   // ---------------------------------------------------------------------------
   // Channel B: Privileged Admin API & Four-Track Telemetry SSE (/api/admin/v1/*)
@@ -348,11 +405,14 @@ export function createUnifiedDaemonHttpApp(
   // ---------------------------------------------------------------------------
   // Channel A: Protocol v0 Bidirectional Shell Bridge (/protocol/v0/shell/*)
   // ---------------------------------------------------------------------------
+  registerShellProtocolRunRoutes(app, runtime);
+
   app.post("/protocol/v0/shell/perception", async (c) => {
     const body = await readJsonObject(c);
     const text = String(body.text ?? body.summary_text ?? "").trim();
     if (!text) return c.json({ error: "EMPTY_PERCEPTION_TEXT" }, 400);
-    const turn = await runtime.handleWebChatTurn({
+    const turn = await runtime.handleShellTurn({
+      shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
       text,
       venue_type: (body.venue_type as VenueType | undefined) ?? "private_1on1",
       audience_scope: body.audience_scope as AudienceScope | undefined,
@@ -364,8 +424,9 @@ export function createUnifiedDaemonHttpApp(
 
   app.post("/protocol/v0/shell/receipt", async (c) => {
     const body = await readJsonObject(c);
-    const receipt = runtime.handleWebChatInterrupt({
-      intent_id: String(body.intent_id ?? "int_webchat"),
+    const receipt = runtime.handleShellInterrupt({
+      shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
+      intent_id: String(body.intent_id ?? "int_shell"),
       spoken_char_offset: Number(body.spoken_char_offset ?? 0),
       full_text: String(body.full_text ?? ""),
       mode: body.mode === "sandbox" ? "sandbox" : "live"

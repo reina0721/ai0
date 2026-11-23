@@ -7,7 +7,7 @@ const workspaces = {
   "/dashboard": "系统概览",
   "/dashboard/blackboard": "上下文黑板",
   "/conversations": "会话记录",
-  "/shells/stage/builtin.webchat": "WebChat",
+  "/shells/stage/builtin.webchat": "躯壳舞台",
   "/shells/topology": "接入通道",
   "/shells/attention-arbitration": "注意力焦点仲裁",
   "/shells/thalamic-gate": "话轮防抖与感官门控",

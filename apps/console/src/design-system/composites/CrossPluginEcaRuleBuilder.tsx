@@ -18,7 +18,7 @@ const update = (value: EcaRuleDraft, key: keyof EcaRuleDraft, next: string): Eca
 
 export function CrossPluginEcaRuleBuilder({ value, pluginOptions, onChange, onSave }: CrossPluginEcaRuleBuilderProps): ReactElement {
   const stage = (index: string, label: string, help: string, field: keyof EcaRuleDraft) => (
-    <div style={{ display: "grid", gap: "6px", padding: "12px", borderLeft: "2px solid var(--ai0-accent)", background: "var(--ai0-surface-inset)" }}>
+    <div style={{ display: "grid", gap: "6px", padding: "12px", borderLeft: "2px solid var(--ai0-accent)", background: "var(--ai0-surface-container-low)" }}>
       <span style={{ color: "var(--ai0-accent)", fontSize: "11px", letterSpacing: "0.08em" }}>{index}</span>
       <strong>{label}</strong><small style={{ color: "var(--ai0-on-surface-muted)" }}>{help}</small>
       <CompactInput value={value[field]} placeholder={`${label} expression`} onInput={(next) => onChange(update(value, field, next))} />
@@ -26,7 +26,7 @@ export function CrossPluginEcaRuleBuilder({ value, pluginOptions, onChange, onSa
   );
 
   return (
-    <section style={{ background: "var(--ai0-surface-workspace)", border: "var(--ai0-border-subtle)", borderRadius: "14px", padding: "16px", display: "grid", gap: "14px" }}>
+    <section style={{ background: "var(--ai0-surface-main-card)", border: "var(--ai0-border-subtle)", borderRadius: "14px", padding: "16px", display: "grid", gap: "14px" }}>
       <header><strong>Cross-plugin ECA rule</strong><p style={{ margin: "4px 0 0", color: "var(--ai0-on-surface-muted)" }}>Generate a reviewable <code>.flow.yaml</code> automation.</p></header>
       <CompactSelect ariaLabel="Trigger plugin" value={value.when} options={pluginOptions} onChange={(next) => onChange(update(value, "when", next))} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "1px", background: "var(--ai0-surface-container-high)" }}>

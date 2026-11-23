@@ -191,6 +191,28 @@ html, body {
   --ai0-interaction-hover: color-mix(in oklch, var(--ai0-on-surface) 6%, transparent);
   --ai0-interaction-disabled: color-mix(in oklch, var(--ai0-on-surface) 34%, transparent);
   --ai0-overlay: rgba(24, 20, 31, 0.34);
+
+  /* Derived colors use the same scope as their palette inputs. */
+  --ai0-action-fill-hover: color-mix(in oklch, var(--ai0-action-fill) 89%, var(--ai0-on-surface));
+  --ai0-danger-action-ink: color-mix(in oklch, var(--ai0-danger) 74%, var(--ai0-on-surface));
+  --ai0-danger-action-line: color-mix(in oklch, var(--ai0-danger) 29%, transparent);
+  --ai0-danger-action-hover: color-mix(in oklch, var(--ai0-danger) 10%, transparent);
+  --ai0-status-success-tint: color-mix(in oklch, var(--ai0-success) 12%, transparent);
+  --ai0-status-warning-tint: color-mix(in oklch, var(--ai0-warning) 12%, transparent);
+  --ai0-status-danger-tint: color-mix(in oklch, var(--ai0-danger) 12%, transparent);
+  --ai0-live-switch-ink: color-mix(in oklch, var(--ai0-success) 75%, var(--ai0-on-surface));
+  --ai0-live-switch-fill: color-mix(in oklch, var(--sovereignty-live-emerald) 10%, var(--ai0-surface-main-card));
+  --ai0-live-switch-line: color-mix(in srgb, var(--sovereignty-live-emerald) 36%, transparent);
+  --ai0-sandbox-switch-ink: color-mix(in oklch, var(--ai0-warning) 72%, var(--ai0-on-surface));
+  --ai0-sandbox-switch-fill: color-mix(in oklch, var(--sovereignty-sandbox-amber) 13%, var(--ai0-surface-main-card));
+  --ai0-sandbox-switch-line: color-mix(in srgb, var(--sovereignty-sandbox-amber) 40%, transparent);
+  --ai0-sandbox-ribbon-ink: color-mix(in oklch, var(--ai0-warning) 70%, var(--ai0-on-surface));
+  --ai0-sandbox-ribbon-fill: color-mix(in oklch, var(--sovereignty-sandbox-amber) 9%, var(--ai0-surface-frame-base));
+  --ai0-sandbox-ribbon-line: color-mix(in oklch, var(--sovereignty-sandbox-amber) 30%, transparent);
+  --ai0-overview-tint: color-mix(in oklch, var(--ai0-surface-main-card) 94%, var(--ai0-accent));
+  --ai0-chat-mark-line: color-mix(in oklch, var(--ai0-accent) 20%, transparent);
+  --ai0-chat-mark-shadow-color: color-mix(in oklch, var(--ai0-accent) 14%, transparent);
+  --ai0-chat-message-line: color-mix(in oklch, var(--ai0-accent) 13%, transparent);
 }
 
 [data-console-root][data-appearance="dark"] {
@@ -198,6 +220,13 @@ html, body {
   --ai0-action-fill: var(--ai0-accent);
   --ai0-action-text: var(--ai0-surface-frame-base);
   --ai0-overlay: rgba(7, 6, 11, 0.64);
+}
+
+/* Badges resolve their selected tone on the element itself. */
+:where(.ai0-badge, .ai0-chip.is-accent) {
+  --ai0-tag-fill: color-mix(in oklch, var(--ai0-tag-color) 9%, var(--ai0-surface-main-card));
+  --ai0-tag-line: color-mix(in oklch, var(--ai0-tag-color) 24%, transparent);
+  --ai0-tag-ink: color-mix(in oklch, var(--ai0-tag-color) 71%, var(--ai0-on-surface));
 }
 
 .ai0-icon {

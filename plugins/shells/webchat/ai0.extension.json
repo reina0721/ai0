@@ -20,9 +20,12 @@
     "ui_slots": [
       {
         "slot_target": "slot.shells.mounted_stage",
-        "widget_type": "sandboxed_iframe_stage",
+        "widget_type": "web_stage_module",
         "title": "WebChat",
-        "route_path": "/shells/stage/builtin.webchat"
+        "route_path": "/shells/stage/builtin.webchat",
+        "shell_id": "builtin.webchat.default",
+        "entry_module": "./dist/ui/stage.js",
+        "style_sheets": ["./dist/ui/stage.css"]
       }
     ]
   }

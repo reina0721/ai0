@@ -347,7 +347,16 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                 </WorkspaceTableRow>
               </WorkspaceTableHead>
               <WorkspaceTableBody>
-                {conversations.map((conv) => (
+                {conversations.map((conv) => {
+                  const stagePlugin = snap?.extensions.find((ext) =>
+                    ext.enabled && ext.uiSlots?.some((slot) =>
+                      slot.slot_target === "slot.shells.mounted_stage" &&
+                      (slot.shell_id === conv.platform || conv.platform.startsWith(ext.id))
+                    )
+                  );
+                  const stageSlot = stagePlugin?.uiSlots?.find((slot) => slot.slot_target === "slot.shells.mounted_stage");
+                  const stageHref = stageSlot?.route_path ?? (stagePlugin ? `/shells/stage/${stagePlugin.id}` : undefined);
+                  return (
                   <WorkspaceTableRow key={conv.umo}>
                     <WorkspaceTableCell>
                       <strong>{conv.label}</strong>
@@ -373,13 +382,13 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                     <WorkspaceTableCell className="ai0-workspace-table-summary">{conv.lastSummary}</WorkspaceTableCell>
                     <WorkspaceTableCell>
                       <div className="ai0-workspace-actions">
-                        {conv.platform.startsWith("builtin.webchat") ? <WorkspaceLink
-                          href="/shells/stage/builtin.webchat"
-                          onClick={navClick("/shells/stage/builtin.webchat")}
+                        {stageHref ? <WorkspaceLink
+                          href={stageHref}
+                          onClick={navClick(stageHref)}
 
                           data-size="sm"
                         >
-                          <span className="ai0-workspace-link-content">打开 WebChat</span>
+                          <span className="ai0-workspace-link-content">打开 {stageSlot?.title ?? stagePlugin?.displayName ?? "舞台"}</span>
                         </WorkspaceLink> : null}
                         <WorkspaceLink
                           href="/profiles/rules"
@@ -392,7 +401,8 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                       </div>
                     </WorkspaceTableCell>
                   </WorkspaceTableRow>
-                ))}
+                  );
+                })}
               </WorkspaceTableBody>
             </WorkspaceTable></>
           </WorkspaceSection>
@@ -430,6 +440,16 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     }
   };
 
+  const primaryStagePlugin = snap?.extensions.find(
+    (ext) => ext.enabled && ext.uiSlots?.some((slot) => slot.slot_target === "slot.shells.mounted_stage")
+  );
+  const primaryStageSlot = primaryStagePlugin?.uiSlots?.find(
+    (slot) => slot.slot_target === "slot.shells.mounted_stage"
+  );
+  const primaryStageHref =
+    primaryStageSlot?.route_path ?? (primaryStagePlugin ? `/shells/stage/${primaryStagePlugin.id}` : "/shells/topology");
+  const primaryStageLabel = primaryStageSlot ? `打开 ${primaryStageSlot.title}` : "查看接入通道";
+
   return (
     <MainRoundedCardOutlet domainId="dashboard" activePath={props.pathname} onNavigate={props.onNavigate}>
       <WorkspacePage>
@@ -440,8 +460,8 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
           <WorkspaceLink href="/soul/distiller" onClick={navClick("/soul/distiller")}>
             {renderConsoleIcon("upload", 14)}导入角色卡
           </WorkspaceLink>
-          <WorkspaceLink data-variant="primary" href="/shells/stage/builtin.webchat" onClick={navClick("/shells/stage/builtin.webchat")}>
-            {renderConsoleIcon("chat", 14)}打开 WebChat
+          <WorkspaceLink data-variant="primary" href={primaryStageHref} onClick={navClick(primaryStageHref)}>
+            {renderConsoleIcon("chat", 14)}{primaryStageLabel}
           </WorkspaceLink>
         </WorkspaceHeader>
 

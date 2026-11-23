@@ -4,8 +4,62 @@ import {
   type Ai0ExtensionManifest,
   type ExtensionCarrierKind,
   type ExtensionDimension,
-  type SkillMarkdownFrontmatter
+  type SkillMarkdownFrontmatter,
+  type ThemeColorPreset,
+  type VerifiableTurnTrace
 } from "@ai0/protocol";
+
+export type Ai0StageMode = "live" | "sandbox";
+export type Ai0StageAppearance = "light" | "dark";
+
+/** Runtime state synchronized from the Console host to any mounted Web Shell stage. */
+export interface Ai0ShellStageHostState {
+  readonly mode: Ai0StageMode;
+  readonly targetInstance: "live" | `sandbox:${string}`;
+  readonly soulId?: string;
+  readonly personaName: string;
+  readonly soulTheme: ThemeColorPreset;
+  readonly appearance: Ai0StageAppearance;
+  readonly connected: boolean;
+  readonly loading: boolean;
+  readonly error?: string;
+  readonly protocolBasePath: string;
+  readonly authToken: string;
+  readonly recentTraces?: readonly VerifiableTurnTrace[];
+}
+
+/** Framework-agnostic host bridge passed to mounted slot.shells.mounted_stage plugins. */
+export interface Ai0ShellStageHostBridge {
+  readonly extensionId: string;
+  readonly shellId: string;
+  getState(): Ai0ShellStageHostState;
+  subscribe(listener: (state: Ai0ShellStageHostState) => void): () => void;
+  showToast(message: string): void;
+  retryConnection(): void;
+  fetchTurnTrace(options: {
+    requestId?: string;
+    traceId?: string;
+    mode: Ai0StageMode;
+    signal?: AbortSignal;
+  }): Promise<VerifiableTurnTrace | undefined>;
+}
+
+export type Ai0ShellStageCleanup = (() => void) | { unmount(): void };
+
+export interface Ai0ShellStageModule<TContainer = unknown> {
+  readonly extensionId?: string;
+  mountShellStage(
+    container: TContainer,
+    host: Ai0ShellStageHostBridge
+  ): Ai0ShellStageCleanup | Promise<Ai0ShellStageCleanup>;
+}
+
+/** Define a dynamically mountable Web Shell stage module exported from a plugin's dist/ui bundle. */
+export function defineShellStageModule<TContainer = unknown>(
+  module: Ai0ShellStageModule<TContainer>
+): Ai0ShellStageModule<TContainer> {
+  return module;
+}
 
 type ManifestInput = Record<string, unknown>;
 

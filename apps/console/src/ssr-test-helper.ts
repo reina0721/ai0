@@ -10,8 +10,7 @@ export function loadConsoleThemeCss(): string {
     "./design-system/primitives/controls.css",
     "./design-system/domain-surfaces.css",
     "./console-layout.css",
-    "./pages/workspaces.css",
-    "./webchat/webchat.css"
+    "./pages/workspaces.css"
   ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
 }
 

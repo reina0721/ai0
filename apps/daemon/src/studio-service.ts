@@ -191,8 +191,8 @@ export function updateStudioConfig(
     hour: a.hour,
     energy: a.energy
   }));
-  const webPlatform = saved.platforms.find((p) => p.kind === "webchat");
-  if (webPlatform) runtime.mutableState.debounceWindowMs = webPlatform.debounceMs;
+  const primaryPlatform = saved.platforms.find((p) => p.enabled) ?? saved.platforms[0];
+  if (primaryPlatform) runtime.mutableState.debounceWindowMs = primaryPlatform.debounceMs;
 
   // Sync display_name back to identity.yaml when modified
   try {
@@ -365,7 +365,7 @@ export function dispatchOrAdvanceCoWorkTask(
       event_id: eventId,
       wall_ts_ms: Date.now(),
       virtual_ts_ms: nowMs,
-      source_shell_id: "builtin.webchat.default",
+      source_shell_id: runtime.defaultStageShellId(),
       principal_id: "owner:local",
       principal_trust: "owner_verified",
       venue_type: "private_1on1",
@@ -659,7 +659,7 @@ export function buildLivePromptPreviews(
   const promptPreviewPrivate = compileStudioPromptPreview(studio, {
     audienceScope: "only_owner",
     venueType: "private_1on1",
-    platform: "builtin.webchat.default",
+    platform: runtime.defaultStageShellId(),
     moodValence: affect.instant_valence,
     circadianEnergy: affect.circadian_energy,
     metabolicEnergy: affect.metabolic_energy,

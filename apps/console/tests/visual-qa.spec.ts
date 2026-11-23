@@ -133,11 +133,11 @@ test("provider controls and memory rows stay compact and closing the confirmatio
 test("a narrow reduced-motion console keeps focus and the WebChat composer usable after a failed send", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.route("**/api/studio/webchat/history?*", (route) => route.fulfill({ json: { turns: [] } }));
-  await page.route((url) => url.pathname === "/api/studio/webchat/runs", (route) =>
+  await page.route("**/protocol/v0/shell/history?*", (route) => route.fulfill({ json: { turns: [] } }));
+  await page.route((url) => url.pathname === "/protocol/v0/shell/runs", (route) =>
     route.fulfill({ status: 502, json: { error: "UPSTREAM_CONNECT_FAILED" } }));
-  await page.route((url) => /^\/api\/studio\/webchat\/runs\/[^/]+$/u.test(url.pathname), (route) =>
-    route.fulfill({ status: 404, json: { error: "WEBCHAT_RUN_NOT_FOUND" } }));
+  await page.route((url) => /^\/protocol\/v0\/shell\/runs\/[^/]+$/u.test(url.pathname), (route) =>
+    route.fulfill({ status: 404, json: { error: "SHELL_RUN_NOT_FOUND" } }));
   await page.goto("/shells/stage/builtin.webchat?appearance=dark");
 
   const root = page.locator("[data-console-root]");

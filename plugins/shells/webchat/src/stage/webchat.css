@@ -54,7 +54,7 @@
   flex-shrink: 0;
   color: var(--ai0-accent);
   background: var(--ai0-accent-tint);
-  border: 1px solid color-mix(in oklch, var(--ai0-accent) 20%, transparent);
+  border: 1px solid var(--ai0-chat-mark-line);
 }
 
 .ai0-chat-heading__mark { width: 34px; height: 34px; border-radius: 11px; }
@@ -149,7 +149,7 @@
   margin-bottom: 4px;
   border-radius: 18px;
   background: radial-gradient(ellipse at 22% 12%, var(--ai0-surface-main-card), var(--ai0-accent-tint));
-  box-shadow: 0 5px 14px color-mix(in oklch, var(--ai0-accent) 14%, transparent);
+  box-shadow: 0 5px 14px var(--ai0-chat-mark-shadow-color);
 }
 
 .ai0-chat-welcome h2 { margin: 0; font-size: clamp(17px, 3cqi, 22px); }
@@ -195,7 +195,7 @@
 .ai0-chat-message__user-text {
   margin: 0;
   padding: 7px 11px;
-  border: 1px solid color-mix(in oklch, var(--ai0-accent) 13%, transparent);
+  border: 1px solid var(--ai0-chat-message-line);
   border-radius: 12px 12px 4px 12px;
   background: var(--ai0-accent-tint);
   color: var(--ai0-on-surface);

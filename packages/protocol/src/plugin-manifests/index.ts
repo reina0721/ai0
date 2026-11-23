@@ -60,7 +60,8 @@ export const ConsoleWidgetTypeSchema = z.enum([
   "kv_badges",
   "markdown_card_list",
   "json_schema_form",
-  "sandboxed_iframe_stage"
+  "sandboxed_iframe_stage",
+  "web_stage_module"
 ]);
 export type ConsoleWidgetType = z.infer<typeof ConsoleWidgetTypeSchema>;
 
@@ -69,10 +70,39 @@ export const ConsoleUiSlotContributionSchema = z.object({
   widget_type: ConsoleWidgetTypeSchema,
   title: z.string(),
   data_endpoint: z.string().optional(),
-  route_path: z.string().optional()
+  route_path: z.string().optional(),
+  shell_id: z.string().optional(),
+  entry_module: z.string().optional(),
+  style_sheets: z.array(z.string()).optional(),
+  iframe_src: z.string().optional()
 });
 export type ConsoleUiSlotContribution = z.infer<
   typeof ConsoleUiSlotContributionSchema
+>;
+
+export const PluginOriginSchema = z.enum(["builtin", "soul", "external"]);
+export type PluginOrigin = z.infer<typeof PluginOriginSchema>;
+
+export const RuntimeConsoleUiSlotSchema = ConsoleUiSlotContributionSchema.extend({
+  entry_module_url: z.string().optional(),
+  style_sheet_urls: z.array(z.string()).optional(),
+  iframe_src_url: z.string().optional()
+});
+export type RuntimeConsoleUiSlot = z.infer<typeof RuntimeConsoleUiSlotSchema>;
+
+export const RuntimePluginDescriptorSchema = z.object({
+  extension_id: z.string(),
+  display_name: z.string(),
+  version: z.string(),
+  author: z.string(),
+  carrier_kind: ExtensionCarrierKindSchema,
+  dimension: ExtensionDimensionSchema,
+  origin: PluginOriginSchema,
+  enabled: z.boolean(),
+  ui_slots: z.array(RuntimeConsoleUiSlotSchema)
+});
+export type RuntimePluginDescriptor = z.infer<
+  typeof RuntimePluginDescriptorSchema
 >;
 
 export const ConsoleContributionsSchema = z.object({

@@ -1,4 +1,4 @@
-import type { VerifiableTurnTrace } from "@ai0/protocol";
+import type { PluginOrigin, RuntimeConsoleUiSlot, VerifiableTurnTrace } from "@ai0/protocol";
 
 export interface LiveBlackboardSlotSnapshot {
   id: string;
@@ -32,12 +32,16 @@ export interface LiveKnowledgePackSnapshot {
 
 export interface LiveExtensionSnapshot {
   id: string;
+  displayName?: string;
+  version?: string;
+  origin?: PluginOrigin;
   carrier: string;
   buses: string[];
   enabled: boolean;
   rev: number;
   readDomains: string[];
   proposeDomains: string[];
+  uiSlots?: RuntimeConsoleUiSlot[];
 }
 
 export interface LiveTelemetryEntry {

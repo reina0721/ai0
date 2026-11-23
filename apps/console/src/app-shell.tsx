@@ -129,9 +129,15 @@ function OnboardingWizardOverlay(props: {
         primaryRole: selectedRole
       });
       await ctx.refreshSnapshot();
-      ctx.showToast("初始化配置已保存，正在进入对话舞台");
+      const stageExtension = props.snapshot?.extensions.find(
+        (ext) => ext.enabled && ext.uiSlots?.some((slot) => slot.slot_target === "slot.shells.mounted_stage")
+      );
+      const stageRoute =
+        stageExtension?.uiSlots?.find((slot) => slot.slot_target === "slot.shells.mounted_stage")?.route_path ??
+        (stageExtension ? `/shells/stage/${stageExtension.id}` : "/shells/topology");
+      ctx.showToast("初始化配置已保存，正在进入交互工作区");
       props.onClose();
-      ctx.navigateConsole("/shells/stage/builtin.webchat");
+      ctx.navigateConsole(stageRoute);
     } catch (err) {
       ctx.showToast(`保存失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -282,8 +288,8 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
   const mode = props.mode ?? ctx?.mode ?? "live";
   const navRailMode = props.navRailMode ?? ctx?.navRailMode ?? "expanded";
   const route = resolveConsoleRoute(pathname);
-  const dedicatedChat = route?.id === "shells.stage" && route.params.shellPluginId === "builtin.webchat";
-  const inspectorMode = dedicatedChat ? "mini" : props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
+  const dedicatedStage = route?.id === "shells.stage";
+  const inspectorMode = dedicatedStage ? "mini" : props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
   const activeDomain = route?.domainId ?? "dashboard";
   const targetInstance = mode === "live" ? "live" : "sandbox:console";
   const smallNav = useMediaQuery("(max-width: 1079px)");
@@ -412,8 +418,8 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
         }
         main={
           <div data-shell-slot="main">
-            {!dedicatedChat && ctx?.loading ? <LinearProgress className="ai0-bootstrap-progress" aria-label="正在连接守护进程" /> : null}
-            {!dedicatedChat && ctx?.error ? (
+            {!dedicatedStage && ctx?.loading ? <LinearProgress className="ai0-bootstrap-progress" aria-label="正在连接守护进程" /> : null}
+            {!dedicatedStage && ctx?.error ? (
               <Alert severity={snapshot ? "warning" : "error"} className="ai0-connection-notice"
                 action={<RippleButton size="sm" onClick={ctx.retryBootstrap}>重新连接</RippleButton>}>
                 {snapshot ? "未能刷新，正在显示最近一次数据。" : "暂时无法连接守护进程。"} {ctx.error}

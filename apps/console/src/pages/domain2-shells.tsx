@@ -3,9 +3,10 @@ import {
   WorkspaceStatus, WorkspaceTable, WorkspaceTableBody, WorkspaceTableCell, WorkspaceTableHead,
   WorkspaceTableRow, WorkspaceTag
 } from "./workspace-layout.js";
-import { lazy, Suspense, useState, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 
 import { useConsole } from "../context/ConsoleContext.js";
+import { MountedShellStageHost } from "../design-system/domain-visualizers/MountedShellStageHost.js";
 import { CompactInput, CompactSelect, JellySwitch, RippleButton } from "../design-system/primitives/index.js";
 import { MainRoundedCardOutlet } from "../design-system/shell/index.js";
 import { renderConsoleIcon } from "../design-system/tokens/index.js";
@@ -13,11 +14,6 @@ import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
 import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
 import { ShellControlWorkspace } from "./shell-control-workspace.js";
 import { WorkspaceHeader } from "./workspace.js";
-
-const WebChatWorkspace = lazy(async () => {
-  const module = await import("../webchat/WebChatWorkspace.js");
-  return { default: module.WebChatWorkspace };
-});
 
 export interface Domain2ShellsPageProps {
   pathname: string;
@@ -51,7 +47,7 @@ export function Domain2ShellsPage(props: Domain2ShellsPageProps): ReactElement {
           id: `rule_${Date.now()}`,
           umo,
           label,
-          platform: umo.split(":")[0] || "builtin.webchat",
+          platform: umo.split(":")[0] || "shell.default",
           audienceScope: newRuleScope,
           profileId: newRuleProfile || profiles[0]?.id || "profile_private_owner",
           triggerAt: true,
@@ -230,32 +226,10 @@ export function Domain2ShellsPage(props: Domain2ShellsPageProps): ReactElement {
   }
 
   if (route?.id === "shells.stage") {
-    const pluginId = route.params.shellPluginId;
+    const pluginId = route.params.shellPluginId ?? "builtin.webchat";
     return (
       <MainRoundedCardOutlet domainId="shells" activePath={props.pathname} onNavigate={props.onNavigate}>
-        {pluginId === "builtin.webchat" ? (
-          <Suspense fallback={
-            <WorkspacePage className="mounted-shell-stage-host" data-shell-plugin-id="builtin.webchat" aria-busy="true">
-              <WorkspaceHeader title="WebChat" />
-              <small role="status">正在加载聊天工作区…</small>
-            </WorkspacePage>
-          }>
-            <WebChatWorkspace snapshot={snap} />
-          </Suspense>
-        ) : (
-          <WorkspacePage data-shell-plugin-id={pluginId}>
-            <WorkspaceHeader title="躯壳舞台" />
-            <WorkspaceSection>
-              <h2>{pluginId}</h2>
-              <small>
-                {snap?.extensions.some((extension) => extension.id === pluginId)
-                  ? "该躯壳已注册，当前控制台没有可挂载的界面。"
-                  : "当前实例未注册该躯壳。"}
-              </small>
-              <RippleButton onClick={() => ctx?.navigateConsole("/shells/topology")}>查看接入拓扑</RippleButton>
-            </WorkspaceSection>
-          </WorkspacePage>
-        )}
+        <MountedShellStageHost shellPluginId={pluginId} snapshot={snap} />
       </MainRoundedCardOutlet>
     );
   }

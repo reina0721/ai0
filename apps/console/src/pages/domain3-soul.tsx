@@ -183,9 +183,9 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                 aria-label="24 小时作息活力曲线"
                 className="ai0-workspace-chart"
               >
-                <line x1="20" y1="30" x2="580" y2="30" stroke="var(--ai0-line)" strokeWidth="1" />
-                <line x1="20" y1="80" x2="580" y2="80" stroke="var(--ai0-line)" strokeWidth="1" />
-                <line x1="20" y1="130" x2="580" y2="130" stroke="var(--ai0-line)" strokeWidth="1" />
+                <line x1="20" y1="30" x2="580" y2="30" stroke="var(--ai0-surface-container-high)" strokeWidth="1" />
+                <line x1="20" y1="80" x2="580" y2="80" stroke="var(--ai0-surface-container-high)" strokeWidth="1" />
+                <line x1="20" y1="130" x2="580" y2="130" stroke="var(--ai0-surface-container-high)" strokeWidth="1" />
                 <polyline
                   id="circadian-curve-line"
                   fill="none"
@@ -202,7 +202,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                       cx={(a.hour / 23) * 560 + 20}
                       cy={130 - a.energy * 100}
                       r="4.5"
-                      fill="var(--ai0-surface-workspace)"
+                      fill="var(--ai0-surface-main-card)"
                       stroke="var(--ai0-accent)"
                       strokeWidth="2.2"
                     />

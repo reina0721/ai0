@@ -47,7 +47,7 @@ export function BlackboardSlotComposer(props: BlackboardSlotComposerProps): Reac
     </header>
     <div role="meter" aria-valuemin={0} aria-valuemax={budget} aria-valuenow={used}
       className="ai0-blackboard-composer__quota" style={{ height: "22px", display: "flex",
-        overflow: "hidden", borderRadius: "11px", background: "var(--ai0-surface-inset)" }}>
+        overflow: "hidden", borderRadius: "11px", background: "var(--ai0-surface-container-low)" }}>
       {slots.map((slot) => (
         <Tooltip key={slot.id} title={<>{slot.label}: {slot.tokenCount} tokens</>}>
           <ButtonBase aria-pressed={slot.id === selected?.id}

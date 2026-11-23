@@ -14,3 +14,5 @@ souls/**/*.sqlite-shm
 souls/**/*.sqlite-wal
 souls/**/.snapshots/
 souls/**/vault/
+souls/**/plugins/
+user-plugins/

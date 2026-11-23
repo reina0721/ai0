@@ -1,15 +1,14 @@
+import Button from "@mui/material/Button";
 import Drawer from "@mui/material/Drawer";
+import IconButton from "@mui/material/IconButton";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import type { VerifiableTurnTrace } from "@ai0/protocol";
+import type { Ai0ShellStageHostBridge, Ai0ShellStageHostState, Ai0StageMode } from "@ai0/sdk";
+import { X } from "lucide-react";
 import { useReducedMotion } from "motion/react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
-import type { ConsoleMode } from "../api/client.js";
-import { useConsole } from "../context/ConsoleContext.js";
-import { RippleButton } from "../design-system/primitives/index.js";
-import { renderConsoleIcon } from "../design-system/tokens/index.js";
-import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
-import { createWebChatApi, isFinishedChatRun, type WebChatStage, type WebChatStatus } from "./api.js";
+import { isFinishedChatRun, type WebChatStage, type WebChatStatus } from "./api.js";
 import type { ChatTurn } from "./useWebChatSession.js";
 
 export const STAGE_LABELS: Record<WebChatStage, string> = {
@@ -25,17 +24,14 @@ const STATUS_LABELS: Record<WebChatStatus, string> = {
 interface WebChatInspectorProps {
   id: string;
   open: boolean;
-  mode: ConsoleMode;
+  mode: Ai0StageMode;
   turn?: ChatTurn;
-  snapshot?: ConsoleLiveSnapshot;
+  host: Ai0ShellStageHostBridge;
+  hostState: Ai0ShellStageHostState;
   onClose: () => void;
 }
 
-function useTurnTrace({ open, turn, mode, snapshot }: WebChatInspectorProps) {
-  const ctx = useConsole();
-  const ownerToken = ctx?.ownerToken ?? "";
-  const getAdmin = ctx?.getAdmin;
-  const api = useMemo(() => createWebChatApi(ownerToken, mode), [ownerToken, mode]);
+function useTurnTrace({ open, turn, mode, host, hostState }: WebChatInspectorProps) {
   const target = mode === "sandbox" ? "sandbox:console" : "live";
   const traceId = turn?.traceId;
   const requestId = turn?.requestId;
@@ -44,8 +40,10 @@ function useTurnTrace({ open, turn, mode, snapshot }: WebChatInspectorProps) {
   const [resolved, setResolved] = useState<{ key: string; trace?: VerifiableTurnTrace }>();
   const lookupKey = `${target}:${traceId ?? ""}:${retry}`;
 
-  const snapshotTrace = !requestId && snapshot?.targetInstance === target
-    ? snapshot.recentTraces.find((entry) => entry.trace_id === traceId && entry.steps.step1_perception.audience_scope === "only_owner")
+  const snapshotTrace = !requestId && hostState.targetInstance === target
+    ? hostState.recentTraces?.find(
+        (entry) => entry.trace_id === traceId && entry.steps.step1_perception.audience_scope === "only_owner"
+      )
     : undefined;
 
   useEffect(() => {
@@ -53,29 +51,28 @@ function useTurnTrace({ open, turn, mode, snapshot }: WebChatInspectorProps) {
       setResolved(undefined);
       return;
     }
-    if (!finished || !traceId || snapshotTrace || !ownerToken) return;
+    if (!finished || !traceId || snapshotTrace || !hostState.authToken) return;
     const controller = new AbortController();
-    const request = requestId
-      ? api.trace(requestId, controller.signal).then((response) => [response.trace])
-      : getAdmin?.<{ traces: VerifiableTurnTrace[] }>("runtime/traces", controller.signal, target).then((response) => response.traces);
-
-    if (!request) return;
-    void request.then((traces) => {
-      if (controller.signal.aborted) return;
-      const trace = traces.find((entry) => entry.trace_id === traceId && entry.target_instance === target
-        && entry.steps.step1_perception.audience_scope === "only_owner");
-      setResolved({ key: lookupKey, trace });
-    }).catch(() => {
-      if (!controller.signal.aborted) setResolved({ key: lookupKey });
-    });
+    void host.fetchTurnTrace({ requestId, traceId, mode, signal: controller.signal })
+      .then((trace) => {
+        if (controller.signal.aborted) return;
+        const matched = trace && trace.target_instance === target
+          && trace.steps.step1_perception.audience_scope === "only_owner"
+          ? trace
+          : undefined;
+        setResolved({ key: lookupKey, trace: matched });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setResolved({ key: lookupKey });
+      });
     return () => controller.abort();
-  }, [api, finished, getAdmin, lookupKey, open, ownerToken, requestId, snapshotTrace, target, traceId]);
+  }, [finished, host, hostState.authToken, lookupKey, mode, open, requestId, snapshotTrace, target, traceId]);
 
   const result = resolved?.key === lookupKey ? resolved : undefined;
   return {
     trace: snapshotTrace ?? result?.trace,
-    loading: open && finished && Boolean(traceId) && Boolean(ownerToken) && !snapshotTrace && !result,
-    error: open && finished && Boolean(traceId) && !snapshotTrace && (!ownerToken || (result && !result.trace)),
+    loading: open && finished && Boolean(traceId) && Boolean(hostState.authToken) && !snapshotTrace && !result,
+    error: open && finished && Boolean(traceId) && !snapshotTrace && (!hostState.authToken || (result && !result.trace)),
     retry: () => setRetry((revision) => revision + 1)
   };
 }
@@ -115,9 +112,9 @@ export function WebChatInspector(props: WebChatInspectorProps) {
     >
       <header className="ai0-chat-inspector__header">
         <h2 id={labelId}>会话详情</h2>
-        <RippleButton variant="ghost" size="sm" ariaLabel="关闭会话详情" onClick={onClose}>
-          {renderConsoleIcon("close", 15)}
-        </RippleButton>
+        <IconButton className="ai0-chat-icon-action" size="small" aria-label="关闭会话详情" onClick={onClose}>
+          <X size={15} aria-hidden="true" />
+        </IconButton>
       </header>
       <div className="ai0-chat-inspector__body">
         {turn ? (
@@ -146,7 +143,7 @@ export function WebChatInspector(props: WebChatInspectorProps) {
             {loading || error ? (
               <p className="ai0-chat-inspector__state" role="status">
                 {loading ? "正在读取本轮追踪…" : "暂时无法读取本轮追踪。"}
-                {error ? <RippleButton variant="ghost" size="sm" onClick={retry}>重试</RippleButton> : null}
+                {error ? <Button size="small" onClick={retry}>重试</Button> : null}
               </p>
             ) : null}
             {memories ? (

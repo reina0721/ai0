@@ -18,22 +18,16 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@ai0/plugin-shell-webchat": "workspace:*",
     "@ai0/protocol": "workspace:*",
     "@ai0/sdk": "workspace:*",
-    "@assistant-ui/react": "0.15.38",
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
     "@mui/material": "9.5.0",
-    "@streamdown/cjk": "1.0.5",
-    "@streamdown/code": "2.0.1",
-    "eventsource-parser": "3.1.1",
     "lucide-react": "1.77.0",
     "motion": "14.14.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-router": "^8.5.2",
-    "streamdown": "2.8.0"
+    "react-router": "^8.5.2"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

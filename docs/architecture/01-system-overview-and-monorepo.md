@@ -170,8 +170,8 @@ flowchart TB
 1. **`@ai0/protocol` 零依赖铁律**：
    * 仅依赖 `zod`，严禁引用任何 Node.js 专有原生模块或内核包，确保可在浏览器、移动端、边缘设备或任何外部脚本中无缝运行。
 2. **`plugins/**` 全目录通用零后门铁律（Universal Plugin Zero-Backdoor Enforcement）**：
-   * **物理目录隔离**：顶层 `packages/` 目录仅限五大微内核底座包（`protocol`, `storage`, `kernel`, `gateway`, `sdk`），所有插件（无论官方预装如 `plugins/shells/webchat` 还是社区扩展）一律归入 `plugins/**` 目录，严禁任何单一插件在 `packages/` 顶层享有独占特权席位。
-   * **依赖反转硬约束**：`plugins/**` 下的任何包或文件只允许依赖或导入 `@ai0/protocol` 与 `@ai0/sdk`；**编译期禁止** `plugins/**` 下出现任何对 `@ai0/kernel`、`@ai0/storage` 或 `@ai0/gateway` 的依赖、导入或引用。其中 `plugins/shells/**` 下的所有具身躯壳插件必须 100% 走公开标准 WebSocket 协议，一旦试图绕过标准协议直接调内核函数，CI 与本地编译立即报错阻断！
+   * **物理目录隔离**：顶层 `packages/` 目录仅限五大微内核底座包（`protocol`, `storage`, `kernel`, `gateway`, `sdk`），所有官方参考插件（如 `plugins/shells/webchat`）一律归入 `plugins/**` 目录，严禁任何单一插件在 `packages/` 顶层享有独占特权席位；社区与用户自建插件一律归入官方源码树之外的独立目录（`<soulDir>/plugins/*`、`user-plugins/*` 或 `AI0_PLUGINS_DIR`），确保官方上游更新（`git pull` / 发行版升级）对用户插件零冲突、零覆盖。
+   * **双向依赖反转硬约束（Invariant 3 & Invariant 7）**：`plugins/**` 下的任何插件包可在自身 `package.json` 中独立管理第三方 npm 依赖（自包含依赖闭包与独立 `dist/` 产物），但在 `@ai0/*` 内部包中仅允许依赖 `@ai0/protocol` 与 `@ai0/sdk`，**编译期严禁**依赖或导入 `@ai0/kernel`、`@ai0/storage`、`@ai0/gateway`、`@ai0/console-webui` 或 `@ai0/daemon`；反向地，`packages/*` 与 `apps/*` 编译期**严禁**依赖任何 `@ai0/plugin-*` 包、导入 `plugins/**` 源码或把特定插件的 UI/业务依赖塞入宿主 `package.json`，所有 Web 躯壳舞台一律通过运行时清单发现、静态资产托管（`/api/plugins/:id/assets/*`）与 `Ai0ShellStageHostBridge` 动态挂载。
 3. **`@ai0/kernel` 无头（Headless）纯洁性铁律**：
    * `@ai0/kernel` 严禁依赖任何前端 UI 框架（React/DOM）或特定外部平台 SDK（如 Discord.js / Live2D Cubism SDK），确保认知微内核在任何服务器、桌面或嵌入式容器中均可独立无头运行。
 4. **`@ai0/storage` 唯一写入口铁律**：

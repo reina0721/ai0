@@ -10,7 +10,19 @@
 - **决断**：
   1. **`packages/` 锁定为五大无头核心包**：`packages/protocol` (`@ai0/protocol`)、`packages/storage` (`@ai0/storage`)、`packages/kernel` (`@ai0/kernel`)、`packages/gateway` (`@ai0/gateway`)、`packages/sdk` (`@ai0/sdk`)。
   2. **`plugins/**` 统一承载全部官方参考与社区扩展**：包括具身躯壳（`plugins/shells/*`）、认知器官（`plugins/cognitive-organs/*`）、多模态媒体管线（`plugins/media-pipelines/*`）、声明式技能（`plugins/skills-and-mcp/*`）与自动化联动流（`plugins/flows-and-assets/*`）。
-  3. **编译期反后门守卫**：[verify-architecture-boundaries.mjs](../../scripts/verify-architecture-boundaries.mjs) 强制校验所有 `plugins/**` 包仅允许依赖 `@ai0/protocol` 与 `@ai0/sdk`，严禁任何直接引用 `@ai0/kernel`、`@ai0/storage` 或 `@ai0/gateway` 的行为。
+  3. **编译期双向反后门守卫**：[verify-architecture-boundaries.mjs](../../scripts/verify-architecture-boundaries.mjs) 强制校验：
+     - **Invariant 3（插件零后门与依赖闭包自包含）**：`plugins/**` 可在自身 `package.json` 内独立管理第三方依赖，但在 `@ai0/*` 内部包中仅允许依赖 `@ai0/protocol` 与 `@ai0/sdk`，严禁任何直接引用 `@ai0/kernel`、`@ai0/storage`、`@ai0/gateway`、`@ai0/console-webui` 或 `@ai0/daemon` 的行为；
+     - **Invariant 7（宿主零插件污染与防反向依赖锁）**：`packages/*` 与 `apps/*` 编译期严禁依赖或导入任何 `@ai0/plugin-*` 或 `plugins/**`，严禁将具体插件的业务实现目录或专属第三方依赖塞入宿主应用，严禁 `@ai0/storage` 与 `@ai0/kernel` 出现具体插件硬编码方法。
+
+---
+
+## ADR-007：外置插件生命周期隔离、动态舞台挂载桥（`Ai0ShellStageHostBridge`）与标杆同构铁律
+
+- **背景**：若官方参考插件 `plugins/shells/webchat` 将 UI 实现、第三方 npm 依赖或专属流式后端路由耦合在 `apps/console`、`apps/daemon` 或 `packages/storage` 中，社区开发者将被迫修改宿主源码树与 `package.json` 才能接入新插件；一旦官方上游迭代更新（`git pull` 或镜像升级），用户自建插件将爆发严重的依赖冲突或被覆盖，且违背 `plugins/shells/webchat` 零特权官方参考样板的定位。
+- **决断**：
+  1. **源码树与外置用户插件目录物理隔离**：`@ai0/daemon` 通过 `RuntimePluginLoader` 统一扫描官方参考目录 `plugins/*/*`、灵魂级插件目录 `<soulDir>/plugins/*` 及外置用户目录（`user-plugins/*`、`AI0_PLUGINS_DIR`），社区与用户插件完全驻留于官方 Git 树之外，天然免疫上游更新冲突。
+  2. **自包含 UI 产物与标准宿主桥接协议（`Ai0ShellStageHostBridge`）**：Web 躯壳插件在自身包内独立闭环管理第三方依赖并构建 `./dist/ui/stage.js` + `./dist/ui/stage.css`（或 `sandboxed_iframe_stage`），由 Daemon 安全托管 `dist/` 资产于 `/api/plugins/:id/assets/*` 并签发绑定 `shell_id` 的 Channel A `ScopedCapabilityToken`；控制台 `MountedShellStageHost` 在运行时零编译期依赖地动态挂载插件舞台。
+  3. **Channel A 通用具身流式会话协议**：将流式对话、阶段进度、中途打断字符偏移回执与会话历史恢复全部下沉为按 `shell_id` 参数化的通用 `/protocol/v0/shell/*` 端点与 `@ai0/storage` 通用接口（`listShellDecisionTraces` / `markShellRunEnded`），确保官方参考插件与任意社区 `ext.shell` 插件 100% 平权同构。
 
 ---
 

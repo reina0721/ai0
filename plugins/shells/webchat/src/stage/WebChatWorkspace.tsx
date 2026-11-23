@@ -8,25 +8,20 @@ import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import TextareaAutosize from "@mui/material/TextareaAutosize";
 import Tooltip from "@mui/material/Tooltip";
-import { ArrowDown, ArrowDownToLine, ArrowUpRight, Copy, Search, SquarePen, X } from "lucide-react";
+import type { Ai0ShellStageHostBridge, Ai0ShellStageHostState, Ai0StageMode } from "@ai0/sdk";
+import {
+  ArrowDown, ArrowDownToLine, ArrowUpRight, Copy, Lock, PanelRight, Search, Send, Sparkles, Square, SquarePen, X
+} from "lucide-react";
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import {
   createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type RefObject
 } from "react";
 
-import type { ConsoleMode } from "../api/client.js";
-import { useConsole } from "../context/ConsoleContext.js";
-import { renderConsoleIcon } from "../design-system/tokens/index.js";
-import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
 import { isFinishedChatRun } from "./api.js";
 import { useWebChatSession, type ChatTurn } from "./useWebChatSession.js";
 import { STAGE_LABELS, WebChatInspector } from "./WebChatInspector.js";
 import { WebChatMarkdown } from "./WebChatMarkdown.js";
-
-export interface WebChatWorkspaceProps {
-  snapshot?: ConsoleLiveSnapshot;
-}
 
 const PROMPTS = [
   { title: "认识一下", text: "介绍一下你自己。" },
@@ -94,6 +89,7 @@ interface MessageWorkspace {
   query: string;
   inspectTurn: (key: string, trigger: HTMLElement) => void;
   restoreText: (text: string) => void;
+  showToast: (message: string) => void;
   reportDisplayed: ReturnType<typeof useWebChatSession>["reportDisplayed"];
 }
 
@@ -133,12 +129,12 @@ function MessageRow() {
       >
         <div className="ai0-chat-message__body">
           <div className="ai0-chat-message__meta">
-            {!isUser ? <span className="ai0-chat-message__avatar" aria-hidden="true">{renderConsoleIcon("logo", 13)}</span> : null}
+            {!isUser ? <span className="ai0-chat-message__avatar" aria-hidden="true"><Sparkles size={13} /></span> : null}
             <strong>{isUser ? "我" : scope.name}</strong>
             <time dateTime={turn.timestamp}>{displayTime(turn.timestamp)}</time>
           </div>
           {isUser ? <p className="ai0-chat-message__user-text">{text}</p>
-            : text ? <WebChatMarkdown text={text} streaming={pending} />
+            : text ? <WebChatMarkdown text={text} streaming={pending} onToast={scope.showToast} />
             : pending ? <span className="ai0-chat-message__pending" aria-hidden="true"><i /><i /><i /></span>
             : null}
           {!isUser && (turn.status === "interrupted" || turn.status === "cancelled" || turn.status === "failed") ? (
@@ -159,7 +155,7 @@ function MessageRow() {
               <Tooltip describeChild title={<span>查看本轮详情</span>}>
                 <IconButton className="ai0-chat-icon-action" size="small" aria-label="查看本轮详情"
                   onClick={(event) => scope.inspectTurn(turn.key, event.currentTarget)}>
-                  {renderConsoleIcon("inspector", 14)}
+                  <PanelRight size={14} aria-hidden="true" />
                 </IconButton>
               </Tooltip>
             ) : null}
@@ -178,7 +174,7 @@ function Welcome({ inputRef }: { inputRef: RefObject<HTMLTextAreaElement | null>
   const hasDraft = useAuiState((state) => state.composer.text.length > 0);
   return (
     <div className="ai0-chat-welcome">
-      <div className="ai0-chat-welcome__mark" aria-hidden="true">{renderConsoleIcon("logo", 26)}</div>
+      <div className="ai0-chat-welcome__mark" aria-hidden="true"><Sparkles size={26} /></div>
       <h2>开始对话</h2>
       {!hasDraft ? (
         <div className="ai0-chat-welcome__prompts" aria-label="开场建议">
@@ -196,18 +192,28 @@ function Welcome({ inputRef }: { inputRef: RefObject<HTMLTextAreaElement | null>
   );
 }
 
-function WebChatThread({ mode, visible, snapshot, soulId }: {
-  mode: ConsoleMode; visible: boolean; snapshot?: ConsoleLiveSnapshot; soulId: string;
+function WebChatThread({ mode, visible, host, hostState, soulId }: {
+  mode: Ai0StageMode;
+  visible: boolean;
+  host: Ai0ShellStageHostBridge;
+  hostState: Ai0ShellStageHostState;
+  soulId: string;
 }) {
-  const ctx = useConsole();
-  const name = snapshot?.personaName ?? "Mio";
+  const name = hostState.personaName || "Mio";
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const session = useWebChatSession(ctx?.ownerToken ?? "", mode, soulId, visible);
+  const session = useWebChatSession(
+    hostState.protocolBasePath,
+    host.shellId,
+    hostState.authToken,
+    mode,
+    soulId,
+    visible
+  );
   const pageVisible = usePageVisible();
   const online = useBrowserOnline();
   const reduceMotion = useReducedMotion();
-  const offline = !online || Boolean(ctx?.error);
-  const connected = Boolean(ctx?.ownerToken && online && !offline);
+  const offline = !online || Boolean(hostState.error);
+  const connected = Boolean(hostState.authToken && hostState.connected && online && !offline);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [inspection, setInspection] = useState<string | null>(null);
@@ -258,9 +264,10 @@ function WebChatThread({ mode, visible, snapshot, soulId }: {
     }
     inputRef.current?.focus();
   }, [runtime]);
+  const showToast = useCallback((message: string) => host.showToast(message), [host]);
   const scope = useMemo<MessageWorkspace>(() => ({
-    name, visible: visible && pageVisible, query, inspectTurn, restoreText, reportDisplayed: session.reportDisplayed
-  }), [inspectTurn, name, pageVisible, query, restoreText, session.reportDisplayed, visible]);
+    name, visible: visible && pageVisible, query, inspectTurn, restoreText, showToast, reportDisplayed: session.reportDisplayed
+  }), [inspectTurn, name, pageVisible, query, restoreText, showToast, session.reportDisplayed, visible]);
 
   useEffect(() => {
     if (searchOpen) searchRef.current?.focus();
@@ -280,11 +287,11 @@ function WebChatThread({ mode, visible, snapshot, soulId }: {
         <ThreadPrimitive.Root className="ai0-chat-thread" data-webchat-target={mode}>
           <header className="ai0-chat-header">
             <div className="ai0-chat-heading">
-              <div className="ai0-chat-heading__mark" aria-hidden="true">{renderConsoleIcon("logo", 20)}</div>
+              <div className="ai0-chat-heading__mark" aria-hidden="true"><Sparkles size={20} /></div>
               <div>
                 <h1>{name}</h1>
                 <div className="ai0-chat-heading__meta">
-                  <span>{renderConsoleIcon("lock", 12)} {mode === "sandbox" ? "沙盒对话" : "私密对话"}</span>
+                  <span><Lock size={12} aria-hidden="true" /> {mode === "sandbox" ? "沙盒对话" : "私密对话"}</span>
                   <span className="ai0-chat-connection" data-state={offline ? "offline" : connected ? "online" : "connecting"}>
                     <i aria-hidden="true" />{offline ? "连接中断" : connected ? "已连接" : "连接中"}
                   </span>
@@ -317,7 +324,7 @@ function WebChatThread({ mode, visible, snapshot, soulId }: {
                 <Button className="ai0-chat-header-action" aria-label="会话详情"
                   aria-expanded={inspection !== null} aria-controls={inspection ? inspectorId : undefined}
                   onClick={(event) => inspection ? closeInspector() : inspectTurn("latest", event.currentTarget)}>
-                  {renderConsoleIcon("inspector", 15)}<span className="ai0-chat-action-label">会话详情</span>
+                  <PanelRight size={15} aria-hidden="true" /><span className="ai0-chat-action-label">会话详情</span>
                 </Button>
               </Tooltip>
             </div>
@@ -339,7 +346,7 @@ function WebChatThread({ mode, visible, snapshot, soulId }: {
           {offline ? (
             <div className="ai0-chat-notice" role="status">
               <span>暂时无法连接。草稿仍可编辑。</span>
-              {online ? <Button variant="outlined" onClick={ctx?.retryBootstrap}>重新连接</Button> : null}
+              {online ? <Button variant="outlined" onClick={() => host.retryConnection()}>重新连接</Button> : null}
             </div>
           ) : session.historyError ? (
             <div className="ai0-chat-notice" role="status">
@@ -352,7 +359,7 @@ function WebChatThread({ mode, visible, snapshot, soulId }: {
             <div className="ai0-chat-conversation">
               <ThreadPrimitive.Viewport className="ai0-chat-viewport" aria-label="对话记录" role="region" tabIndex={0}>
                 <div className="ai0-chat-transcript">
-                  {!session.turns.length && (session.historyLoading || (ctx?.loading && !offline)) ? (
+                  {!session.turns.length && (session.historyLoading || (hostState.loading && !offline)) ? (
                     <div className="ai0-chat-loading" role="status">正在读取对话记录…</div>
                   ) : !session.turns.length && !query ? <Welcome inputRef={inputRef} /> : null}
                   {matches === 0 ? <p className="ai0-chat-empty">没有匹配的对话。</p> : null}
@@ -399,20 +406,28 @@ function WebChatThread({ mode, visible, snapshot, soulId }: {
                   </ComposerPrimitive.Input>
                   {session.running ? (
                     <ComposerPrimitive.Cancel asChild data-webchat-interrupt="true" disabled={session.stopping}>
-                      <Button variant="outlined" className="ai0-chat-composer__button is-stop" startIcon={renderConsoleIcon("stop", 15)}>
+                      <Button variant="outlined" className="ai0-chat-composer__button is-stop" startIcon={<Square size={14} aria-hidden="true" />}>
                         {session.stopping ? "正在停止" : "停止"}
                       </Button>
                     </ComposerPrimitive.Cancel>
                   ) : (
                     <ComposerPrimitive.Send asChild data-webchat-send="true">
-                      <Button variant="contained" className="ai0-chat-composer__button" startIcon={renderConsoleIcon("send", 15)}>发送</Button>
+                      <Button variant="contained" className="ai0-chat-composer__button" startIcon={<Send size={14} aria-hidden="true" />}>发送</Button>
                     </ComposerPrimitive.Send>
                   )}
                 </ComposerPrimitive.Root>
                 <small className="ai0-chat-key-hint">Enter 发送 · Shift + Enter 换行</small>
               </footer>
             </div>
-            <WebChatInspector id={inspectorId} open={visible && inspection !== null} mode={mode} turn={inspectedTurn} snapshot={snapshot} onClose={closeInspector} />
+            <WebChatInspector
+              id={inspectorId}
+              open={visible && inspection !== null}
+              mode={mode}
+              turn={inspectedTurn}
+              host={host}
+              hostState={hostState}
+              onClose={closeInspector}
+            />
           </div>
         </ThreadPrimitive.Root>
       </MessageWorkspaceContext.Provider>
@@ -420,15 +435,15 @@ function WebChatThread({ mode, visible, snapshot, soulId }: {
   );
 }
 
-export function WebChatWorkspace({ snapshot: injected }: WebChatWorkspaceProps = {}) {
-  const ctx = useConsole();
-  const mode = ctx?.mode ?? (injected?.targetInstance === "sandbox:console" ? "sandbox" : "live");
-  const snapshot = injected ?? ctx?.snapshot;
-  const soulId = snapshot?.soulId;
+export function WebChatWorkspace({ host, hostState }: {
+  host: Ai0ShellStageHostBridge;
+  hostState: Ai0ShellStageHostState;
+}) {
+  const mode = hostState.mode;
+  const soulId = hostState.soulId;
   const [identity, setIdentity] = useState({ soulId, revision: 0 });
-  const [visited, setVisited] = useState<readonly ConsoleMode[]>([mode]);
+  const [visited, setVisited] = useState<readonly Ai0StageMode[]>([mode]);
 
-  // Bootstrap may identify the current archive after a draft has already been typed.
   if (soulId && identity.soulId !== soulId) {
     setIdentity({ soulId, revision: identity.revision + (identity.soulId ? 1 : 0) });
   }
@@ -438,10 +453,16 @@ export function WebChatWorkspace({ snapshot: injected }: WebChatWorkspaceProps =
   }, [mode]);
 
   return (
-    <section className="mounted-shell-stage-host ai0-webchat" data-shell-plugin-id="builtin.webchat" aria-label="WebChat 对话舞台">
+    <section className="mounted-shell-stage-host ai0-webchat" data-shell-plugin-id={host.extensionId} aria-label="WebChat 对话舞台">
       {(["live", "sandbox"] as const).filter((target) => target === mode || visited.includes(target)).map((target) => (
         <div key={`${identity.revision}:${target}`} className="ai0-chat-workspace" hidden={target !== mode}>
-          <WebChatThread mode={target} visible={target === mode} snapshot={snapshot} soulId={identity.soulId ?? "default.soul"} />
+          <WebChatThread
+            mode={target}
+            visible={target === mode}
+            host={host}
+            hostState={hostState}
+            soulId={identity.soulId || "default.soul"}
+          />
         </div>
       ))}
     </section>

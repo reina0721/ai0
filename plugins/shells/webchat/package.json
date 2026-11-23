@@ -1,6 +1,6 @@
 {
   "name": "@ai0/plugin-shell-webchat",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -12,11 +12,29 @@
   },
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && vite build --config vite.stage.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@ai0/protocol": "workspace:*",
-    "@ai0/sdk": "workspace:*"
+    "@ai0/sdk": "workspace:*",
+    "@assistant-ui/react": "0.15.38",
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@mui/material": "9.5.0",
+    "@streamdown/cjk": "1.0.5",
+    "@streamdown/code": "2.0.1",
+    "eventsource-parser": "3.1.1",
+    "lucide-react": "1.77.0",
+    "motion": "14.14.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "streamdown": "2.8.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "vite": "^8.3.8"
   }
 }

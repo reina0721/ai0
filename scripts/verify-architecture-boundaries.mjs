@@ -5,8 +5,21 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const CORE_PACKAGES = ["gateway", "kernel", "protocol", "sdk", "storage"];
-const PLUGIN_ALLOWED_DEPENDENCIES = new Set(["@ai0/protocol", "@ai0/sdk"]);
-const PLUGIN_FORBIDDEN_PACKAGES = ["@ai0/kernel", "@ai0/storage", "@ai0/gateway"];
+const PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES = new Set(["@ai0/protocol", "@ai0/sdk"]);
+const PLUGIN_FORBIDDEN_PACKAGES = [
+  "@ai0/kernel",
+  "@ai0/storage",
+  "@ai0/gateway",
+  "@ai0/console-webui",
+  "@ai0/daemon",
+];
+const HOST_CONSOLE_FORBIDDEN_PLUGIN_DEPS = [
+  "@assistant-ui/react",
+  "streamdown",
+  "@streamdown/",
+  "eventsource-parser",
+];
+const HOST_DAEMON_FORBIDDEN_PLUGIN_DEPS = ["ai"];
 const DEPENDENCY_SECTIONS = [
   "dependencies",
   "devDependencies",
@@ -427,10 +440,13 @@ async function verifyPluginBoundaries() {
     for (const dependency of dependencyEntries(packageJson)) {
       if (dependency.invalid) {
         report(rule, `${relativePath(packageJsonPath)} ${dependency.section} must be an object.`);
-      } else if (!PLUGIN_ALLOWED_DEPENDENCIES.has(dependency.name)) {
+      } else if (
+        dependency.name.startsWith("@ai0/") &&
+        !PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES.has(dependency.name)
+      ) {
         report(
           rule,
-          `${relativePath(packageJsonPath)} ${dependency.section} contains forbidden dependency "${dependency.name}"; only @ai0/protocol and @ai0/sdk are allowed.`,
+          `${relativePath(packageJsonPath)} ${dependency.section} contains forbidden internal dependency "${dependency.name}"; among @ai0/* packages, plugins may depend only on @ai0/protocol and @ai0/sdk.`,
         );
       }
     }
@@ -439,10 +455,13 @@ async function verifyPluginBoundaries() {
   const sourceFiles = await walkFiles(pluginsDirectory, {
     include: (filePath) => SOURCE_EXTENSIONS.has(path.extname(filePath)),
   });
-  const forbiddenPackageDirectories = PLUGIN_FORBIDDEN_PACKAGES.map((packageName) => ({
-    packageName,
-    directory: path.resolve(repoRoot, "packages", packageName.slice("@ai0/".length)),
-  }));
+  const forbiddenHostDirectories = [
+    { packageName: "@ai0/kernel", directory: path.resolve(repoRoot, "packages", "kernel") },
+    { packageName: "@ai0/storage", directory: path.resolve(repoRoot, "packages", "storage") },
+    { packageName: "@ai0/gateway", directory: path.resolve(repoRoot, "packages", "gateway") },
+    { packageName: "@ai0/console-webui", directory: path.resolve(repoRoot, "apps", "console") },
+    { packageName: "@ai0/daemon", directory: path.resolve(repoRoot, "apps", "daemon") },
+  ];
 
   for (const filePath of sourceFiles) {
     const source = await readFile(filePath, "utf8");
@@ -456,7 +475,7 @@ async function verifyPluginBoundaries() {
       if (!specifier.startsWith(".") && !specifier.startsWith("..\\")) continue;
       const normalizedSpecifier = specifier.replace(/[?#].*$/, "").replaceAll("\\", path.sep);
       const resolvedImport = path.resolve(path.dirname(filePath), normalizedSpecifier);
-      const escapedTarget = forbiddenPackageDirectories.find(({ directory }) => {
+      const escapedTarget = forbiddenHostDirectories.find(({ directory }) => {
         const relative = path.relative(directory, resolvedImport);
         return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
       });
@@ -538,17 +557,113 @@ async function verifyNoStaticSchemas() {
   }
 }
 
+function matchesAnyPrefix(name, patterns) {
+  return patterns.some((pattern) =>
+    pattern.endsWith("/") ? name.startsWith(pattern) : matchesPackage(name, pattern)
+  );
+}
+
+async function verifyHostZeroPluginPollution() {
+  const rule = "Invariant 7: host zero-plugin-pollution & reverse-dependency lock";
+  const pluginsRoot = path.resolve(repoRoot, "plugins");
+  const hostRoots = [path.join(repoRoot, "packages"), path.join(repoRoot, "apps")];
+
+  for (const forbiddenPath of [
+    path.join(repoRoot, "apps", "console", "src", "webchat"),
+    path.join(repoRoot, "apps", "daemon", "src", "webchat-runs.ts"),
+  ]) {
+    if (await pathInfo(forbiddenPath)) {
+      report(
+        rule,
+        `Plugin implementation path ${relativePath(forbiddenPath)} must live inside plugins/**, not inside host apps.`,
+      );
+    }
+  }
+
+  for (const hostRoot of hostRoots) {
+    const pkgFiles = await walkFiles(hostRoot, {
+      include: (filePath) => path.basename(filePath) === "package.json",
+    });
+
+    for (const pkgPath of pkgFiles) {
+      const pkg = await readJson(pkgPath, rule);
+      if (!pkg) continue;
+      const relPkg = relativePath(pkgPath);
+      for (const dep of dependencyEntries(pkg)) {
+        if (dep.invalid) continue;
+        if (dep.name.startsWith("@ai0/plugin-")) {
+          report(
+            rule,
+            `${relPkg} ${dep.section} depends on plugin package "${dep.name}"; host packages/apps must never depend on specific plugins at compile time.`,
+          );
+        }
+        if (relPkg === "apps/console/package.json" && matchesAnyPrefix(dep.name, HOST_CONSOLE_FORBIDDEN_PLUGIN_DEPS)) {
+          report(
+            rule,
+            `${relPkg} ${dep.section} contains plugin-specific UI dependency "${dep.name}"; move it into the plugin package's own dependency closure.`,
+          );
+        }
+        if (relPkg === "apps/daemon/package.json" && matchesAnyPrefix(dep.name, HOST_DAEMON_FORBIDDEN_PLUGIN_DEPS)) {
+          report(
+            rule,
+            `${relPkg} ${dep.section} contains plugin-specific dependency "${dep.name}"; keep the daemon protocol layer self-contained.`,
+          );
+        }
+      }
+    }
+
+    const srcFiles = await walkFiles(hostRoot, {
+      include: (filePath) =>
+        SOURCE_EXTENSIONS.has(path.extname(filePath)) &&
+        !/\.(?:test|spec)\.[cm]?[jt]sx?$/iu.test(filePath),
+    });
+
+    for (const filePath of srcFiles) {
+      const source = await readFile(filePath, "utf8");
+      const relFile = relativePath(filePath);
+      for (const specifier of moduleSpecifiers(source)) {
+        if (specifier.startsWith("@ai0/plugin-")) {
+          report(
+            rule,
+            `${relFile} imports plugin package "${specifier}"; host code must mount plugins dynamically via manifests and SDK contracts.`,
+          );
+          continue;
+        }
+        if (specifier.startsWith(".") || specifier.startsWith("..\\")) {
+          const normalized = specifier.replace(/[?#].*$/, "").replaceAll("\\", path.sep);
+          const resolved = path.resolve(path.dirname(filePath), normalized);
+          const relToPlugins = path.relative(pluginsRoot, resolved);
+          if (relToPlugins === "" || (!relToPlugins.startsWith("..") && !path.isAbsolute(relToPlugins))) {
+            report(rule, `${relFile} imports plugin source "${specifier}" directly across the host boundary.`);
+          }
+        }
+      }
+
+      if (relFile.startsWith("packages/storage/src/") || relFile.startsWith("packages/kernel/src/")) {
+        const code = executableCodeOnly(source);
+        if (/\b(?:listWebChat|markWebChat|handleWebChat)[A-Za-z0-9_]*\b/.test(code)) {
+          report(
+            rule,
+            `${relFile} defines or calls a WebChat-specific method; core storage/kernel APIs must be parameterized by generic shell_id.`,
+          );
+        }
+      }
+    }
+  }
+}
+
 await verifyCorePackageLock();
 await verifyProtocolBoundaries();
 await verifyPluginBoundaries();
 await verifyKernelPurity();
 await verifyDesignSystemModularity();
 await verifyNoStaticSchemas();
+await verifyHostZeroPluginPollution();
 
 if (violations.length > 0) {
   console.error(`Architecture boundary verification failed with ${violations.length} violation(s):`);
   for (const violation of violations) console.error(`  - ${violation}`);
   process.exitCode = 1;
 } else {
-  console.log("Architecture boundary verification passed: all 6 invariants hold.");
+  console.log("Architecture boundary verification passed: all 7 invariants hold.");
 }

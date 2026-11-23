@@ -12,18 +12,18 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { Copy, Download, ExternalLink, Maximize2, X } from "lucide-react";
 import { useReducedMotion } from "motion/react";
-import { memo, useContext, useId, useRef, useState, type ComponentPropsWithoutRef } from "react";
+import { createContext, memo, useContext, useId, useRef, useState, type ComponentPropsWithoutRef } from "react";
 import {
   Streamdown, StreamdownContext, extractTableDataFromElement, tableDataToCSV, tableDataToMarkdown, tableDataToTSV,
   type Components, type ExtraProps, type LinkSafetyConfig, type LinkSafetyModalProps, type TableData
 } from "streamdown";
 
-import { useConsole } from "../context/ConsoleContext.js";
-
 const MARKDOWN_PLUGINS = { cjk, code };
 const MARKDOWN_CONTROLS = { code: { copy: true, download: false }, table: { copy: true, download: true, fullscreen: true } };
 const BLOCKED_MARKDOWN = ["img", "iframe", "audio", "video"];
 const TRANSLATIONS = { copyCode: "复制代码", copied: "已复制" };
+
+const ToastContext = createContext<(message: string) => void>(() => {});
 
 function safeMarkdownUrl(url: string): string {
   return /^https?:\/\//iu.test(url) ? url : "";
@@ -85,12 +85,11 @@ function downloadTable(text: string, format: TableFormat) {
   link.href = url;
   link.download = csv ? "table.csv" : "table.md";
   link.click();
-  // Let the browser take ownership of the object URL before revocation.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function MarkdownTable({ children, node: _node, ...props }: ComponentPropsWithoutRef<"table"> & ExtraProps) {
-  const ctx = useConsole();
+  const showToast = useContext(ToastContext);
   const { isAnimating } = useContext(StreamdownContext);
   const reduced = useReducedMotion();
   const ref = useRef<HTMLTableElement>(null);
@@ -111,10 +110,10 @@ function MarkdownTable({ children, node: _node, ...props }: ComponentPropsWithou
       else {
         await writeClipboard(text, table.outerHTML);
         setCopied(true);
-        ctx?.showToast("已复制表格");
+        showToast("已复制表格");
       }
     } catch {
-      ctx?.showToast(action === "download" ? "表格下载失败" : "表格复制失败");
+      showToast(action === "download" ? "表格下载失败" : "表格复制失败");
     }
   }
 
@@ -181,13 +180,23 @@ function MarkdownTable({ children, node: _node, ...props }: ComponentPropsWithou
 const MARKDOWN_COMPONENTS: Components = { table: MarkdownTable };
 const LINK_SAFETY: LinkSafetyConfig = { enabled: true, renderModal: (props) => <LinkSafetyDialog {...props} /> };
 
-export const WebChatMarkdown = memo(function WebChatMarkdown({ text, streaming }: { text: string; streaming: boolean }) {
+export const WebChatMarkdown = memo(function WebChatMarkdown({
+  text,
+  streaming,
+  onToast
+}: {
+  text: string;
+  streaming: boolean;
+  onToast: (message: string) => void;
+}) {
   return (
-    <Streamdown className="ai0-chat-markdown" mode={streaming ? "streaming" : "static"} isAnimating={streaming}
-      plugins={MARKDOWN_PLUGINS} controls={MARKDOWN_CONTROLS} components={MARKDOWN_COMPONENTS}
-      translations={TRANSLATIONS} disallowedElements={BLOCKED_MARKDOWN} urlTransform={safeMarkdownUrl}
-      linkSafety={LINK_SAFETY} skipHtml>
-      {text}
-    </Streamdown>
+    <ToastContext.Provider value={onToast}>
+      <Streamdown className="ai0-chat-markdown" mode={streaming ? "streaming" : "static"} isAnimating={streaming}
+        plugins={MARKDOWN_PLUGINS} controls={MARKDOWN_CONTROLS} components={MARKDOWN_COMPONENTS}
+        translations={TRANSLATIONS} disallowedElements={BLOCKED_MARKDOWN} urlTransform={safeMarkdownUrl}
+        linkSafety={LINK_SAFETY} skipHtml>
+        {text}
+      </Streamdown>
+    </ToastContext.Provider>
   );
 });

@@ -28,7 +28,7 @@
   --ai0-button-background: var(--ai0-action-fill);
   --ai0-button-ink: var(--ai0-action-text);
   --ai0-button-line: transparent;
-  --ai0-button-hover: color-mix(in oklch, var(--ai0-action-fill) 89%, var(--ai0-on-surface));
+  --ai0-button-hover: var(--ai0-action-fill-hover);
 }
 
 .ai0-ripple-btn[data-variant="tonal"] {
@@ -47,9 +47,9 @@
 
 .ai0-ripple-btn[data-variant="danger"] {
   --ai0-button-background: transparent;
-  --ai0-button-ink: color-mix(in oklch, var(--ai0-danger) 74%, var(--ai0-on-surface));
-  --ai0-button-line: color-mix(in oklch, var(--ai0-danger) 29%, transparent);
-  --ai0-button-hover: color-mix(in oklch, var(--ai0-danger) 10%, transparent);
+  --ai0-button-ink: var(--ai0-danger-action-ink);
+  --ai0-button-line: var(--ai0-danger-action-line);
+  --ai0-button-hover: var(--ai0-danger-action-hover);
 }
 
 .ai0-ripple-btn:hover:not(:disabled):not([aria-disabled=true]) { background: var(--ai0-button-hover); }
@@ -208,9 +208,9 @@
 .ai0-badge[data-tone="danger"] { --ai0-tag-color: var(--ai0-danger); }
 .ai0-badge:is([data-tone="info"], [data-tone="accent"], [data-tone="taint"]), .ai0-chip.is-accent { --ai0-tag-color: var(--ai0-accent); }
 .ai0-badge:is([data-tone="live"], [data-tone="good"], [data-tone="success"], [data-tone="sandbox"], [data-tone="warn"], [data-tone="warning"], [data-tone="danger"], [data-tone="info"], [data-tone="accent"], [data-tone="taint"]), .ai0-chip.is-accent {
-  background: color-mix(in oklch, var(--ai0-tag-color) 9%, var(--ai0-surface-main-card));
-  border-color: color-mix(in oklch, var(--ai0-tag-color) 24%, transparent);
-  color: color-mix(in oklch, var(--ai0-tag-color) 71%, var(--ai0-on-surface));
+  background: var(--ai0-tag-fill);
+  border-color: var(--ai0-tag-line);
+  color: var(--ai0-tag-ink);
 }
 .ai0-chip-pool { display: flex; flex-wrap: wrap; gap: 4px; }
 .ai0-chip-pool__chip.MuiChip-root {

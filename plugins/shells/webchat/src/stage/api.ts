@@ -1,8 +1,5 @@
 import { EventSourceParserStream } from "eventsource-parser/stream";
-import type { VerifiableTurnTrace } from "@ai0/protocol";
-import type { ConsoleMode } from "../api/client.js";
-
-const WEBCHAT_PATH = "/api/studio/webchat";
+import type { Ai0StageMode } from "@ai0/sdk";
 
 export const WEBCHAT_STAGES = ["accepted", "gate", "recall", "blackboard", "generating", "committed", "delivering"] as const;
 export type WebChatStage = (typeof WEBCHAT_STAGES)[number];
@@ -83,10 +80,19 @@ function readWebChatStream(body: ReadableStream<Uint8Array<ArrayBuffer>>): Reada
     }));
 }
 
-export function createWebChatApi(ownerToken: string, mode: ConsoleMode) {
-  const headers = { "x-ai0-owner-token": ownerToken };
-  const query = `?mode=${mode}`;
-  const runPath = (requestId: string) => `${WEBCHAT_PATH}/runs/${encodeURIComponent(requestId)}`;
+export function createWebChatProtocolApi(
+  protocolBasePath: string,
+  shellId: string,
+  authToken: string,
+  mode: Ai0StageMode
+) {
+  const basePath = protocolBasePath.replace(/\/+$/, "");
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${authToken}`,
+    "x-ai0-shell-id": shellId
+  };
+  const query = `?mode=${mode}&shellId=${encodeURIComponent(shellId)}`;
+  const runPath = (requestId: string) => `${basePath}/runs/${encodeURIComponent(requestId)}`;
 
   async function readJson<T>(path: string, signal: AbortSignal, payload?: object): Promise<T> {
     const response = await fetch(path, {
@@ -105,12 +111,12 @@ export function createWebChatApi(ownerToken: string, mode: ConsoleMode) {
 
   return {
     async open(requestId: string, text: string, signal: AbortSignal) {
-      const response = await fetch(`${WEBCHAT_PATH}/runs`, {
+      const response = await fetch(`${basePath}/runs`, {
         method: "POST",
         signal,
         cache: "no-store",
         headers: { ...headers, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify({ requestId, mode, text })
+        body: JSON.stringify({ requestId, mode, shellId, text })
       });
       if (!response.ok || !response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
         throw new WebChatHttpError(response.status, "WebChat stream is unavailable");
@@ -118,19 +124,16 @@ export function createWebChatApi(ownerToken: string, mode: ConsoleMode) {
       return readWebChatStream(response.body);
     },
     history(signal: AbortSignal) {
-      return readJson<{ turns: WebChatHistoryTurn[] }>(`${WEBCHAT_PATH}/history${query}`, signal);
+      return readJson<{ turns: WebChatHistoryTurn[] }>(`${basePath}/history${query}`, signal);
     },
     status(requestId: string, signal: AbortSignal) {
       return readJson<WebChatRun>(`${runPath(requestId)}${query}`, signal);
     },
-    trace(requestId: string, signal: AbortSignal) {
-      return readJson<{ trace: VerifiableTurnTrace }>(`${runPath(requestId)}/trace${query}`, signal);
-    },
     stop(requestId: string, spokenCharOffset: number, signal: AbortSignal) {
-      return readJson<WebChatRun>(`${runPath(requestId)}/stop`, signal, { mode, spokenCharOffset });
+      return readJson<WebChatRun>(`${runPath(requestId)}/stop`, signal, { mode, shellId, spokenCharOffset });
     },
     receipt(requestId: string, spokenCharOffset: number, signal: AbortSignal) {
-      return readJson<WebChatRun>(`${runPath(requestId)}/receipt`, signal, { mode, spokenCharOffset });
+      return readJson<WebChatRun>(`${runPath(requestId)}/receipt`, signal, { mode, shellId, spokenCharOffset });
     }
   };
 }

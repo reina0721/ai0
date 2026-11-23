@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,9 +7,9 @@ import { expect, it, vi } from "vitest";
 
 import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer } from "./index.js";
 
-it("streams a persisted WebChat turn and scopes replay, delivery receipts, and history to the owner and target", async () => {
-  const root = mkdtempSync(join(tmpdir(), "ai0-webchat-"));
-  const ownerToken = "webchat-test-owner";
+it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces ScopedCapabilityToken privacy fences", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ai0-shell-runs-"));
+  const ownerToken = "shell-runs-test-owner";
   const runtime = createDefaultDaemonRuntime({
     soulDir: join(root, "test.soul"),
     ownerMasterToken: ownerToken,
@@ -17,12 +17,24 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
   });
   const server = createUnifiedDaemonHttpServer(runtime);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/studio/webchat`;
-  const headers = { "x-ai0-owner-token": ownerToken, "content-type": "application/json" };
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const url = `${baseUrl}/protocol/v0/shell`;
+  const shellId = "community.stage.example";
+  const ownerHeaders = { "x-ai0-owner-token": ownerToken, "content-type": "application/json" };
+  const scopedToken = runtime.shellGateway.issueScopedCapabilityToken(
+    {
+      shell_id: shellId,
+      max_audience_privacy_ceiling: "only_owner",
+      allowed_modalities: ["text", "typing_activity"],
+      expires_at_ts_ms: Date.now() + 60_000
+    },
+    ownerToken
+  );
+  const scopedHeaders = { authorization: `Bearer ${scopedToken}`, "content-type": "application/json" };
   const requestId = "6f3d4cde-0773-48a0-884d-ea2b547e99b4";
-  const eventId = `evt_webchat_${requestId}`;
+  const eventId = `evt_shell_${requestId}`;
   const text = "深夜写代码有些累。请提醒我喝杯水，并告诉我你还记得我常喝什么。";
-  const post = (path: string, body: object) => fetch(url + path, {
+  const post = (path: string, body: object, headers = scopedHeaders) => fetch(url + path, {
     method: "POST", headers, body: JSON.stringify(body)
   });
 
@@ -31,7 +43,7 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
     expect((await post("/runs", { requestId, mode: "wrong", text })).status).toBe(400);
     const response = await post("/runs", { requestId, mode: "live", text });
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-vercel-ai-ui-message-stream")).toBe("v1");
+    expect(response.headers.get("x-ai0-protocol-stream")).toBe("v0");
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     const raw = await response.text();
     const events = raw.split("\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)));
@@ -48,11 +60,18 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
     const trace = runtime.storage.getDecisionTraceByEvent(eventId);
     expect(trace?.steps.step7_emitted_intent.fallback_text).toBe(generated);
     expect(trace?.steps.step8_delivery_receipt).toBeNull();
-    expect((await fetch(url + `/runs/${requestId}?mode=sandbox`, { headers })).status).toBe(404);
-    const status = await fetch(url + `/runs/${requestId}?mode=live`, { headers });
-    expect(await status.json()).toMatchObject({ requestId, status: "delivering", deliveryFinished: true, text: generated });
+    expect((await fetch(url + `/runs/${requestId}?mode=sandbox`, { headers: scopedHeaders })).status).toBe(404);
+    const status = await fetch(url + `/runs/${requestId}?mode=live`, { headers: scopedHeaders });
+    expect(await status.json()).toMatchObject({ requestId, shellId, status: "delivering", deliveryFinished: true, text: generated });
+
+    // Channel A zero-backdoor fence: ScopedCapabilityToken MUST NOT access Channel B VerifiableTurnTrace!
     expect((await fetch(url + `/runs/${requestId}/trace?mode=live`)).status).toBe(401);
-    const traceResponse = await fetch(url + `/runs/${requestId}/trace?mode=live`, { headers });
+    expect((await fetch(url + `/runs/${requestId}/trace?mode=live`, { headers: scopedHeaders })).status).toBe(401);
+    const traceResponse = await fetch(
+      url + `/runs/${requestId}/trace?mode=live&shellId=${encodeURIComponent(shellId)}`,
+      { headers: ownerHeaders }
+    );
+    expect(traceResponse.status).toBe(200);
     expect(await traceResponse.json()).toMatchObject({ trace: { trace_id: trace?.trace_id } });
 
     expect((await post(`/runs/${requestId}/receipt`, { mode: "live", spokenCharOffset: 0 })).status).toBe(400);
@@ -75,8 +94,9 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
     });
     const repeated = await post(`/runs/${requestId}/stop`, { mode: "sandbox", spokenCharOffset: 2 });
     expect(await repeated.json()).toMatchObject({ receipt: { spokenCharOffset: 0 } });
-    const history = await fetch(url + "/history?mode=sandbox", { headers });
+    const history = await fetch(url + "/history?mode=sandbox", { headers: scopedHeaders });
     expect(await history.json()).toMatchObject({
+      shellId,
       turns: expect.arrayContaining([expect.objectContaining({
         requestId, assistantText: "", targetInstance: "sandbox:console"
       })])
@@ -84,12 +104,13 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
     await post("/clear", { mode: "live" });
     expect(runtime.storage.listDecisionTraces()).toHaveLength(traceCount);
 
-    const publicTurn = await runtime.handleWebChatTurn({
+    const publicTurn = await runtime.handleShellTurn({
+      shell_id: shellId,
       text: "直播间公开演示，和观众打个招呼。",
       audience_scope: "public_all",
       venue_type: "public_livestream"
     });
-    const privateHistory = await fetch(url + "/history?mode=live", { headers });
+    const privateHistory = await fetch(url + "/history?mode=live", { headers: scopedHeaders });
     expect((await privateHistory.json()).turns).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ eventId: publicTurn.event_id })
     ]));
@@ -113,15 +134,18 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
       delivered += decoder.decode(part.value, { stream: true });
     }
     expect(delivered).toContain('"type":"text-delta"');
-    const activeHistory = await fetch(url + "/history?mode=live", { headers });
+    const activeHistory = await fetch(url + "/history?mode=live", { headers: scopedHeaders });
     expect((await activeHistory.json()).turns).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ requestId: streamingId })
     ]));
-    const activeTrace = await fetch(url + `/runs/${streamingId}/trace?mode=live`, { headers });
+    const activeTrace = await fetch(
+      url + `/runs/${streamingId}/trace?mode=live&shellId=${encodeURIComponent(shellId)}`,
+      { headers: ownerHeaders }
+    );
     expect(activeTrace.status).toBe(409);
     await deliveryReader.cancel();
     await vi.waitFor(async () => {
-      const archivedHistory = await fetch(url + "/history?mode=live", { headers });
+      const archivedHistory = await fetch(url + "/history?mode=live", { headers: scopedHeaders });
       expect((await archivedHistory.json()).turns).toEqual(expect.arrayContaining([
         expect.objectContaining({ requestId: streamingId, assistantText: longReply })
       ]));
@@ -145,15 +169,15 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
     const cancelledStream = await pendingBody;
     expect(cancelledStream).toContain('"status":"cancelled"');
     expect(cancelledStream).not.toContain('"type":"text-delta"');
-    const cancelled = await fetch(url + `/runs/${pendingId}?mode=live`, { headers });
+    const cancelled = await fetch(url + `/runs/${pendingId}?mode=live`, { headers: scopedHeaders });
     expect(await cancelled.json()).toMatchObject({ status: "cancelled" });
-    expect(runtime.storage.getDecisionTraceByEvent(`evt_webchat_${pendingId}`)).toBeUndefined();
+    expect(runtime.storage.getDecisionTraceByEvent(`evt_shell_${pendingId}`)).toBeUndefined();
 
     const disconnectedId = "7d5a2e97-0337-4feb-9687-2eb50aa40d21";
     const disconnected = await post("/runs", { requestId: disconnectedId, mode: "live", text });
     await disconnected.body?.cancel();
     await vi.waitFor(async () => {
-      const state = await fetch(url + `/runs/${disconnectedId}?mode=live`, { headers });
+      const state = await fetch(url + `/runs/${disconnectedId}?mode=live`, { headers: scopedHeaders });
       expect(await state.json()).toMatchObject({ status: "cancelled" });
     });
     generation.mockRestore();
@@ -165,3 +189,100 @@ it("streams a persisted WebChat turn and scopes replay, delivery receipts, and h
     rmSync(root, { recursive: true, force: true });
   }
 }, 10_000);
+
+it("discovers out-of-tree community plugins and serves only compiled dist assets safely", async () => {
+  const root = mkdtempSync(join(tmpdir(), "ai0-ext-plugins-"));
+  const externalPluginsRoot = join(root, "community-plugins");
+  const pluginDir = join(externalPluginsRoot, "my-live2d-stage");
+  mkdirSync(join(pluginDir, "dist", "ui"), { recursive: true });
+  writeFileSync(join(pluginDir, "package.json"), JSON.stringify({ name: "community-live2d-stage", version: "1.0.0" }));
+  writeFileSync(
+    join(pluginDir, "ai0.extension.json"),
+    JSON.stringify({
+      manifest_version: "1.1.0",
+      extension_id: "community.live2d.stage",
+      display_name: "Community Live2D Stage",
+      version: "0.2.0",
+      author: "external-creator",
+      carrier_kind: "native_code_plugin",
+      dimension: "ext.shell",
+      entry: "./dist/index.js",
+      permissions: {
+        read_blackboard_domains: ["D1_WORKING_TURN"],
+        propose_mutation_domains: [],
+        max_audience_scope: "only_owner",
+        network_access: false
+      },
+      console_contributions: {
+        ui_slots: [
+          {
+            slot_target: "slot.shells.mounted_stage",
+            widget_type: "web_stage_module",
+            title: "Live2D Stage",
+            route_path: "/shells/stage/community.live2d.stage",
+            shell_id: "community.live2d.default",
+            entry_module: "./dist/ui/stage.js",
+            style_sheets: ["./dist/ui/stage.css"]
+          }
+        ]
+      }
+    })
+  );
+  writeFileSync(join(pluginDir, "dist", "ui", "stage.js"), "export function mountShellStage() { return () => {}; }\n");
+  writeFileSync(join(pluginDir, "dist", "ui", "stage.css"), ".community-stage { display: grid; }\n");
+
+  const ownerToken = "ext-owner-token";
+  const runtime = createDefaultDaemonRuntime({
+    soulDir: join(root, "test.soul"),
+    ownerMasterToken: ownerToken,
+    seedIfEmpty: true,
+    extraPluginDirs: [externalPluginsRoot]
+  });
+  const server = createUnifiedDaemonHttpServer(runtime);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  try {
+    const manifestRes = await fetch(`${baseUrl}/api/plugins/community.live2d.stage/manifest`);
+    expect(manifestRes.status).toBe(200);
+    const manifestBody = (await manifestRes.json()) as {
+      plugin: {
+        extension_id: string;
+        origin: string;
+        ui_slots: Array<{ entry_module_url?: string; style_sheet_urls?: string[] }>;
+      };
+    };
+    expect(manifestBody.plugin.extension_id).toBe("community.live2d.stage");
+    expect(manifestBody.plugin.origin).toBe("external");
+    const entryUrl = manifestBody.plugin.ui_slots[0]?.entry_module_url;
+    expect(entryUrl).toBe("/api/plugins/community.live2d.stage/assets/dist/ui/stage.js");
+
+    const jsRes = await fetch(`${baseUrl}${entryUrl}`);
+    expect(jsRes.status).toBe(200);
+    expect(jsRes.headers.get("content-type")).toContain("text/javascript");
+    expect(await jsRes.text()).toContain("mountShellStage");
+
+    // Must block reading files outside dist/ (e.g., package.json or traversal)
+    const leakRes = await fetch(`${baseUrl}/api/plugins/community.live2d.stage/assets/..%2Fpackage.json`);
+    expect(leakRes.status).toBe(404);
+    const directPkgRes = await fetch(`${baseUrl}/api/plugins/community.live2d.stage/assets/package.json`);
+    expect(directPkgRes.status).toBe(404);
+
+    // Stage token endpoint issues a shell-scoped capability token bound to community.live2d.default
+    const tokenRes = await fetch(`${baseUrl}/api/plugins/community.live2d.stage/stage-token`, {
+      method: "POST",
+      headers: { "x-ai0-owner-token": ownerToken }
+    });
+    expect(tokenRes.status).toBe(200);
+    const tokenData = (await tokenRes.json()) as { shellId: string; token: string };
+    expect(tokenData.shellId).toBe("community.live2d.default");
+    const verified = runtime.shellGateway.verifyScopedCapabilityToken(tokenData.token, ownerToken);
+    expect(verified.shell_id).toBe("community.live2d.default");
+  } finally {
+    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+    server.closeAllConnections();
+    await closed;
+    runtime.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

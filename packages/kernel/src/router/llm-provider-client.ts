@@ -273,7 +273,7 @@ export function synthesizeContextAwareResponse(
   } else if (category === "identity") {
     const intro = personaBrief
       ? `我是 ${name}${role}。${personaBrief}`
-      : `我是 ${name}${role}，当前通过 WebChat 与你在线对话。`;
+      : `我是 ${name}${role}，当前通过在线具身通道与你对话。`;
     core = {
       surface_utterance: catchphrase ? `${intro} ${catchphrase}。` : intro,
       theatrical_subtext: `以当前已激活的角色档案（${name}）直接如实回应身份询问。`,
@@ -323,7 +323,7 @@ export function synthesizeContextAwareResponse(
         ? `后台任务正在推进（${task}），${name}这边状态稳定，有新进展会第一时间同步告诉你。`
         : lowMood
           ? `${name}现在心境值偏低（${input.moodValence.toFixed(2)}），不过随时在线，想聊点什么都可以。`
-          : `${name}现在状态稳定（心境 ${input.moodValence >= 0 ? "+" : ""}${input.moodValence.toFixed(2)}），正在 WebChat 等你消息。你今天怎么样？`,
+          : `${name}现在状态稳定（心境 ${input.moodValence >= 0 ? "+" : ""}${input.moodValence.toFixed(2)}），正在在线通道等你消息。你今天怎么样？`,
       theatrical_subtext: task
         ? "同步感知到后台异步任务进度，边聊边如实汇报当前推进步骤。"
         : "根据当前内稳态读数如实反馈状态。",
@@ -334,8 +334,8 @@ export function synthesizeContextAwareResponse(
     core = {
       surface_utterance: catchphrase
         ? `你好，我是 ${name}${role}。${catchphrase}，今天想聊点什么，还是直接测试配置？`
-        : `你好，我是 ${name}${role}，已在 WebChat 就绪。`,
-      theatrical_subtext: "在 WebChat 收到问候，以当前配置的角色档案自然回应。",
+        : `你好，我是 ${name}${role}，已在当前具身通道就绪。`,
+      theatrical_subtext: "在当前具身通道收到问候，以当前配置的角色档案自然回应。",
       chosen_strategy: "warm_opening_invitation",
       interaction_frame: "gentle_support",
     };
@@ -353,8 +353,8 @@ export function synthesizeContextAwareResponse(
     const echo = compact(input.userText, 48);
     core = {
       surface_utterance: /^[?？!！.。\s]+$/u.test(echo)
-        ? `嗯？发了个「${echo}」，是刚才哪里不对劲，还是在测回复？我是 ${name}，直接在 WebChat 说就行。`
-        : `收到「${echo}」了。当前角色是 ${name}${role}，WebChat 通道在线（尚未填写外部大模型 API Key 时使用本地离线合成引擎；在「模型与多模态服务」填入 API Key 或 Ollama 地址后将自动直连真实大模型）。`,
+        ? `嗯？发了个「${echo}」，是刚才哪里不对劲，还是在测回复？我是 ${name}，直接在当前通道说就行。`
+        : `收到「${echo}」了。当前角色是 ${name}${role}，具身通道在线（尚未填写外部大模型 API Key 时使用本地离线合成引擎；在「模型与多模态服务」填入 API Key 或 Ollama 地址后将自动直连真实大模型）。`,
       theatrical_subtext: "识别为简短探测或测试输入，清晰回报当前在线角色与模型接通状态。",
       chosen_strategy: "concise_probe_acknowledgement",
       interaction_frame: "serious_factual",

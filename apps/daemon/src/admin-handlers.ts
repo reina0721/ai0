@@ -290,7 +290,7 @@ export function createRealAdminHandlers(
       const audience = (perception.audience_scope ?? "only_owner") as AudienceScope;
       const modality = (perception.modality ?? "text") as SensorModality;
       runtime.sandboxStorage.appendEvent({ event_id: eventId, wall_ts_ms: Date.now(), virtual_ts_ms: now,
-        source_shell_id: String(perception.shell_id ?? "builtin.webchat.default"), principal_id: "sandbox:operator",
+        source_shell_id: String(perception.shell_id ?? "sandbox.shell.default"), principal_id: "sandbox:operator",
         principal_trust: audience === "only_owner" ? "owner_verified" : "stranger", venue_type: venue,
         audience_scope: audience, event_category: "perception_committed", modality, summary_text: text,
         payload_json: JSON.stringify(perception), state_rev_after: runtime.sandboxCoordinator.getSnapshot().state_rev,

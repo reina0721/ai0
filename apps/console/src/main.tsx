@@ -3,7 +3,6 @@ import "./design-system/primitives/controls.css";
 import "./design-system/domain-surfaces.css";
 import "./console-layout.css";
 import "./pages/workspaces.css";
-import "./webchat/webchat.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

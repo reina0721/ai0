@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const stagePath = "/shells/stage/builtin.webchat";
-const runPath = "/api/studio/webchat/runs";
+const runPath = "/protocol/v0/shell/runs";
 
 test("persists one private WebChat turn and keeps drafts isolated by target", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -148,7 +148,7 @@ test("confirms Markdown links and preserves table actions in themed overlays", a
   const reply = `[服务文档](${destination})\n\n| 名称 | 数量 |\n| --- | --- |\n| 示例 | 42 |`;
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.context().route(destination, (route) => route.fulfill({ body: "Documentation" }));
-  await page.route("**/api/studio/webchat/history?mode=live", (route) => route.fulfill({ json: { turns: [{
+  await page.route("**/protocol/v0/shell/history?*", (route) => route.fulfill({ json: { turns: [{
     eventId: "evt-browser-markdown", traceId: "trace-browser-markdown", targetInstance: "live", userText: "示例文档",
     assistantText: reply, timestamp: "2026-11-23T10:00:00.000Z",
     receipt: { status: "completed", spokenCharOffset: Array.from(reply).length }
