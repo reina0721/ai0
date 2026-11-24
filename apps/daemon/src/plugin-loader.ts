@@ -1,15 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { ExtensionComposition } from "@ai0/sdk";
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { delimiter, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   Ai0ExtensionManifestSchema,
+  ExtensionMarketEntrySchema,
   type Ai0ExtensionManifest,
   type ConsoleUiSlotContribution,
   type ExtensionCarrierKind,
   type ExtensionDimension,
+  type ExtensionMarketEntry,
+  type PluginConfigField,
   type PluginOrigin,
   type RuntimeConsolePage,
   type RuntimeConsoleUiSlot,
@@ -36,6 +49,134 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".wasm": "application/wasm"
 };
 
+export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] = Object.freeze([
+  ExtensionMarketEntrySchema.parse({
+    id: "community.organ.dream-journal",
+    displayName: "Dream Journal（梦境手记）",
+    version: "1.0.0",
+    author: "ai0-community",
+    description: "在 W3 睡眠反思期间将对话余温整理为诗意梦境片段并注入意识黑板第 9 槽位。",
+    dimension: "ext.cognitive_organ",
+    carrierKind: "native_code_plugin",
+    tags: ["sleep", "memory", "poetic"],
+    permissions: {
+      read_blackboard_domains: ["D1_WORKING_TURN", "D2_HOMEOSTASIS_AFFECT", "D3_MEMORY_PROJECTION"],
+      propose_mutation_domains: ["D3_MEMORY_PROJECTION"],
+      max_audience_scope: "only_owner",
+      network_access: false
+    },
+    configFields: []
+  }),
+  ExtensionMarketEntrySchema.parse({
+    id: "community.bridge.napcat-onebot",
+    displayName: "NapCat OneBot v11 消息桥接",
+    version: "1.2.0",
+    author: "ai0-ecosystem",
+    description: "零代码 Protocol v0 协议桥接扩展，快速对接 NapCat / Lagrange OneBot v11 接入 QQ 私聊与群聊。",
+    dimension: "ext.shell",
+    carrierKind: "zero_code_protocol_bridge",
+    tags: ["qq", "onebot", "im", "bridge"],
+    permissions: {
+      read_blackboard_domains: ["D1_WORKING_TURN"],
+      propose_mutation_domains: [],
+      max_audience_scope: "group:default",
+      network_access: true
+    },
+    configFields: [
+      { key: "ws_endpoint", label: "OneBot WebSocket 地址", type: "string", default: "ws://127.0.0.1:3001", hint: "反向或正向 WS 端点" },
+      { key: "access_token", label: "鉴权 Token", type: "secret", default: "", hint: "对应 NapCat 配置的 access_token" },
+      { key: "auto_reply_at", label: "群聊仅响应 @ 提及", type: "bool", default: true, hint: "降低群聊噪声触发" },
+      { key: "rate_limit_rpm", label: "每分钟限频 (RPM)", type: "int", default: 12, min: 1, max: 60 }
+    ]
+  }),
+  ExtensionMarketEntrySchema.parse({
+    id: "community.organ.pomodoro-companion",
+    displayName: "番茄钟专注陪伴器官",
+    version: "1.1.0",
+    author: "ai0-ecosystem",
+    description: "在主人编码或学习专注周期结束时，结合 D2 疲劳度发出温和的休息提醒与小段复盘提议。",
+    dimension: "ext.cognitive_organ",
+    carrierKind: "declarative_soul_asset",
+    tags: ["focus", "pomodoro", "care"],
+    permissions: {
+      read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT", "D4_COMMITMENTS_TASKS"],
+      propose_mutation_domains: ["D4_COMMITMENTS_TASKS"],
+      max_audience_scope: "only_owner",
+      network_access: false
+    },
+    configFields: [
+      { key: "focus_minutes", label: "专注时长（分钟）", type: "int", default: 25, min: 10, max: 90 },
+      { key: "break_minutes", label: "休息时长（分钟）", type: "int", default: 5, min: 2, max: 30 },
+      { key: "gentle_tone", label: "提醒语气温柔度", type: "select", default: "warm", options: [{ value: "warm", label: "温柔鼓励" }, { value: "concise", label: "简短提醒" }, { value: "playful", label: "轻快调侃" }] },
+      { key: "auto_mute_during_flow", label: "深度心流期自动静音", type: "bool", default: true }
+    ]
+  }),
+  ExtensionMarketEntrySchema.parse({
+    id: "community.media.live2d-viseme-bridge",
+    displayName: "Live2D 三锚点口型表情桥",
+    version: "1.0.4",
+    author: "ai0-media-lab",
+    description: "将 W1 伴生情感标签与 TTS Viseme 流映射为 Live2D Cubism 参数与眼神先行微表情。",
+    dimension: "ext.media_pipeline",
+    carrierKind: "zero_code_protocol_bridge",
+    tags: ["live2d", "avatar", "viseme", "embodiment"],
+    permissions: {
+      read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT"],
+      propose_mutation_domains: [],
+      max_audience_scope: "public_all",
+      network_access: false
+    },
+    configFields: [
+      { key: "osc_port", label: "VTubeStudio / OSC 端口", type: "int", default: 8001, min: 1024, max: 65535 },
+      { key: "eye_gaze_lead_ms", label: "视线先行提前量 (ms)", type: "int", default: 180, min: 0, max: 500 },
+      { key: "idle_blink_enabled", label: "待机微呼吸与眨眼", type: "bool", default: true }
+    ]
+  }),
+  ExtensionMarketEntrySchema.parse({
+    id: "community.organ.ambient-weather-diary",
+    displayName: "环境天气与节气感知包",
+    version: "1.0.2",
+    author: "ai0-community",
+    description: "将所在城市天气与日出日落节律转化为低噪声情境线索，让早晚问候贴合真实季节。",
+    dimension: "ext.soul_asset",
+    carrierKind: "declarative_soul_asset",
+    tags: ["weather", "ambient", "ritual"],
+    permissions: {
+      read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT"],
+      propose_mutation_domains: [],
+      max_audience_scope: "only_owner",
+      network_access: true
+    },
+    configFields: [
+      { key: "city_name", label: "城市名称", type: "string", default: "Shanghai", hint: "用于查询公开天气预报" },
+      { key: "refresh_interval_min", label: "刷新间隔（分钟）", type: "int", default: 60, min: 15, max: 360 },
+      { key: "mention_rain_umbrella", label: "雨天主动提醒带伞", type: "bool", default: true }
+    ]
+  }),
+  ExtensionMarketEntrySchema.parse({
+    id: "community.action.web-search-bridge",
+    displayName: "联网检索与摘要工具桥",
+    version: "1.3.0",
+    author: "ai0-ecosystem",
+    description: "对接 SearXNG / Tavily / Brave 检索接口，向 W2 规划器提供标记为 untrusted_external 的只读网页摘要。",
+    dimension: "ext.action_mcp_skill",
+    carrierKind: "zero_code_protocol_bridge",
+    tags: ["search", "web", "mcp", "rag"],
+    permissions: {
+      read_blackboard_domains: ["D1_WORKING_TURN"],
+      propose_mutation_domains: [],
+      max_audience_scope: "only_owner",
+      network_access: true
+    },
+    configFields: [
+      { key: "engine", label: "检索引擎", type: "select", default: "searxng", options: [{ value: "searxng", label: "SearXNG（自托管）" }, { value: "tavily", label: "Tavily API" }, { value: "brave", label: "Brave Search" }] },
+      { key: "endpoint_url", label: "检索端点 URL", type: "string", default: "http://127.0.0.1:8888/search" },
+      { key: "api_key", label: "API Key（可选）", type: "secret", default: "" },
+      { key: "max_results", label: "最大返回条数", type: "int", default: 5, min: 1, max: 12 }
+    ]
+  })
+]);
+
 export interface DiscoveredPlugin {
   readonly manifest: Ai0ExtensionManifest;
   readonly rootDir: string;
@@ -58,11 +199,33 @@ export interface PluginAssetPayload {
 export interface PluginLoaderOptions {
   builtinPluginsDir?: string;
   soulDir?: string;
+  userPluginsDir?: string;
   extraPluginDirs?: readonly string[];
+}
+
+export interface InstallExternalPluginInput {
+  source: "local_path" | "manifest_bundle" | "market";
+  localPath?: string;
+  manifest?: Record<string, unknown>;
+  marketEntryId?: string;
+  registryUrl?: string;
 }
 
 function stripLeadingRelative(input: string): string {
   return input.replace(/^\.\/+/, "").replace(/^\/+/, "");
+}
+
+function sanitizePluginDirSlug(id: string): string {
+  const cleaned = id
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/gu, "-")
+    .replace(/^[.-]+|[.-]+$/gu, "")
+    .slice(0, 72);
+  if (!cleaned || cleaned === "." || cleaned === "..") {
+    throw new Error("非法的扩展目录名称");
+  }
+  return cleaned;
 }
 
 function normalizeAssetUrl(extensionId: string, assetPath?: string): string | undefined {
@@ -93,6 +256,25 @@ function normalizeSlot(
     ...(styleSheetUrls && styleSheetUrls.length > 0 ? { style_sheet_urls: styleSheetUrls } : {}),
     ...(iframeSrcUrl ? { iframe_src_url: iframeSrcUrl } : {})
   };
+}
+
+export function buildDefaultPluginConfig(fields?: readonly PluginConfigField[]): Record<string, unknown> {
+  const defaults: Record<string, unknown> = {};
+  if (!fields) return defaults;
+  for (const field of fields) {
+    if (field.default !== undefined) {
+      defaults[field.key] = Array.isArray(field.default) ? [...field.default] : field.default;
+    } else if (field.type === "bool") {
+      defaults[field.key] = false;
+    } else if (field.type === "int" || field.type === "float") {
+      defaults[field.key] = field.min ?? 0;
+    } else if (field.type === "list") {
+      defaults[field.key] = [];
+    } else {
+      defaults[field.key] = "";
+    }
+  }
+  return defaults;
 }
 
 function parseManifest(raw: Record<string, unknown>, fallbackId: string): Ai0ExtensionManifest {
@@ -142,8 +324,11 @@ function parseManifest(raw: Record<string, unknown>, fallbackId: string): Ai0Ext
     manifest_version: "1.1.0",
     extension_id: String(raw.extension_id ?? raw.id ?? fallbackId),
     display_name: String(raw.display_name ?? raw.name ?? raw.extension_id ?? raw.id ?? fallbackId),
+    ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
     version: String(raw.version ?? "1.0.0"),
     author: String(raw.author ?? "ai0-community"),
+    ...(typeof raw.homepage === "string" && raw.homepage.trim() ? { homepage: raw.homepage.trim() } : {}),
+    ...(Array.isArray(raw.tags) ? { tags: raw.tags.map((t) => String(t)).filter(Boolean) } : {}),
     carrier_kind: carrier,
     dimension,
     ...(typeof raw.entry === "string"
@@ -192,25 +377,67 @@ function collectPluginCandidateDirs(root: string): string[] {
 export class RuntimePluginLoader {
   private readonly discovered = new Map<string, DiscoveredPlugin>();
   private readonly roots: Array<{ dir: string; origin: PluginOrigin }>;
+  readonly userPluginsDir: string;
 
   private revisionValue = 0;
+  private readonly forcedReloadTokens = new Map<string, number>();
   private readonly scopes = new Map<PolymorphicExtensionHost, Map<string, { generation: string; dispose(): Promise<void> }>>();
   private readonly configurations = new WeakMap<PolymorphicExtensionHost, Map<string, { rev: number; config: Readonly<Record<string, unknown>> }>>();
   private readonly errors = new WeakMap<PolymorphicExtensionHost, Map<string, string>>();
+
   activationError(host: PolymorphicExtensionHost, id: string) { return this.errors.get(host)?.get(id); }
+
   generation(host: PolymorphicExtensionHost, id: string) {
     const plugin = this.getPlugin(id);
-    return plugin?.enabled ? plugin.generation + "." + (this.configurations.get(host)?.get(id)?.rev ?? 0) : undefined;
+    const forced = this.forcedReloadTokens.get(id) ?? 0;
+    return plugin?.enabled
+      ? `${plugin.generation}.${this.configurations.get(host)?.get(id)?.rev ?? 0}.${forced}`
+      : undefined;
   }
-  configure(host: PolymorphicExtensionHost, id: string, config: Readonly<Record<string, unknown>>, expected: number) {
+
+  getPluginConfig(host: PolymorphicExtensionHost, id: string): { rev: number; config: Record<string, unknown> } {
+    const plugin = this.getPlugin(id);
+    const defaults = buildDefaultPluginConfig(plugin?.manifest.console_contributions?.config_fields);
+    const entry = this.configurations.get(host)?.get(id);
+    return {
+      rev: entry?.rev ?? 0,
+      config: { ...defaults, ...(entry?.config ?? {}) }
+    };
+  }
+
+  seedPersistedConfig(host: PolymorphicExtensionHost, id: string, config: Readonly<Record<string, unknown>>): void {
+    const entries = this.configurations.get(host) ?? new Map();
+    if (!entries.has(id)) {
+      entries.set(id, { rev: 0, config: { ...config } });
+      this.configurations.set(host, entries);
+    }
+  }
+
+  configure(host: PolymorphicExtensionHost, id: string, config: Readonly<Record<string, unknown>>, expected?: number) {
     const entries = this.configurations.get(host) ?? new Map();
     const current = entries.get(id)?.rev ?? 0;
-    if (!this.getPlugin(id)?.enabled || current !== expected) throw new Error("Extension unavailable or revision conflict");
+    if (!this.getPlugin(id)) throw new Error("Extension unavailable");
+    if (expected !== undefined && current !== expected) {
+      throw new Error("Extension unavailable or revision conflict");
+    }
     this.configurations.set(host, entries);
-    entries.set(id, { rev: current + 1, config });
+    entries.set(id, { rev: current + 1, config: { ...config } });
     this.revisionValue++;
     return current + 1;
   }
+
+  forceReload(id?: string): void {
+    if (id) {
+      this.forcedReloadTokens.set(id, (this.forcedReloadTokens.get(id) ?? 0) + 1);
+    } else {
+      for (const plugin of this.discovered.values()) {
+        const extId = plugin.manifest.extension_id;
+        this.forcedReloadTokens.set(extId, (this.forcedReloadTokens.get(extId) ?? 0) + 1);
+      }
+    }
+    this.revisionValue++;
+  }
+
   get revision() { return this.revisionValue; }
 
   constructor(options: PluginLoaderOptions = {}) {
@@ -221,13 +448,16 @@ export class RuntimePluginLoader {
       .map((item) => item.trim())
       .filter(Boolean)
       .map((item) => resolve(item));
-    const localUserDir = resolve(join(REPO_ROOT, "user-plugins"));
+    this.userPluginsDir = resolve(
+      options.userPluginsDir ??
+        (process.env.AI0_USER_PLUGINS_DIR?.trim() || join(REPO_ROOT, "user-plugins"))
+    );
     const extraDirs = (options.extraPluginDirs ?? []).map((item) => resolve(item));
 
     this.roots = [
       { dir: builtinDir, origin: "builtin" },
       ...(soulPluginsDir ? [{ dir: soulPluginsDir, origin: "soul" as const }] : []),
-      { dir: localUserDir, origin: "external" },
+      { dir: this.userPluginsDir, origin: "external" },
       ...envDirs.map((dir) => ({ dir, origin: "external" as const })),
       ...extraDirs.map((dir) => ({ dir, origin: "external" as const }))
     ];
@@ -274,7 +504,6 @@ export class RuntimePluginLoader {
               navigation: page.navigation, entry_module_url: normalizeAssetUrl(manifest.extension_id, page.entry_module),
               style_sheet_urls: page.style_sheets?.map(file => normalizeAssetUrl(manifest.extension_id, file)!) });
           }
-          // Translate v1 shell-page declarations at the discovery boundary.
           for (const slot of uiSlots.filter(item => item.slot_target === "slot.shells.mounted_stage")) {
             pages.push({ path: slot.route_path ?? "/shells/stage/" + encodeURIComponent(manifest.extension_id),
               title: slot.title, shell_id: slot.shell_id ?? manifest.extension_id + ".default",
@@ -282,7 +511,7 @@ export class RuntimePluginLoader {
           }
           const pageAssets = (manifest.console_contributions?.pages ?? []).flatMap(page => [page.entry_module, ...(page.style_sheets ?? [])]);
           if (manifest.extension_id === "ai0.console" || this.discovered.has(manifest.extension_id)) continue;
-          const enabled = overrides?.get(manifest.extension_id) ?? (origin === "builtin" && parsedJson.default_enabled !== false);
+          const enabled = overrides?.get(manifest.extension_id) ?? (parsedJson.default_enabled !== false);
           const signature = JSON.stringify([pluginDir, parsedJson, enabled, [...pageAssets, ...modulePaths].map(file => { const path = this.assetPath(pluginDir, file); return path ? statSync(path).mtimeMs : null; }), manifest.entry && this.assetPath(pluginDir, manifest.entry) ? statSync(this.assetPath(pluginDir, manifest.entry)!).mtimeMs : null, missingAssets, uiSlots.flatMap(slot =>
             [slot.entry_module, slot.iframe_src, ...(slot.style_sheets ?? [])].filter((path): path is string => !!path)
               .map(path => statSync(this.assetPath(pluginDir, path)!).mtimeMs))]);
@@ -304,6 +533,147 @@ export class RuntimePluginLoader {
     if (previous.size !== this.discovered.size || this.listPlugins().some(p => previous.get(p.manifest.extension_id)?.generation !== p.generation)) this.revisionValue++;
   }
 
+  async listMarketCatalog(customRegistryUrl?: string): Promise<ExtensionMarketEntry[]> {
+    const installedMap = new Map(this.listPlugins().map((p) => [p.manifest.extension_id, p]));
+    const entries: ExtensionMarketEntry[] = [...BUILTIN_EXTENSION_MARKET_CATALOG];
+
+    if (customRegistryUrl && /^https?:\/\//iu.test(customRegistryUrl.trim())) {
+      try {
+        const res = await fetch(customRegistryUrl.trim(), { signal: AbortSignal.timeout(8000) });
+        if (res.ok) {
+          const json = (await res.json()) as unknown;
+          const rawList = Array.isArray(json)
+            ? json
+            : json && typeof json === "object" && Array.isArray((json as Record<string, unknown>).extensions)
+              ? ((json as Record<string, unknown>).extensions as unknown[])
+              : [];
+          for (const item of rawList) {
+            const parsed = ExtensionMarketEntrySchema.safeParse(item);
+            if (parsed.success && !entries.some((e) => e.id === parsed.data.id)) {
+              entries.push(parsed.data);
+            }
+          }
+        }
+      } catch {
+        // Gracefully ignore unreachable custom registry URLs
+      }
+    }
+
+    return entries.map((entry) => {
+      const existing = installedMap.get(entry.id);
+      return {
+        ...entry,
+        installed: Boolean(existing),
+        builtin: existing?.origin === "builtin"
+      };
+    });
+  }
+
+  async installExternalPlugin(input: InstallExternalPluginInput): Promise<DiscoveredPlugin> {
+    mkdirSync(this.userPluginsDir, { recursive: true });
+
+    let installedId = "";
+
+    if (input.source === "local_path") {
+      const srcPath = resolve(input.localPath?.trim() ?? "");
+      if (!srcPath || !existsSync(srcPath) || !statSync(srcPath).isDirectory()) {
+        throw new Error("指定的本地插件目录不存在或不是文件夹");
+      }
+      const manifestFile = join(srcPath, "ai0.extension.json");
+      if (!existsSync(manifestFile)) {
+        throw new Error("目标目录缺少标准清单文件 ai0.extension.json");
+      }
+      const rawJson = JSON.parse(readFileSync(manifestFile, "utf8")) as Record<string, unknown>;
+      const manifest = parseManifest(rawJson, srcPath.split(sep).at(-1) ?? "custom.plugin");
+      if (manifest.extension_id === "ai0.console") {
+        throw new Error("禁止覆盖内置控制台标识");
+      }
+      const existing = this.discovered.get(manifest.extension_id);
+      if (existing?.origin === "builtin") {
+        throw new Error(`无法覆盖内置官方插件：${manifest.extension_id}`);
+      }
+      const targetDir = join(this.userPluginsDir, sanitizePluginDirSlug(manifest.extension_id));
+      rmSync(targetDir, { recursive: true, force: true });
+      cpSync(srcPath, targetDir, { recursive: true });
+      installedId = manifest.extension_id;
+    } else if (input.source === "manifest_bundle") {
+      if (!input.manifest || typeof input.manifest !== "object") {
+        throw new Error("请提供合法的 ai0.extension.json 清单对象");
+      }
+      const manifest = parseManifest(input.manifest, `community.ext.${randomUUID().slice(0, 6)}`);
+      if (manifest.extension_id === "ai0.console") {
+        throw new Error("禁止覆盖内置控制台标识");
+      }
+      const existing = this.discovered.get(manifest.extension_id);
+      if (existing?.origin === "builtin") {
+        throw new Error(`无法覆盖内置官方插件：${manifest.extension_id}`);
+      }
+      const targetDir = join(this.userPluginsDir, sanitizePluginDirSlug(manifest.extension_id));
+      mkdirSync(targetDir, { recursive: true });
+      writeFileSync(join(targetDir, "ai0.extension.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+      installedId = manifest.extension_id;
+    } else if (input.source === "market") {
+      const entryId = input.marketEntryId?.trim();
+      if (!entryId) throw new Error("缺少市场扩展 ID");
+      const catalog = await this.listMarketCatalog(input.registryUrl);
+      const entry = catalog.find((item) => item.id === entryId);
+      if (!entry) throw new Error(`扩展市场中未找到扩展：${entryId}`);
+      if (this.discovered.get(entry.id)?.origin === "builtin") {
+        return this.discovered.get(entry.id)!;
+      }
+      const manifest: Ai0ExtensionManifest = Ai0ExtensionManifestSchema.parse({
+        manifest_version: "1.1.0",
+        extension_id: entry.id,
+        display_name: entry.displayName,
+        description: entry.description,
+        version: entry.version,
+        author: entry.author,
+        tags: entry.tags,
+        carrier_kind: entry.carrierKind,
+        dimension: entry.dimension,
+        permissions: entry.permissions,
+        ...(entry.configFields.length > 0
+          ? { console_contributions: { config_fields: entry.configFields } }
+          : {})
+      });
+      const targetDir = join(this.userPluginsDir, sanitizePluginDirSlug(manifest.extension_id));
+      mkdirSync(targetDir, { recursive: true });
+      writeFileSync(join(targetDir, "ai0.extension.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+      installedId = manifest.extension_id;
+    } else {
+      throw new Error("不支持的扩展安装来源类型");
+    }
+
+    this.reload();
+    const installed = this.discovered.get(installedId);
+    if (!installed) {
+      throw new Error(`扩展 ${installedId} 已写入磁盘但未被发现，请检查清单格式`);
+    }
+    this.revisionValue++;
+    return installed;
+  }
+
+  uninstallExternalPlugin(extensionId: string): void {
+    const plugin = this.discovered.get(extensionId);
+    if (!plugin) {
+      throw new Error(`未找到已安装的扩展：${extensionId}`);
+    }
+    if (plugin.origin === "builtin") {
+      throw new Error("BUILTIN_PLUGIN_PROTECTED: 内置官方插件不可卸载，仅支持停用");
+    }
+    const rel = relative(this.userPluginsDir, plugin.rootDir);
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+      // Also allow uninstalling soul-scoped plugins if outside builtin
+      if (plugin.origin !== "soul") {
+        throw new Error("安全校验拒绝删除用户插件目录之外的路径");
+      }
+    }
+    rmSync(plugin.rootDir, { recursive: true, force: true });
+    this.discovered.delete(extensionId);
+    this.forcedReloadTokens.delete(extensionId);
+    this.revisionValue++;
+  }
+
   listPlugins(): DiscoveredPlugin[] {
     return [...this.discovered.values()];
   }
@@ -312,21 +682,37 @@ export class RuntimePluginLoader {
     return this.discovered.get(extensionId);
   }
 
-  listDescriptors(enabledOverrides?: ReadonlyMap<string, boolean>): RuntimePluginDescriptor[] {
-    return this.listPlugins().map((plugin) => ({
+  private toDescriptor(
+    plugin: DiscoveredPlugin,
+    enabledOverrides?: ReadonlyMap<string, boolean>
+  ): RuntimePluginDescriptor {
+    return {
       extension_id: plugin.manifest.extension_id,
       display_name: plugin.manifest.display_name,
+      ...(plugin.manifest.description ? { description: plugin.manifest.description } : {}),
       version: plugin.manifest.version,
       author: plugin.manifest.author,
+      ...(plugin.manifest.tags ? { tags: plugin.manifest.tags } : {}),
       carrier_kind: plugin.manifest.carrier_kind,
       dimension: plugin.manifest.dimension,
       origin: plugin.origin,
       enabled: enabledOverrides?.get(plugin.manifest.extension_id) ?? plugin.enabled,
+      permissions: plugin.manifest.permissions,
+      ...(plugin.manifest.console_contributions?.config_fields
+        ? { config_fields: plugin.manifest.console_contributions.config_fields }
+        : {}),
+      ...(plugin.manifest.console_contributions?.config_schema
+        ? { config_schema: plugin.manifest.console_contributions.config_schema }
+        : {}),
       pages: plugin.pages,
       module_urls: plugin.moduleUrls,
       missing_assets: plugin.missingAssets,
       ui_slots: [...plugin.uiSlots]
-    }));
+    };
+  }
+
+  listDescriptors(enabledOverrides?: ReadonlyMap<string, boolean>): RuntimePluginDescriptor[] {
+    return this.listPlugins().map((plugin) => this.toDescriptor(plugin, enabledOverrides));
   }
 
   getDescriptor(
@@ -334,21 +720,7 @@ export class RuntimePluginLoader {
     enabledOverrides?: ReadonlyMap<string, boolean>
   ): RuntimePluginDescriptor | undefined {
     const plugin = this.discovered.get(extensionId);
-    if (!plugin) return undefined;
-    return {
-      extension_id: plugin.manifest.extension_id,
-      display_name: plugin.manifest.display_name,
-      version: plugin.manifest.version,
-      author: plugin.manifest.author,
-      carrier_kind: plugin.manifest.carrier_kind,
-      dimension: plugin.manifest.dimension,
-      origin: plugin.origin,
-      enabled: enabledOverrides?.get(plugin.manifest.extension_id) ?? plugin.enabled,
-      pages: plugin.pages,
-      module_urls: plugin.moduleUrls,
-      missing_assets: plugin.missingAssets,
-      ui_slots: [...plugin.uiSlots]
-    };
+    return plugin ? this.toDescriptor(plugin, enabledOverrides) : undefined;
   }
 
   readPluginAsset(extensionId: string, requestedRelativePath: string): PluginAssetPayload | undefined {
@@ -413,12 +785,12 @@ export class RuntimePluginLoader {
         source: plugin.rootDir,
         ...(shellPage?.shell_id ? { shellId: shellPage.shell_id } : {}),
         pages: plugin.pages,
-      module_urls: plugin.moduleUrls,
+        module_urls: plugin.moduleUrls,
         uiSlots: plugin.uiSlots
       };
 
       const generation = this.generation(host, manifest.extension_id)!;
-      const settings = this.configurations.get(host)?.get(manifest.extension_id);
+      const settings = this.getPluginConfig(host, manifest.extension_id);
       const fiber = composition.mount(manifest.extension_id, async scope => {
         if (manifest.entry && ["ext.cognitive_organ", "ext.media_pipeline"].includes(manifest.dimension)) {
           const entry = this.assetPath(plugin.rootDir, manifest.entry);
@@ -427,12 +799,13 @@ export class RuntimePluginLoader {
           url.searchParams.set("generation", generation);
           const implementation = await import(url.href);
           Object.assign(extensionPayload, implementation.default);
-          if (typeof implementation.activate === "function") await implementation.activate(scope, settings?.config ?? {});
+          if (typeof implementation.activate === "function") await implementation.activate(scope, settings.config);
         }
         scope.effect(() => {
           host.registerExtension({
             id: manifest.extension_id, carrier: manifest.carrier_kind, buses: [...buses],
-            ...settings, readDomains: [...manifest.permissions.read_blackboard_domains],
+            rev: settings.rev, config: settings.config,
+            readDomains: [...manifest.permissions.read_blackboard_domains],
             proposeDomains: [...manifest.permissions.propose_mutation_domains], extension: extensionPayload
           });
           return () => { host.unregisterExtension(manifest.extension_id); };

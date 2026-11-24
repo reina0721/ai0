@@ -107,7 +107,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
   const [distilling, setDistilling] = useState(false);
   const [confirmApply, setConfirmApply] = useState(false);
   const splitChips = (value: string) => value.split(/[/,，]+/u).map((chip) => chip.trim()).filter(Boolean);
-  const bioForm = useWorkspaceSave(routeId === "soul.homeostasis" ? routeId : undefined, bio.dirty, bio.discard,
+  const bioForm = useWorkspaceSave(routeId === "config.homeostasis" ? routeId : undefined, bio.dirty, bio.discard,
     async () => {
       await ctx?.postStudio("config", {
         soulStudio: {
@@ -124,7 +124,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
         }
       });
     }, "节律与情绪动力学参数已保存", bio.accept);
-  const identityForm = useWorkspaceSave(routeId === "soul.persona" ? routeId : undefined, identity.dirty, identity.discard,
+  const identityForm = useWorkspaceSave(routeId === "config.persona" ? routeId : undefined, identity.dirty, identity.discard,
     async () => {
       await ctx?.postStudio("config", {
         soulStudio: {
@@ -147,23 +147,23 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
     }
   };
 
-  if (routeId === "soul.lorebooks") {
+  if (routeId === "config.lorebooks") {
     return (
-      <MainRoundedCardOutlet domainId="soul" activePath={props.pathname} onNavigate={props.onNavigate}>
+      <MainRoundedCardOutlet domainId="config" activePath={props.pathname} onNavigate={props.onNavigate}>
         <LorebookWorkspace key={ctx?.targetInstance} entries={soul?.lorebooks} />
       </MainRoundedCardOutlet>
     );
   }
 
-  if (routeId === "soul.homeostasis") {
+  if (routeId === "config.homeostasis") {
     const polyline = anchors
       .map((a) => `${((a.hour / 23) * 560 + 20).toFixed(1)},${(130 - a.energy * 100).toFixed(1)}`)
       .join(" ");
 
     return (
-      <MainRoundedCardOutlet domainId="soul" activePath={props.pathname} onNavigate={props.onNavigate}>
+      <MainRoundedCardOutlet domainId="config" activePath={props.pathname} onNavigate={props.onNavigate}>
         <WorkspacePage data-bio-lorebook-page="true">
-          <WorkspaceHeader title="节律与情绪动力学">
+          <WorkspaceHeader title="作息与情绪特征">
 
             <WorkspaceSaveButton form={bioForm} name="保存参数" />
 
@@ -368,16 +368,16 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
     }
   };
 
-  const distiller = routeId !== "soul.persona";
+  const distiller = routeId === "config.distiller";
 
   return (
-    <MainRoundedCardOutlet domainId="soul" activePath={props.pathname} onNavigate={props.onNavigate}>
+    <MainRoundedCardOutlet domainId="config" activePath={props.pathname} onNavigate={props.onNavigate}>
       <WorkspacePage data-soul-studio-page="true">
-        <WorkspaceHeader title={distiller ? "角色卡片蒸馏" : "关系契约与性格设定"}>
+        <WorkspaceHeader title={distiller ? "角色卡导入蒸馏" : "角色设定与契约"}>
 
           <WorkspaceLink
-            href="/dashboard/blackboard"
-            onClick={navClick("/dashboard/blackboard")}
+            href="/config/blackboard"
+            onClick={navClick("/config/blackboard")}
 
             data-variant="secondary"
           >

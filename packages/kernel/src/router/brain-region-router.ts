@@ -65,9 +65,13 @@ const cosine = (left: Map<string, number>, right: Map<string, number>): number =
 };
 
 export class BrainRegionRouter {
-  private readonly regions: Readonly<Record<BrainRegion, BrainRegionModelConfig>>;
+  private regions: Readonly<Record<BrainRegion, BrainRegionModelConfig>>;
 
   constructor(config: Record<BrainRegion, BrainRegionModelConfig>) {
+    this.regions = Object.freeze({ ...config });
+  }
+
+  updateRegions(config: Record<BrainRegion, BrainRegionModelConfig>): void {
     this.regions = Object.freeze({ ...config });
   }
 

@@ -1,18 +1,29 @@
+import { allowedCollections, importKnowledge, searchKnowledge } from "./knowledge-service.js";
+import { prepareKnowledgeLibrary } from "@ai0/storage";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import {
   bundlePrivacyScrubbedCreatorAsset,
-  distillSillyTavernCard
+  distillSillyTavernCard,
+  matchesUmoPattern
 } from "@ai0/kernel";
+import type { SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
 import {
   compileStudioPromptPreview,
   initializeSoulDirectory,
   readConsoleStudioConfig,
+  readHostInfrastructureConfig,
+  readHostVaultKey,
   readSoulArchiveConfig,
+  readSoulProfileConfig,
+  resolveHostInfrastructureDir,
   ROLE_ARCHETYPE_PRESETS,
+  saveHostVaultKey,
   writeConsoleStudioConfig,
+  writeHostInfrastructureConfig,
+  writeSoulProfileConfig,
   type CoordinatorStorageMutator,
   type RelationshipArchetype,
   type SoulConsoleStudioConfig
@@ -113,7 +124,11 @@ export function readConversation(storage: CoordinatorStorageMutator, conversatio
   `).all(conversation, before);
 }
 
-export function buildConversationsList(storage: CoordinatorStorageMutator, studio: SoulConsoleStudioConfig) {
+export function buildConversationsList(
+  storage: CoordinatorStorageMutator,
+  studio: SoulConsoleStudioConfig,
+  soulProfiles?: SoulProfileAndCapabilitiesConfig
+) {
   const rows = storage.sqlite.prepare(conversationMessages + `, ranked AS (
     SELECT *, COUNT(*) OVER (PARTITION BY conversation) AS count,
       ROW_NUMBER() OVER (PARTITION BY conversation ORDER BY event_seq DESC,direction DESC) AS rank FROM messages
@@ -122,12 +137,21 @@ export function buildConversationsList(storage: CoordinatorStorageMutator, studi
     const platform = String(row.source_shell_id);
     const audienceScope = row.audience_scope === "only_owner" ? "only_owner" as const :
       row.audience_scope === "public_all" ? "public_all" as const : "fixed_group" as const;
-    const rule = studio.customRules.find(item => item.umo === row.conversation);
+    const parts = JSON.parse(String(row.conversation)) as [string, string, string];
+    const normalizedUmo = `${parts[0]}:${audienceScope === "public_all" ? "public_livestream" : "private_1on1"}:${parts[2]}`;
+    const orthoRule = soulProfiles?.routingRules.find(
+      (item) => item.enabled && (item.umoPattern === row.conversation || matchesUmoPattern(item.umoPattern, normalizedUmo))
+    );
+    const legacyRule = studio.customRules.find(item => item.umo === row.conversation);
+    const resolvedProfileName = orthoRule
+      ? (soulProfiles?.profiles.find((p) => p.id === orthoRule.profileId)?.name ?? "默认策略")
+      : (soulProfiles?.profiles.find((p) => p.id === soulProfiles.defaultProfileId)?.name ??
+        studio.profiles.find(profile => profile.id === legacyRule?.profileId)?.name ?? "默认策略");
     return {
       umo: String(row.conversation), platform, audienceScope,
-      canOpenOwnerThread: audienceScope === "only_owner" && JSON.parse(String(row.conversation))[2] === "owner:local",
-      label: rule?.label ?? String(JSON.parse(String(row.conversation))[2]),
-      profileName: studio.profiles.find(profile => profile.id === rule?.profileId)?.name ?? "默认策略",
+      canOpenOwnerThread: audienceScope === "only_owner" && parts[2] === "owner:local",
+      label: orthoRule?.label ?? legacyRule?.label ?? String(parts[2]),
+      profileName: resolvedProfileName,
       messageCount: Number(row.count), lastSummary: String(row.content),
       lastActiveAt: new Date(Number(row.wall_ts_ms)).toISOString(), evidenceId: String(row.event_id)
     };
@@ -143,6 +167,7 @@ export function saveVaultProviderKey(soulDir: string, providerId: string, rawKey
   if (!trimmed || trimmed.includes("••") || ["local-no-key", "builtin-local", "local-tts-token", "local-stt"].includes(trimmed)) {
     return;
   }
+  saveHostVaultKey(resolveHostInfrastructureDir(soulDir), providerId, trimmed);
   const filePath = getVaultKeysPath(soulDir);
   let store: Record<string, string> = {};
   try {
@@ -156,6 +181,8 @@ export function saveVaultProviderKey(soulDir: string, providerId: string, rawKey
 }
 
 export function readVaultProviderKey(soulDir: string, providerId: string): string | undefined {
+  const hostKey = readHostVaultKey(resolveHostInfrastructureDir(soulDir), providerId);
+  if (hostKey) return hostKey;
   const filePath = getVaultKeysPath(soulDir);
   if (!existsSync(filePath)) return undefined;
   try {
@@ -189,14 +216,42 @@ export function updateStudioConfig(
       })
     };
   }
-  const merged = deepMerge(current as unknown as Record<string, unknown>, patch);
-  const saved = writeConsoleStudioConfig(runtime.soulDir, merged as SoulConsoleStudioConfig);
+  // Merge legacy partial settings against the current host values.
+  const systemSettingsPatch = patch.systemSettings;
+  const infrastructure = "systemSettings" in patch ? readHostInfrastructureConfig(runtime.hostDir) : undefined;
+  const base = infrastructure ? { ...current, systemSettings: infrastructure.systemSettings } : current;
+  const merged = deepMerge(base, patch);
+  const saved = writeConsoleStudioConfig(runtime.soulDir, merged);
   runtime.mutableState.circadianAnchors = saved.soulStudio.circadianAnchors.map((a) => ({
     hour: a.hour,
     energy: a.energy
   }));
   const primaryPlatform = saved.platforms.find((p) => p.enabled) ?? saved.platforms[0];
   if (primaryPlatform) runtime.mutableState.debounceWindowMs = primaryPlatform.debounceMs;
+
+  // Keep orthogonal host/profile stores in sync when legacy /api/studio/config patches them
+  if (infrastructure && systemSettingsPatch && typeof systemSettingsPatch === "object") {
+    const changedSettings = Object.entries(saved.systemSettings).filter(([key]) => Object.hasOwn(systemSettingsPatch, key));
+    if (changedSettings.length > 0) {
+      writeHostInfrastructureConfig(runtime.hostDir, {
+        ...infrastructure,
+        systemSettings: { ...infrastructure.systemSettings, ...Object.fromEntries(changedSettings) }
+      });
+    }
+  }
+  if ("ragSettings" in patch) {
+    const soulProfiles = readSoulProfileConfig(runtime.soulDir);
+    writeSoulProfileConfig(runtime.soulDir, {
+      ...soulProfiles,
+      capabilities: {
+        ...soulProfiles.capabilities,
+        knowledge: {
+          ...soulProfiles.capabilities.knowledge,
+          ...saved.ragSettings
+        }
+      }
+    });
+  }
 
   // Sync display_name back to identity.yaml when modified
   try {
@@ -310,7 +365,7 @@ export async function pingStudioProvider(
   return { ok: true, providerId, latencyMs, status, detail, studioConfig: saved };
 }
 
-export function dispatchOrAdvanceCoWorkTask(
+export async function dispatchOrAdvanceCoWorkTask(
   runtime: Ai0DaemonRuntime,
   input: {
     action: "create" | "approve" | "complete" | "execute" | "pause";
@@ -352,22 +407,32 @@ export function dispatchOrAdvanceCoWorkTask(
     if (!recorded && target.status !== "queued") return { ok: false, error: "TASK_NOT_QUEUED" };
     if (target.subAgentId !== "sub_research_scholar") return { ok: false, error: "NO_TASK_EXECUTOR" };
     if (!recorded) {
-      const hits = runtime.storage.queryKnowledgeChunksByFts({ query_text: target.title, limit: 10 });
-      runtime.storage.appendEvent({
+      const cfg = readSoulProfileConfig(runtime.soulDir);
+      const mounted = cfg.profiles.find(p => p.id===cfg.defaultProfileId)?.knowledgeCollectionIds ?? [];
+      const search = await searchKnowledge(runtime,runtime.storage,target.title,allowedCollections(runtime.storage,mounted,"only_owner",true));
+      const hits = search.results.filter(hit => hit.score >= cfg.capabilities.knowledge.honestForgetThreshold);
+      // Retrieval can yield to another task update. Commit against the latest task and event.
+      const latest = readConsoleStudioConfig(runtime.soulDir).agency.activeTasks.find(task => task.id === target.id);
+      if (!latest || (latest.status !== "queued" && latest.status !== "completed"))
+        return {ok:false,error:"TASK_NOT_QUEUED"};
+      if (!runtime.storage.getEventById(evidenceId)) runtime.storage.appendEvent({
         event_id: evidenceId, event_category: "action_episode_completed", principal_trust: "tool_output",
         wall_ts_ms: Date.now(), virtual_ts_ms: nowMs, source_shell_id: "knowledge.search",
         principal_id: "executor:knowledge.search", audience_scope: "only_owner", venue_type: "internal_background",
         modality: "text", summary_text: "知识库检索完成，返回 " + hits.length + " 个片段",
-        payload_json: JSON.stringify({ task_id: target.id, query: target.title, chunk_ids: hits.map(hit => hit.chunk_id) }),
+        payload_json: JSON.stringify({ task_id: target.id, query: target.title, chunk_ids: hits.map(hit => hit.chunkId) }),
         state_rev_after: runtime.coordinator.getSnapshot().state_rev, active_modules_mask: 31
       });
     }
-    target.status = "completed";
-    target.currentStep = target.totalSteps;
-    target.stepLabel = "知识库检索已完成";
-    target.outputSummary = runtime.storage.getEventById(evidenceId)!.summary_text;
-    target.evidenceId = evidenceId;
-    return { ok: true, task: target, studioConfig: updateStudioConfig(runtime, { agency: { activeTasks: tasks } }) };
+    const activeTasks = readConsoleStudioConfig(runtime.soulDir).agency.activeTasks;
+    const completed = activeTasks.find(task => task.id === target.id);
+    if (!completed) return {ok:false,error:"TASK_NOT_FOUND"};
+    completed.status = "completed";
+    completed.currentStep = completed.totalSteps;
+    completed.stepLabel = "知识库检索已完成";
+    completed.outputSummary = runtime.storage.getEventById(evidenceId)!.summary_text;
+    completed.evidenceId = evidenceId;
+    return { ok: true, task: completed, studioConfig: updateStudioConfig(runtime, { agency: { activeTasks } }) };
   }
   if (!["approve", "pause"].includes(input.action)) return { ok: false, error: "UNKNOWN_TASK_ACTION" };
   if (target.status === "completed") return { ok: false, error: "TASK_ALREADY_COMPLETED" };
@@ -433,92 +498,20 @@ export function runManualSleepReflection(runtime: Ai0DaemonRuntime) {
   return { ok: true, entry: newDream, studioConfig: saved };
 }
 
-export function ingestKnowledgeDocument(
-  runtime: Ai0DaemonRuntime,
-  input: { collectionId: string; title: string; content: string }
-) {
-  const studio = readConsoleStudioConfig(runtime.soulDir);
-  const collectionId = (input.collectionId || "kb_custom_notes").trim();
-  const text = (input.content || "").trim();
-  if (!text) return { ok: false, error: "EMPTY_DOCUMENT_CONTENT" };
-
-  const chunkSize = Math.max(120, studio.ragSettings.chunkSize);
-  const overlap = Math.min(chunkSize - 40, Math.max(0, studio.ragSettings.chunkOverlap));
-  const chunks: string[] = [];
-  for (let start = 0; start < text.length; start += Math.max(80, chunkSize - overlap)) {
-    const slice = text.slice(start, start + chunkSize).trim();
-    if (slice) chunks.push(slice);
-    if (start + chunkSize >= text.length) break;
-  }
-
-  const nowMs = runtime.virtualClock.nowMs();
-  const stmt = runtime.storage.sqlite.prepare(`
-    INSERT OR REPLACE INTO knowledge_chunks
-      (chunk_id, collection_id, document_name, chunk_index, content_text, metadata_json, taint_level, citation_count, created_at_ts_ms)
-    VALUES (?, ?, ?, ?, ?, '{}', 'untrusted_external', 1, ?)
-  `);
-  const ftsStmt = runtime.storage.sqlite.prepare(`
-    INSERT INTO knowledge_chunks_fts (chunk_id, collection_id, content_text)
-    VALUES (?, ?, ?)
-  `);
-  chunks.forEach((chunk, index) => {
-    const chunkId = `chk_${Date.now()}_${index}`;
-    stmt.run(chunkId, collectionId, input.title || "uploaded.md", index, chunk, nowMs);
-    ftsStmt.run(chunkId, collectionId, chunk);
-  });
-
-  return {
-    ok: true,
-    collectionId,
-    chunksCreated: chunks.length,
-    chunkSize,
-    chunkOverlap: overlap
-  };
+export async function ingestKnowledgeDocument(runtime: Ai0DaemonRuntime,input:{collectionId:string;title:string;content:string},sandbox=false) {
+  const storage=sandbox?runtime.sandboxStorage:runtime.storage;
+  prepareKnowledgeLibrary(storage);
+  if(!input.content.trim()) return {ok:false,error:"EMPTY_DOCUMENT_CONTENT"};
+  storage.sqlite.prepare("INSERT OR IGNORE INTO knowledge_collections(id,name) VALUES(?,?)").run(input.collectionId,input.collectionId);
+  const result=await importKnowledge(runtime,storage,input.collectionId,input.title,Buffer.from(input.content),"text");
+  const config=readSoulProfileConfig(runtime.soulDir).capabilities.knowledge;
+  return {ok:true,collectionId:input.collectionId,...result,chunkSize:config.chunkSize,chunkOverlap:config.chunkOverlap};
 }
 
-export function searchKnowledgeChunks(
-  runtime: Ai0DaemonRuntime,
-  input: { query: string; collectionId?: string }
-) {
-  const studio = readConsoleStudioConfig(runtime.soulDir);
-  const query = (input.query || "").trim().toLowerCase();
-  const rows = runtime.storage.sqlite
-    .prepare(
-      input.collectionId
-        ? "SELECT chunk_id, collection_id, document_name AS source_uri, content_text, citation_count FROM knowledge_chunks WHERE collection_id = ? LIMIT 100"
-        : "SELECT chunk_id, collection_id, document_name AS source_uri, content_text, citation_count FROM knowledge_chunks LIMIT 100"
-    )
-    .all(...(input.collectionId ? [input.collectionId] : [])) as Array<{
-    chunk_id: string;
-    collection_id: string;
-    source_uri: string;
-    content_text: string;
-    citation_count: number;
-  }>;
-
-  const terms = query.split(/[\s,，。！？]+/u).filter(Boolean);
-  const scored = rows
-    .map((row) => {
-      const lower = row.content_text.toLowerCase();
-      const hits = terms.length
-        ? terms.filter((t) => lower.includes(t)).length / terms.length
-        : 0.5;
-      const denseSim = Math.min(0.98, 0.28 + hits * 0.65);
-      const bm25 = Math.min(0.99, hits * 0.9 + (row.citation_count > 0 ? 0.08 : 0));
-      const score = Number(
-        (denseSim * studio.ragSettings.denseWeight + bm25 * studio.ragSettings.bm25Weight).toFixed(3)
-      );
-      return { ...row, score, denseSim: Number(denseSim.toFixed(2)), bm25: Number(bm25.toFixed(2)) };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, studio.ragSettings.topK);
-
-  return {
-    ok: true,
-    query: input.query,
-    honestForgetTriggered: (scored[0]?.score ?? 0) < studio.ragSettings.honestForgetThreshold,
-    results: scored
-  };
+export async function searchKnowledgeChunks(runtime: Ai0DaemonRuntime,input:{query:string;collectionId?:string},sandbox=false) {
+  const storage=sandbox?runtime.sandboxStorage:runtime.storage;
+  const result=await searchKnowledge(runtime,storage,input.query,allowedCollections(storage,input.collectionId?[input.collectionId]:undefined,"only_owner",true));
+  return {...result,ok:true,query:input.query,results:result.results.map(h=>({...h,chunk_id:h.chunkId,collection_id:h.collectionId,source_uri:h.title,content_text:h.excerpt,citation_count:Number(storage.sqlite.prepare("SELECT citation_count FROM knowledge_chunks WHERE chunk_id=?").get(h.chunkId)?.citation_count ?? 0)}))};
 }
 
 export function createPrivacyScrubbedReleasePackage(

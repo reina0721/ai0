@@ -16,6 +16,7 @@ import { renderConsoleIcon } from "../design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
 import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
 import { RuntimeTerminalWorkspace, SandboxLabWorkspace } from "./runtime-observation-workspace.js";
+import { ShellControlWorkspace } from "./shell-control-workspace.js";
 import { WorkspaceHeader } from "./workspace.js";
 
 export interface Domain7RuntimePageProps {
@@ -37,7 +38,7 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
   const canWrite = Boolean(ctx?.ownerToken && ctx.mode === "live");
 
   // SubAgents, Async Tasks & Scheduled Promises
-  if (route?.id === "runtime.coordinator-agency") {
+  if (route?.id === "capabilities.agents") {
     const agency = studio?.agency;
 
     const handleCreateTask = async () => {
@@ -74,7 +75,7 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
     };
 
     return (
-      <MainRoundedCardOutlet domainId="runtime" activePath={props.pathname} onNavigate={props.onNavigate}>
+      <MainRoundedCardOutlet domainId="capabilities" activePath={props.pathname} onNavigate={props.onNavigate}>
         <WorkspacePage data-agency-subagents-page="true">
           <WorkspaceHeader title="子代理与任务">
 
@@ -193,9 +194,10 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
   }
 
   return (
-    <MainRoundedCardOutlet domainId="runtime" activePath={props.pathname} onNavigate={props.onNavigate}>
-      {route?.id === "runtime.terminal" ? <RuntimeTerminalWorkspace snapshot={snap} />
-        : <SandboxLabWorkspace key={ctx?.targetInstance} snapshot={snap} />}
+    <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
+      {route?.id === "system.observability" ? <RuntimeTerminalWorkspace snapshot={snap} />
+        : route?.id === "system.simulator" ? <ShellControlWorkspace routeId="shells.simulator" snapshot={snap} />
+          : <SandboxLabWorkspace key={ctx?.targetInstance} snapshot={snap} />}
     </MainRoundedCardOutlet>
   );
 }

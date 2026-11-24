@@ -11,12 +11,17 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-import { GOLDEN_REGRESSION_SCENARIO_V1, runScenarioPlaybook } from "@ai0/kernel";
+import { GOLDEN_REGRESSION_SCENARIO_V1, ModelContextLimitError, runScenarioPlaybook } from "@ai0/kernel";
 import { AudienceScopeSchema, HandshakeManifestSchema, type AudienceScope, type SensorModality, type VenueType } from "@ai0/protocol";
 import {
   compileStudioPromptPreview,
   readConsoleStudioConfig,
+  readHostInfrastructureConfig,
   readSoulArchiveConfig,
+  readSoulProfileConfig,
+  upsertProviderInstance,
+  writeExtensionRuntimeConfig,
+  writeSoulProfileConfig,
   type RelationshipArchetype
 } from "@ai0/storage";
 
@@ -135,7 +140,12 @@ export function createUnifiedDaemonHttpApp(
     const patch = (
       typeof body.patch === "object" && body.patch !== null ? body.patch : body
     ) as Record<string, unknown>;
-    if ("ecosystem" in patch && !isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
+    const settings = patch.systemSettings;
+    const changesAppearance = typeof settings === "object" && settings !== null &&
+      (Object.hasOwn(settings, "appearance") || Object.hasOwn(settings, "soulTheme"));
+    if (("ecosystem" in patch || changesAppearance) && !isOwnerRequest(c)) {
+      return c.json({ error: "UNAUTHORIZED" }, 401);
+    }
     const saved = updateStudioConfig(runtime, patch);
     const snapshot = await runtime.buildConsoleLiveSnapshot("live");
     return c.json({ ok: true, config: saved, snapshot });
@@ -155,6 +165,17 @@ export function createUnifiedDaemonHttpApp(
       plugins.push({ id, name, version, bus, carrier, enabled, description: "", configFields: [] });
     }
     updateStudioConfig(runtime, { ecosystem: { plugins } });
+    writeExtensionRuntimeConfig(
+      runtime.soulDir,
+      id,
+      runtime.pluginLoader.getPluginConfig(runtime.extensionHost, id).config,
+      {
+        carrier_kind: plugin.manifest.carrier_kind,
+        dimension: plugin.manifest.dimension,
+        enabled,
+        permissions: plugin.manifest.permissions
+      }
+    );
     await runtime.refreshCapabilities();
     return c.json({ ok: true });
   });
@@ -198,7 +219,7 @@ export function createUnifiedDaemonHttpApp(
 
   app.post("/api/studio/co-work-task", async (c) => {
     const body = await readJsonObject(c);
-    const result = dispatchOrAdvanceCoWorkTask(runtime, {
+    const result = await dispatchOrAdvanceCoWorkTask(runtime, {
       action: (body.action as "create" | "approve" | "complete" | "execute" | "pause") ?? "create",
       taskId: typeof body.taskId === "string" ? body.taskId : undefined,
       title: typeof body.title === "string" ? body.title : undefined,
@@ -220,25 +241,27 @@ export function createUnifiedDaemonHttpApp(
   app.post("/api/studio/sleep-run", (c) => c.json(runManualSleepReflection(runtime)));
 
   app.post("/api/studio/rag-ingest", async (c) => {
+    if(!isOwnerRequest(c)) return c.json({error:"UNAUTHORIZED"},401);
     const body = await readJsonObject(c);
-    const result = ingestKnowledgeDocument(runtime, {
+    const result = await ingestKnowledgeDocument(runtime, {
       collectionId: String(body.collectionId ?? "kb_custom_notes"),
       title: String(body.title ?? "notes.md"),
       content: String(body.content ?? "")
-    });
+    }, body.mode==="sandbox" || c.req.query("mode")==="sandbox");
     return c.json(result, result.ok ? 200 : 400);
   });
 
   app.post("/api/studio/rag-search", async (c) => {
+    if(!isOwnerRequest(c)) return c.json({error:"UNAUTHORIZED"},401);
     const body = await readJsonObject(c);
     return c.json(
-      searchKnowledgeChunks(runtime, {
+      await searchKnowledgeChunks(runtime, {
         query: String(body.query ?? ""),
         collectionId:
           typeof body.collectionId === "string" && body.collectionId
             ? body.collectionId
             : undefined
-      })
+      }, body.mode==="sandbox" || c.req.query("mode")==="sandbox")
     );
   });
 
@@ -279,9 +302,9 @@ export function createUnifiedDaemonHttpApp(
 
     if (typeof body.apiKey === "string" && body.apiKey.trim()) {
       const targetId = String(body.providerId ?? "prov_deepseek_v3");
+      const rawKey = body.apiKey.trim();
       const idx = nextProviders.findIndex((p) => p.id === targetId);
       if (idx >= 0) {
-        const rawKey = body.apiKey.trim();
         saveVaultProviderKey(runtime.soulDir, targetId, rawKey);
         nextProviders[idx] = {
           ...nextProviders[idx]!,
@@ -297,6 +320,38 @@ export function createUnifiedDaemonHttpApp(
               : nextProviders[idx]!.modelId,
           status: "ready"
         };
+      }
+      // Also update canonical HostInfrastructureStore & default Profile primaryChat binding
+      const infra = readHostInfrastructureConfig(runtime.hostDir);
+      const existingHostProv = infra.providers.find((p) => p.id === targetId);
+      if (existingHostProv) {
+        const chosenModel =
+          typeof body.modelId === "string" && body.modelId.trim()
+            ? body.modelId.trim()
+            : existingHostProv.models[0]!;
+        const nextModels = existingHostProv.models.includes(chosenModel)
+          ? existingHostProv.models
+          : [chosenModel, ...existingHostProv.models];
+        upsertProviderInstance(
+          runtime.hostDir,
+          {
+            ...existingHostProv,
+            baseUrl:
+              typeof body.baseUrl === "string" && body.baseUrl.trim()
+                ? body.baseUrl.trim()
+                : existingHostProv.baseUrl,
+            models: nextModels,
+            health: { ...existingHostProv.health, status: "ready" }
+          },
+          rawKey
+        );
+        const soulProfiles = readSoulProfileConfig(runtime.soulDir);
+        const nextProfList = soulProfiles.profiles.map((prof) =>
+          prof.id === soulProfiles.defaultProfileId
+            ? { ...prof, roleArchetype: nextRole, primaryChat: { providerId: targetId, modelId: chosenModel } }
+            : prof
+        );
+        writeSoulProfileConfig(runtime.soulDir, { ...soulProfiles, profiles: nextProfList });
       }
     }
 
@@ -500,17 +555,22 @@ export function createUnifiedDaemonHttpApp(
     const text = String(body.text ?? body.summary_text ?? "").trim();
     if (!text) return c.json({ error: "EMPTY_PERCEPTION_TEXT" }, 400);
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
-    const turn = await runtime.handleShellTurn({
-      principalId: "owner:local",
-      thread: typeof body.thread === "string" ? body.thread : undefined,
-      shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
-      text,
-      venue_type: (body.venue_type as VenueType | undefined) ?? "private_1on1",
-      audience_scope: body.audience_scope as AudienceScope | undefined,
-      modality: (body.modality as SensorModality | undefined) ?? "text",
-      mode: body.mode === "sandbox" ? "sandbox" : "live"
-    }, { deferDeliveryReceipt: true });
-    return c.json(turn);
+    try {
+      const turn = await runtime.handleShellTurn({
+        principalId: "owner:local",
+        thread: typeof body.thread === "string" ? body.thread : undefined,
+        shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
+        text,
+        venue_type: (body.venue_type as VenueType | undefined) ?? "private_1on1",
+        audience_scope: body.audience_scope as AudienceScope | undefined,
+        modality: (body.modality as SensorModality | undefined) ?? "text",
+        mode: body.mode === "sandbox" ? "sandbox" : "live"
+      }, { deferDeliveryReceipt: true });
+      return c.json(turn);
+    } catch (error) {
+      if (error instanceof ModelContextLimitError) return c.json({ error: error.code, message: error.message }, 422);
+      throw error;
+    }
   });
 
   app.post("/protocol/v0/shell/receipt", async (c) => {

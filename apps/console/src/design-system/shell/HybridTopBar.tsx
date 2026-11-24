@@ -71,6 +71,7 @@ export interface HybridTopBarProps extends Omit<GlobalPendingApprovalDrawerProps
   targetInstance: "live" | `sandbox:${string}`;
   soulTheme: ConsoleSoulTheme;
   appearance?: "light" | "dark";
+  preferencesDisabled?: boolean;
   stateRev?: number;
   vitalSummary?: string;
   approvalsOpen?: boolean;
@@ -97,7 +98,7 @@ export function HybridTopBar(props: HybridTopBarProps): ReactElement {
   const [menuAnchor, setMenuAnchor] = useState<HTMLButtonElement | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const closeMenu = () => setMenuAnchor(null);
-  const storagePath = "/system/instances-storage";
+  const storagePath = "/system/settings";
   const logoHref = props.hrefFor?.("/dashboard") ?? "/dashboard";
 
   return (
@@ -148,10 +149,10 @@ export function HybridTopBar(props: HybridTopBarProps): ReactElement {
             {renderConsoleIcon("bell", 15)}
             <span>待审批{props.approvals.length ? " (" + props.approvals.length + ")" : ""}</span>
           </RippleButton>
-          <RippleButton variant="ghost" size="sm" data-toggle-appearance="true" className="ai0-topbar-secondary ai0-icon-button" ariaLabel="切换浅色或深色外观" onClick={props.onToggleAppearance}>
+          <RippleButton variant="ghost" size="sm" data-toggle-appearance="true" className="ai0-topbar-secondary ai0-icon-button" ariaLabel="切换浅色或深色外观" disabled={props.preferencesDisabled} onClick={props.onToggleAppearance}>
             {renderConsoleIcon(props.appearance === "dark" ? "sun" : "moon", 15)}
           </RippleButton>
-          <CompactSelect className="ai0-topbar-secondary" value={props.soulTheme} ariaLabel="Soul 配色" options={themes} onChange={props.onSoulThemeChange} />
+          <CompactSelect className="ai0-topbar-secondary" value={props.soulTheme} ariaLabel="Soul 配色" options={themes} disabled={props.preferencesDisabled} onChange={props.onSoulThemeChange} />
           <HoverTooltip content="命令面板 · Ctrl / ⌘ + K" interactiveChild>
             <RippleButton variant="ghost" size="sm" data-open-palette="true" ariaLabel="打开命令面板" ariaHasPopup="dialog" className="ai0-command-trigger" onClick={props.onOpenCommandPalette}>
               {renderConsoleIcon("search", 16)}<kbd>⌘K</kbd>
@@ -174,9 +175,9 @@ export function HybridTopBar(props: HybridTopBarProps): ReactElement {
               closeMenu();
             }}>{renderConsoleIcon("export", 15)}导出与存储</MenuItem>
             <MenuItem onClick={() => { closeMenu(); props.onToggleApprovals?.(); }}>{renderConsoleIcon("bell", 15)}待审批 ({props.approvals.length})</MenuItem>
-            <MenuItem onClick={() => { closeMenu(); props.onToggleAppearance?.(); }}>{renderConsoleIcon(props.appearance === "dark" ? "sun" : "moon", 15)}切换外观</MenuItem>
+            <MenuItem disabled={props.preferencesDisabled} onClick={() => { closeMenu(); props.onToggleAppearance?.(); }}>{renderConsoleIcon(props.appearance === "dark" ? "sun" : "moon", 15)}切换外观</MenuItem>
             {themes.map((theme) => (
-              <MenuItem key={theme.value} selected={props.soulTheme === theme.value} onClick={() => { closeMenu(); props.onSoulThemeChange?.(theme.value); }}>
+              <MenuItem key={theme.value} selected={props.soulTheme === theme.value} disabled={props.preferencesDisabled} onClick={() => { closeMenu(); props.onSoulThemeChange?.(theme.value); }}>
                 {renderConsoleIcon(props.soulTheme === theme.value ? "check" : "sparkles", 15)}{theme.label}
               </MenuItem>
             ))}

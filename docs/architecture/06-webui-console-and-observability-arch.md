@@ -1,12 +1,16 @@
-# 06. `WebUI 控制台` 常驻多态外壳、`<main>` 一体式圆角卡片路由视口、30 条专职路由树、1:1 后端无损投射与第一方紧凑 MD3 设计系统规范
+# 06. `WebUI 控制台` 常驻多态外壳、`<main>` 一体式圆角卡片路由视口、五大正交平面信息架构与四层解耦配置规范
 
-> **项目阶段**：工程规格与控制平面架构规范（解法域工程规格）
+> **项目阶段**：工程规格与控制平面架构规范（解法域工程规格 · 正交重构版）
 >
-> 本文档定义 `@ai0/console-webui` 的完整前端系统架构、多级嵌套路由树与 UI/UX 工程设计规范。由于 `ai0` 剥离了重型桌宠/Live2D/3D 客户端外壳包袱、采用**无头（Headless）认知微内核**架构，`WebUI 控制台` 作为系统唯一标配的**内建实体控制平面（Control Plane）、主权配置中枢、五阶多态扩展工作坊与认知科学观测天文台**，严格遵循以下四大架构铁律：
-> 1. 躯壳协议定义外部载体的感知、表达和动作。控制台管理连接。WebChat 插件提供网页会话和自己的导航入口。
-> 2. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）+ 8 大域 30 条专职子路由**：外围由**无边框环境底板混合顶栏 + 左右双侧可折叠功能栏/迷你栏**构成常驻不闪烁的多态布局外壳；中央 **`<main>` 主内容区本身被整体包裹为一张完整、统一的大圆角悬浮卡片盒子（`border-radius: 16px`）作为 `<RouterOutlet />` 路由视图出口**。在任意路由下，`<main>` 圆角卡片大盒子内部**仅专职渲染当前 URL 对应的那 1 个页面**（默认根首屏为 `/dashboard` 全景态势大盘，**严禁将所有功能塞到首屏主页，也严禁把 `<main>` 拆碎成满屏零散漂浮的小卡片**）。
-> 3. **后端全量设计（`01~05`）100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/料理流水线层` $\rightarrow$ `Tier-V2 结构化紧凑表单层` $\rightarrow$ `Tier-V3 权威源码与确定性证据层`）**：后端每一项认知机制、五阶多态扩展载体、配置结构体、数学动力学参数与防火墙规则在前端均拥有 1:1 的专职路由与可视化控制入口。
-> 4. **建立服务于数字生命愿景的第一方自包含设计语言（`ai0` Console Design System）**：以**“科研级白盒认知治理的高密度精密感 × 数字生命长期陪伴的通透呼吸感”**为视觉核心，基于 Material Design 3 交互原语进行桌面高密度二次封装（5 子目录 45 项纯语义模块化组件、5 级动态灵魂色调表面、单色矢量符号学与弹簧/水波纹触觉微交互），不依赖任何外部小众视觉参考先验知识即可独立复现与验收。
+> 本文档定义 `@ai0/console-webui` 的前端系统架构、五大正交平面路由树与四层配置解耦契约。借鉴 AstrBot v4 的清晰分层心智，同时保留 `ai0` 独有的无头认知微内核与 `.soul` 本地独立存档，严格遵循以下四大架构铁律：
+> 1. **四层正交解耦铁律（接入是接入、通用能力是通用能力、配置是配置）**：
+>    - **外部接入层（Host Infrastructure Pool — `host/infrastructure.json` + `vault/`）**：跨 `.soul` 实例共享的纯连接池。上游「服务提供商（`/integrations/providers`）」只管厂商模板、Base URL、API Key、可用 Model IDs 与连通性，严禁写死“主力对话/知识库精排”等业务角色；下游「消息平台与躯壳（`/integrations/platforms`）」只管 WebChat / QQ / Telegram / Discord / 飞书 / 外部 Protocol v0 客户端的连接状态与 Scoped Token，严禁混入防抖、注意力仲裁与语音编排。
+>    - **横向通用能力层（General Capabilities — `/capabilities/*`）**：长期记忆、知识库 RAG（按 ID 引用 `embedding` / `rerank` 服务商）、语音与多模态（按 ID 引用 `tts` / `stt` 服务商）、插件/MCP/技能/子代理各自独立维护。
+>    - **核心配置与路由层（Configuration Profiles & UMO Router — `.soul/config/profiles.json`）**：在「配置文件与路由（`/config/profiles`、`/config/routing`）」中通过 ID 引用接入池模型、组装对话防抖/注意力门控、社交面具与挂载能力，默认极简展示主力对话模型，将 `W2/W3/W4/L0` 五脑区异构路由与算力代谢预算收于可折叠高级区，并通过 `UMO（平台:场合:会话）` 规则在运行期真实驱动 `@ai0/kernel` 话轮执行。
+>    - **灵魂存档底座（`.soul`）**：角色人格、世界书、记忆图谱与审计轨迹严格落盘本地。
+> 2. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet`）+ 五大正交平面导航**：外围由混合顶栏 + 左侧可折叠路由导航栏 + 右侧上下文检视副栏构成常驻壳层；左侧导航收敛为 **5 大分组 × 11 项核心模块**（`概览与对话` / `核心配置` / `通用能力` / `外部接入` / `调试与系统`），携带 `shell_id` 的交互插件页（如 `WebChat`）由 Cordis 宿主按启用状态动态挂载至 `概览与对话` 分组，其余扩展页动态挂载至 `通用能力` 分组。
+> 3. **后端能力确定性投射与安全主权围栏（`LIVE` vs. `SANDBOX`）**：正式实例硬锁物理时钟与核心脑区消融，实验性时间拨快、感官注入与消融回放仅在隔离沙盒副本解锁。
+> 4. **第一方紧凑 MD3 设计语言（`ai0` Console Design System）**：5 子目录模块化组件（`tokens / primitives / shell / domain-visualizers / composites`）、动态灵魂色调表面与高密度紧凑表单。
 
 ---
 
@@ -252,9 +256,10 @@ flowchart LR
 
 ### 3.6 子系统六：内建混合 RAG 知识库、艾宾浩斯检索公式沙盒、睡眠防反刍与好奇心外部冲浪（`/memory/knowledge-rag` & `/memory/retrieval-sleep`）
 
-1. **内建开箱即用混合 RAG 知识库与卸载常识卡提炼台（`/memory/knowledge-rag` — `KnowledgeUnmountGistWizard`）**：
-   * 支持直接拖拽上传 PDF / Markdown / DOCX / 代码文件进入内建 `knowledge_chunks` 库（可视化预览分块 Chunking、`sqlite-vec` 稠密向量 + FTS5 BM25 稀疏混合检索得分与 Reranker 重排结果），或挂载 Obsidian / Notion / Wiki 外部连接器（统一醒目标注 `taint_level = 'untrusted_external'` 防投毒锁）；
-   * 当点击 **[卸载知识集 (Unmount)]** 时，自动弹出常识提炼向导——列出在真实对话中 `citation_count > 0` 的高权重切片，预览浓缩生成的 $<150$ 字 **共同话题常识卡（`CrystallizedGistCard`）** 并存入长期记忆，彻底消灭卸载外部知识库后的“局灶性失忆”。
+1. **知识库目录与资料维护**（`/capabilities/knowledge`，兼容旧入口 `/memory/knowledge-rag`）
+   * 目录显示文档数、索引状态和配置档挂载情况。库内管理文件、查看原文与切片、试搜及设置受众。目录的「检索设置」维护全局模型引用和切片参数。
+   * 已引用片段可在库设置中预览，确认后提炼为仅本人可见的常识卡并记录血缘。
+   * `/api/admin/v1/capabilities/knowledge/collections` 提供目录和库内操作。Studio 的旧入库与试搜接口复用同一服务。WebChat 和终端通过共享 Shell 对话协议接收引用。
 2. **艾宾浩斯混合检索公式调优沙盒、睡眠防反刍与 `W3` 好奇心冲浪台（`/memory/retrieval-sleep` — `HybridRetrievalFormulaTuner`）**：
    * 可视化调节混合检索公式 $R(m_i,t)$ 的权重滑块（$w_{\text{sem}}, w_{\text{imp}}, \alpha, \beta, H_0, C_{\text{cooldown}}$ 以及**诚实遗忘门槛 $\theta_{\text{confident}}$——低于该分值自动向黑板注入“具体细节我记不清了”防胡编共同经历**），并提供**在线检索打分拆解沙盒**；
    * 配置 `W3` 睡眠整理的 **Level-0 防反刍回音室规则（禁止 >2 代递归总结）**；

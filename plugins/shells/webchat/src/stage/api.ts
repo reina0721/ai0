@@ -1,8 +1,8 @@
 import { EventSourceParserStream } from "eventsource-parser/stream";
+import { shellRunStages, type ShellRunPresentation, type ShellReasoningEvent, type ShellStageEvent, type ShellRunStage } from "@ai0/protocol";
 import type { Ai0StageMode } from "@ai0/sdk";
 
-export const WEBCHAT_STAGES = ["accepted", "gate", "recall", "blackboard", "generating", "committed", "delivering"] as const;
-export type WebChatStage = (typeof WEBCHAT_STAGES)[number];
+export type WebChatStage = ShellRunStage;
 export type WebChatStatus = "accepted" | "generating" | "delivering" | "completed" | "interrupted" | "cancelled" | "failed";
 
 export interface WebChatReceipt {
@@ -10,7 +10,7 @@ export interface WebChatReceipt {
   spokenCharOffset: number;
 }
 
-export interface WebChatRun {
+export interface WebChatRun extends ShellRunPresentation {
   requestId: string;
   eventId?: string;
   traceId?: string;
@@ -22,10 +22,11 @@ export interface WebChatRun {
   provider?: { name: string; model: string };
 }
 
-export interface WebChatHistoryTurn {
+export interface WebChatHistoryTurn extends ShellRunPresentation {
   requestId?: string;
   eventId: string;
-  traceId: string;
+  traceId?: string;
+  status?: WebChatStatus;
   userText: string;
   assistantText: string;
   timestamp: string;
@@ -33,12 +34,10 @@ export interface WebChatHistoryTurn {
   receipt?: WebChatReceipt;
 }
 
-export interface WebChatStageEvent {
-  stage: WebChatStage;
-  elapsedMs: number;
-}
+export type WebChatStageEvent = ShellStageEvent;
 
 export type WebChatStreamChunk =
+  | ShellReasoningEvent
   | { type: "data-turn"; data: WebChatRun }
   | { type: "data-turn-stage"; data: WebChatStageEvent }
   | { type: "text-delta"; delta: string }
@@ -68,9 +67,12 @@ function readWebChatStream(body: ReadableStream<Uint8Array<ArrayBuffer>>): Reada
           if (typeof turn.requestId === "string" && WEBCHAT_STATUSES.has(turn.status)) {
             controller.enqueue({ type: value.type, data: turn });
           }
+        } else if (value.type === "data-turn-reasoning" && value.data && typeof value.data === "object") {
+          const delta = Reflect.get(value.data, "delta");
+          if (delta === null || typeof delta === "string") controller.enqueue({ type: value.type, data: { delta } });
         } else if (value.type === "data-turn-stage" && value.data) {
           const stage = value.data as WebChatStageEvent;
-          if (WEBCHAT_STAGES.includes(stage.stage) && Number.isFinite(stage.elapsedMs)) {
+          if (shellRunStages.includes(stage.stage) && Number.isFinite(stage.elapsedMs)) {
             controller.enqueue({ type: value.type, data: stage });
           }
         } else if (value.type === "error" && typeof value.errorText === "string") {

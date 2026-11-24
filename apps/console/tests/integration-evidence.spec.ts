@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { CONSOLE_ROUTES_30 } from "../src/router/routes.js";
 import { watchBrowser, workspaceGeometry } from "./browser-guard.js";
-import { ROUTE_CONTRACTS, ROUTE_VIEWPORTS, routeProbe, routeTarget } from "./route-contracts.js";
+import { expect, test } from "./console-preferences.js";
+import { ROUTE_CONTRACTS, ROUTE_VIEWPORTS, routeProbe } from "./route-contracts.js";
 
 const phase = process.env.AI0_UI_EVIDENCE_PHASE;
 const evidence = process.env.AI0_UI_EVIDENCE_DIR;
@@ -63,7 +64,7 @@ async function inspectSelectors(page: Page) {
   return controls;
 }
 
-test("capture production workspace comparisons and selector evidence", async ({ page }, testInfo) => {
+test("capture production workspace comparisons and selector evidence", async ({ page, consolePreferences }, testInfo) => {
   test.skip(!phase && !evidence, "Visual evidence capture is opt-in");
   test.setTimeout(320_000);
   if ((phase !== "before" && phase !== "after") || !evidence || !isAbsolute(evidence) || !process.env.AI0_TEST_BUILD_DIR) {
@@ -92,6 +93,7 @@ test("capture production workspace comparisons and selector evidence", async ({ 
   } = { routes: [], interactions: [] };
 
   for (const viewport of ROUTE_VIEWPORTS) {
+    await consolePreferences.set({ appearance: viewport.appearance, soulTheme: viewport.theme });
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.emulateMedia({ reducedMotion: "reduce" });
     for (const route of CONSOLE_ROUTES_30) {
@@ -100,7 +102,7 @@ test("capture production workspace comparisons and selector evidence", async ({ 
       report.routes.push(entry);
       await test.step(`${viewport.name} ${path}`, async () => {
         try {
-          const response = await page.goto(routeTarget(path, viewport));
+          const response = await page.goto(path);
           expect(response?.ok()).toBe(true);
           const main = page.locator(`main[data-workspace-id="${route.id}"]`);
           const contract = ROUTE_CONTRACTS[route.id]!;
@@ -127,10 +129,12 @@ test("capture production workspace comparisons and selector evidence", async ({ 
     }
   }
 
-  const themeCases = ["sakura-pink", "astral-blue", "cyber-emerald"].flatMap((theme) =>
-    ["light", "dark"].map((appearance) => ({
-      id: theme === "astral-blue" && appearance === "dark" ? "desktop-theme" : `desktop-theme-${theme}-${appearance}`,
-      path: `/dashboard?appearance=${appearance}&theme=${theme}`,
+  const themeCases = (["sakura-pink", "astral-blue", "cyber-emerald"] as const).flatMap((soulTheme) =>
+    (["light", "dark"] as const).map((appearance) => ({
+      id: soulTheme === "astral-blue" && appearance === "dark" ? "desktop-theme" : `desktop-theme-${soulTheme}-${appearance}`,
+      path: "/dashboard",
+      appearance,
+      soulTheme,
       label: "Soul 配色",
       width: 1440,
       height: 900
@@ -138,22 +142,25 @@ test("capture production workspace comparisons and selector evidence", async ({ 
   );
   for (const interaction of [
     ...themeCases,
-    { id: "mobile-related-pages", path: "/soul/homeostasis?appearance=dark&theme=astral-blue", label: "相关页面", width: 390, height: 844 },
-    { id: "desktop-model-routing", path: "/models/routing?appearance=dark&theme=astral-blue",
+    { id: "mobile-related-pages", path: "/soul/homeostasis", appearance: "dark", soulTheme: "astral-blue", label: "相关页面", width: 390, height: 844 },
+    { id: "desktop-model-routing", path: "/models/routing", appearance: "dark", soulTheme: "astral-blue",
       field: '[data-route-primary="W1_fast_dialogue"]', width: 1440, height: 900 },
-    { id: "desktop-simulator-audience", path: "/shells/simulator?mode=sandbox&appearance=light&theme=astral-blue",
+    { id: "desktop-simulator-audience", path: "/shells/simulator?mode=sandbox", appearance: "light", soulTheme: "astral-blue",
       label: "受众", width: 1440, height: 900 },
-    { id: "mobile-simulator-audience", path: "/shells/simulator?mode=sandbox&appearance=dark&theme=astral-blue",
+    { id: "mobile-simulator-audience", path: "/shells/simulator?mode=sandbox", appearance: "dark", soulTheme: "astral-blue",
       label: "受众", width: 390, height: 844 }
-  ]) {
+  ] as const) {
     const entry: (typeof report.interactions)[number] = { id: interaction.id, kind: "unavailable", issues: [] };
     report.interactions.push(entry);
     await test.step(interaction.id, async () => {
       try {
         await page.setViewportSize({ width: interaction.width, height: interaction.height });
+        await consolePreferences.set({ appearance: interaction.appearance, soulTheme: interaction.soulTheme });
         await page.goto(interaction.path);
         const root = page.locator("[data-console-root]");
-        const trigger = "field" in interaction ? root.locator(interaction.field) :
+        await expect(root).toHaveAttribute("data-appearance", interaction.appearance);
+        await expect(root).toHaveAttribute("data-soul-theme", interaction.soulTheme);
+        const trigger = "field" in interaction && interaction.field !== undefined ? root.locator(interaction.field) :
           root.getByRole("combobox", { name: interaction.label, exact: true });
         await expect(trigger).toBeEnabled();
         await trigger.scrollIntoViewIfNeeded();
@@ -189,9 +196,10 @@ test("capture production workspace comparisons and selector evidence", async ({ 
     });
   }
 
+  await consolePreferences.set({ appearance: "dark", soulTheme: "astral-blue", inspectorView: "trace" });
   for (const state of [
-    { id: "keyboard-select-focus", mode: "focused", path: "/models/routing?appearance=dark&theme=astral-blue" },
-    { id: "sandbox-disabled-select", mode: "disabled", path: "/models/routing?mode=sandbox&appearance=dark&theme=astral-blue" }
+    { id: "keyboard-select-focus", mode: "focused", path: "/models/routing" },
+    { id: "sandbox-disabled-select", mode: "disabled", path: "/models/routing?mode=sandbox" }
   ] as const) {
     const entry: (typeof report.interactions)[number] = { id: state.id, kind: "unavailable", issues: [] };
     report.interactions.push(entry);
@@ -230,7 +238,7 @@ test("capture production workspace comparisons and selector evidence", async ({ 
     await test.step(drawer.id, async () => {
       try {
         await page.setViewportSize({ width: 1024, height: 768 });
-        await page.goto("/dashboard?appearance=dark&theme=astral-blue");
+        await page.goto("/dashboard");
         const root = page.locator("[data-console-root]");
         await root.getByRole("button", { name: drawer.trigger, exact: true }).click();
         await expect(root.getByLabel(drawer.label, { exact: true })).toBeVisible();

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer, createUnifiedDaemonHttpApp } from "./index.js";
-import { createDefaultConsoleStudioConfig, readConsoleStudioConfig, readSoulArchiveConfig } from "@ai0/storage";
+import { createDefaultConsoleStudioConfig, getHostInfrastructureFilePath, readConsoleStudioConfig, readSoulArchiveConfig } from "@ai0/storage";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -174,6 +174,54 @@ it("preserves invalid originals and backs up legacy configuration before migrati
   writeFileSync(configPath, "damaged original");
   expect(() => readConsoleStudioConfig(f.soulDir)).toThrow();
   expect(readFileSync(configPath, "utf8")).toBe("damaged original");
+});
+
+it("persists console preferences across daemon restarts and keeps legacy patches compatible", async () => {
+  const f = fixture();
+  const settingsPath = "/api/admin/v1/system/settings";
+  const legacyPath = "/api/studio/config";
+  const preferences = {
+    appearance: "dark",
+    soulTheme: "astral-blue",
+    navRailMode: "dual",
+    inspectorView: "sandbox-diff"
+  };
+
+  expect((await f.request(settingsPath, "PATCH", preferences, "")).status).toBe(401);
+  expect((await f.request(settingsPath + "?target_instance=sandbox:console", "PATCH", preferences)).status).toBe(403);
+  expect(await (await f.request(settingsPath)).json()).toMatchObject({ navRailMode: "expanded", inspectorView: "trace" });
+
+  const saved = await f.request(settingsPath, "PATCH", preferences);
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toMatchObject(preferences);
+  const invalid = await f.request(settingsPath, "PATCH", { navRailMode: "wide", inspectorView: "mini" });
+  expect(invalid.status).toBe(400);
+  expect(await invalid.json()).toMatchObject({ error: "INVALID_SYSTEM_SETTINGS" });
+
+  const hostPath = getHostInfrastructureFilePath(f.runtime.hostDir);
+  const hostContents = readFileSync(hostPath, "utf8") + "\n";
+  writeFileSync(hostPath, hostContents);
+  const legacyLayout = await f.request(legacyPath, "POST", { systemSettings: { navRailMode: "mini" } });
+  expect(legacyLayout.status).toBe(200);
+  expect(readFileSync(hostPath, "utf8")).toBe(hostContents);
+
+  const legacySecurity = await f.request(legacyPath, "POST", {
+    systemSettings: { auth2faEnabled: true, navRailMode: "mini", inspectorView: "trace" }
+  }, "");
+  expect(legacySecurity.status).toBe(200);
+  expect(await (await f.request(settingsPath)).json()).toMatchObject({ ...preferences, auth2faEnabled: true });
+  const legacyTheme = { systemSettings: { soulTheme: "cyber-emerald" } };
+  expect((await f.request(legacyPath, "POST", legacyTheme, "")).status).toBe(401);
+  expect((await f.request(legacyPath, "POST", legacyTheme)).status).toBe(200);
+
+  f.restart();
+  const expected = { ...preferences, soulTheme: "cyber-emerald", auth2faEnabled: true };
+  expect(await (await f.request(settingsPath)).json()).toMatchObject(expected);
+  for (const mode of ["live", "sandbox"]) {
+    const bootstrap = await f.request(`/api/studio/bootstrap?mode=${mode}`);
+    expect(bootstrap.status).toBe(200);
+    expect(await bootstrap.json()).toMatchObject({ snapshot: { infrastructure: { systemSettings: expected } } });
+  }
 });
 
 it("links task completion to a real executor and W3 memory to its source", async () => {

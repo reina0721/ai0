@@ -53,7 +53,3 @@ export function routeProbe(main: Locator, probe: Probe): Locator {
   if ("selector" in probe) return main.locator(probe.selector).first();
   return main.getByRole(probe.role, { name: probe.name, exact: true }).first();
 }
-
-export function routeTarget(path: string, viewport: (typeof ROUTE_VIEWPORTS)[number]): string {
-  return `${path}?appearance=${viewport.appearance}&theme=${viewport.theme}`;
-}

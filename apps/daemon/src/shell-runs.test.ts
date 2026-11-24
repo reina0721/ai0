@@ -41,6 +41,13 @@ it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces 
   try {
     expect((await fetch(url + "/history")).status).toBe(401);
     expect((await post("/runs", { requestId, mode: "wrong", text })).status).toBe(400);
+    const generate = runtime.workers.w1.runTurnAsync.bind(runtime.workers.w1);
+    vi.spyOn(runtime.workers.w1, "runTurnAsync").mockImplementationOnce(async (input, options) => {
+      const turn = await generate(input, options);
+      options?.onReasoning?.("可展示摘要");
+      return { ...turn, provider: { name: "test", model: "test-model" },
+        usage: { inputTokens: 12000, contextWindow: 128000, cachedInputTokens: 9000 } };
+    });
     const response = await post("/runs", { requestId, mode: "live", text });
     expect(response.status).toBe(200);
     expect(response.headers.get("x-ai0-protocol-stream")).toBe("v0");
@@ -49,6 +56,11 @@ it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces 
     const events = raw.split("\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)));
     const stages = events.filter((frame) => frame.type === "data-turn-stage").map((frame) => frame.data.stage);
     expect(stages).toEqual(["accepted", "gate", "recall", "blackboard", "generating", "committed", "delivering"]);
+    const firstReasoning = events.findIndex(frame => frame.type === "data-turn-reasoning");
+    expect(firstReasoning).toBeGreaterThan(-1);
+    expect(firstReasoning).toBeLessThan(events.findIndex(frame => frame.type === "text-delta"));
+    const process = { reasoning: "可展示摘要", usage: { inputTokens: 12000, cachedInputTokens: 9000 },
+      provider: { name: "test", model: "test-model" }, stages: stages.map(stage => ({ stage })) };
     const deltas = events.filter((frame) => frame.type === "text-delta");
     expect(deltas.length).toBeGreaterThan(1);
     const generated = deltas.map((frame) => frame.delta).join("");
@@ -62,7 +74,7 @@ it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces 
     expect(trace?.steps.step8_delivery_receipt).toBeNull();
     expect((await fetch(url + `/runs/${requestId}?mode=sandbox`, { headers: scopedHeaders })).status).toBe(404);
     const status = await fetch(url + `/runs/${requestId}?mode=live`, { headers: scopedHeaders });
-    expect(await status.json()).toMatchObject({ requestId, shellId, status: "delivering", deliveryFinished: true, text: generated });
+    expect(await status.json()).toMatchObject({ requestId, shellId, status: "delivering", deliveryFinished: true, text: generated, process });
 
     // Channel A zero-backdoor fence: ScopedCapabilityToken MUST NOT access Channel B VerifiableTurnTrace!
     expect((await fetch(url + `/runs/${requestId}/trace?mode=live`)).status).toBe(401);
@@ -77,6 +89,9 @@ it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces 
     expect((await post(`/runs/${requestId}/receipt`, { mode: "live", spokenCharOffset: 0 })).status).toBe(400);
     const receipt = await post(`/runs/${requestId}/receipt`, { mode: "live", spokenCharOffset: Array.from(generated).length });
     expect(await receipt.json()).toMatchObject({ status: "completed", receipt: { status: "completed" } });
+    const recorded = await fetch(url + "/history?mode=live", { headers: scopedHeaders });
+    expect((await recorded.json()).turns.find((turn: { requestId: string }) => turn.requestId === requestId))
+      .toMatchObject({ process });
     const eventCount = runtime.storage.listEvents().length;
     const traceCount = runtime.storage.listDecisionTraces().length;
     const replay = await post("/runs", { requestId, mode: "live", text });
@@ -181,6 +196,19 @@ it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces 
       expect(await state.json()).toMatchObject({ status: "cancelled" });
     });
     generation.mockRestore();
+
+    const stranger = runtime.shellGateway.issueScopedCapabilityToken({
+      shell_id: shellId, principal_id: "another-user", max_audience_privacy_ceiling: "only_owner",
+      allowed_modalities: ["text"], expires_at_ts_ms: Date.now() + 60_000
+    }, ownerToken);
+    const otherHeaders = { authorization: "Bearer " + stranger };
+    expect((await fetch(url + "/runs/" + requestId + "?mode=live", { headers: otherHeaders })).status).toBe(404);
+    expect((await (await fetch(url + "/history?mode=live", { headers: otherHeaders })).json()).turns).toEqual([]);
+
+    expect(runtime.storage.getShellRunProcess(eventId)?.reasoning).toBe("可展示摘要");
+    runtime.storage.sqlite.prepare("UPDATE event_log SET redacted_at_ts_ms=? WHERE event_id=?").run(Date.now(), eventId);
+    expect(runtime.storage.getShellRunProcess(eventId)).toBeUndefined();
+    expect((await fetch(url + "/runs/" + requestId + "?mode=live", { headers: scopedHeaders })).status).toBe(404);
   } finally {
     const closed = new Promise<void>((resolve) => server.close(() => resolve()));
     server.closeAllConnections();

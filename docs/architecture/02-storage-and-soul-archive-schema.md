@@ -237,7 +237,7 @@ CREATE TABLE turn_decision_traces (
 
 ### 2.6 表 6：内建开箱即用混合 RAG 知识库切片与 FTS5 稀疏索引表 (`knowledge_chunks`)
 
-为了在内核底座原生提供开箱即用的本地混合 RAG 知识库能力（同时与外部 `ext.memory_knowledge` 连接器无缝协同），`soul_core.sqlite` 内建文档切片表、向量虚拟表与 `FTS5` 稀疏全文检索表，并**在表结构级强制锁死 `taint_level = 'untrusted_external'` 防间接 Prompt 注入投毒**，同时记录被真实对话引用的次数 `citation_count`（供卸载知识集时自动触发 `extractGistCardsBeforeUnmount` 浓缩生成 `<150` 字的 `kb_crystallized_gist` 常识卡）：
+每个实例的 `soul_core.sqlite` 分别保存知识库受众、文档原始字节和索引版本。`knowledge_locations` 将切片对应到文档、标题与行段或 PDF 页码。全文索引使用 FTS5，模型向量记录在 `knowledge_chunks_vec`，由 SQLite 注册的余弦函数检索。知识切片固定标记为 `untrusted_external`。`knowledge_turn_sources` 记录回答引用的切片，完整送达后才更新引用计数。旧归档的历史计数独立保存在 `legacy_citations`。
 
 ```sql
 CREATE TABLE knowledge_chunks (
@@ -253,7 +253,7 @@ CREATE TABLE knowledge_chunks (
     created_at_ts_ms    INTEGER NOT NULL
 );
 
--- SQLite FTS5 BM25 稀疏检索虚拟表 (与 sqlite-vec 稠密向量检索共同构成 Hybrid RAG + Reranker 管线)
+-- SQLite FTS5 BM25 稀疏检索虚拟表 (与模型向量余弦检索共同构成 Hybrid RAG + Reranker 管线)
 CREATE VIRTUAL TABLE knowledge_chunks_fts USING fts5(
     chunk_id UNINDEXED,
     collection_id UNINDEXED,

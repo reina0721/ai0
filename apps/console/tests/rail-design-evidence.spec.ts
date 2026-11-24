@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { watchBrowser, workspaceGeometry } from "./browser-guard.js";
+import { expect, test, type ConsolePreferences } from "./console-preferences.js";
 
 const phase = process.env.AI0_UI_EVIDENCE_PHASE;
 const outputRoot = process.env.AI0_UI_EVIDENCE_DIR;
@@ -94,11 +95,7 @@ async function captureElements(root: Locator, selectors: readonly string[]): Pro
   }, selectors);
 }
 
-function makeUrl(path: string, theme: Theme, appearance: Appearance, params: Record<string, string> = {}) {
-  return `${path}?${new URLSearchParams({ theme, appearance, ...params })}`;
-}
-
-test("frozen production rail removal preserves console appearance and layout", async ({ page }, testInfo) => {
+test("frozen production rail removal preserves console appearance and layout", async ({ page, consolePreferences }, testInfo) => {
   test.skip(!phase && !outputRoot, "Opt-in production visual comparison");
   test.setTimeout(240_000);
   if ((phase !== "before" && phase !== "after") || !outputRoot || !isAbsolute(outputRoot) ||
@@ -118,13 +115,19 @@ test("frozen production rail removal preserves console appearance and layout", a
   const cases: EvidenceCase[] = [];
   const desktop = { width: 1440, height: 900 };
 
-  async function visit(path: string, theme: Theme, appearance: Appearance, mode: "live" | "sandbox" = "live", params = {}) {
+  async function visit(path: string, theme: Theme, appearance: Appearance, mode: "live" | "sandbox" = "live",
+    navRailMode: ConsolePreferences["navRailMode"] = "expanded") {
+    await consolePreferences.set({ appearance, soulTheme: theme, navRailMode });
     await page.mouse.move(0, 0);
-    await page.goto(makeUrl(path, theme, appearance, { mode, ...params }));
+    await page.goto(`${path}?mode=${mode}`);
     await expect(root).toHaveAttribute("data-appearance", appearance);
     await expect(root).toHaveAttribute("data-soul-theme", theme);
     await expect(root).toHaveAttribute("data-sovereignty-mode", mode);
     await expect(root.locator(".ai0-bootstrap-progress")).toBeHidden();
+    if (phase === "before" && navRailMode === "mini" && await root.getAttribute("data-nav-rail-mode") !== "mini") {
+      await root.getByRole("button", { name: "折叠导航", exact: true }).click();
+    }
+    await expect(root).toHaveAttribute("data-nav-rail-mode", navRailMode);
   }
 
   async function capture(id: string, theme: Theme, appearance: Appearance, selectors: readonly string[]) {
@@ -191,7 +194,7 @@ test("frozen production rail removal preserves console appearance and layout", a
     const theme = "astral-blue";
     const appearance = "dark";
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
-    await visit("/dashboard", theme, appearance, "live", scenario.navMode === "mini" ? { rail: "mini" } : {});
+    await visit("/dashboard", theme, appearance, "live", scenario.navMode === "mini" ? "mini" : "expanded");
     if (scenario.navMode === "drawer") {
       await root.getByRole("button", { name: "打开导航", exact: true }).click();
       await expect(root.getByLabel("控制台导航", { exact: true })).toBeVisible();

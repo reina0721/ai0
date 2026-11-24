@@ -712,14 +712,15 @@ export function extractGistCardsBeforeUnmount(
 
   return storage.runInTransaction(() => {
     const citedChunks = storage.listCitedKnowledgeChunks(collectionId);
-    return citedChunks.map((chunk) =>
+    const fresh = citedChunks.filter(chunk=>!storage.sqlite.prepare("SELECT 1 FROM memory_lineage_edges WHERE parent_type='knowledge_chunk' AND parent_id=? AND relation_type='crystallized_from'").get(chunk.chunk_id));
+    return fresh.map((chunk) =>
       storage.insertMemoryWithLineage(
         {
           memory_id: `kb-gist:${stateRev}:${chunk.chunk_id}`,
           memory_tier: "kb_crystallized_gist",
           epistemic_type: "reported_hearsay",
           attributed_principal: `knowledge:${collectionId}`,
-          visibility_scope: "public_all",
+          visibility_scope: "only_owner",
           taint_level: "untrusted_external",
           content_text: truncateGist(chunk.content_text),
           base_importance: 0.5,

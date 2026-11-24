@@ -52,9 +52,9 @@ describe("ai0 compact Material console", () => {
     expect(busyButton).toContain('disabled=""');
   });
 
-  it("renders all 8 Primary Domains and all 30+ Dedicated Sub-Routes inside MainRoundedCardOutlet with InternalStickySubNav", async () => {
-    expect(CONSOLE_PRIMARY_DOMAINS).toHaveLength(8);
-    expect(CONSOLE_ROUTES_30.length).toBeGreaterThanOrEqual(30);
+  it("renders all 5 Orthogonal Primary Planes and all canonical routes inside MainRoundedCardOutlet with InternalStickySubNav", async () => {
+    expect(CONSOLE_PRIMARY_DOMAINS).toHaveLength(5);
+    expect(CONSOLE_ROUTES_30.length).toBeGreaterThanOrEqual(20);
 
     for (const route of CONSOLE_ROUTES_30) {
       const concretePath = route.defaultConcretePath ?? route.path;
@@ -67,10 +67,16 @@ describe("ai0 compact Material console", () => {
       expect(pageHtml).toContain("ai0-main-scrollable-body");
     }
 
+    // Legacy paths resolve cleanly to canonical orthogonal routes
+    expect(resolveConsoleRoute("/models/providers")?.path).toBe("/integrations/providers");
+    expect(resolveConsoleRoute("/shells/topology")?.path).toBe("/integrations/platforms");
+    expect(resolveConsoleRoute("/profiles/rules")?.path).toBe("/config/routing");
+    expect(resolveConsoleRoute("/shells/media-pipeline")?.path).toBe("/capabilities/multimodal");
+
     // DirtyRouteGuard check
     const guard = new DirtyRouteGuard({ hasUnsavedChanges: true });
-    expect(await guard.canTransition("/memory/lineage")).toBe(false);
-    expect(await guard.canTransition("/memory/lineage", "discard")).toBe(true);
+    expect(await guard.canTransition("/capabilities/memory")).toBe(false);
+    expect(await guard.canTransition("/capabilities/memory", "discard")).toBe(true);
 
     // Without a plugin snapshot even old bookmarks must resolve to the unavailable page.
     const webchatDoc = renderConsoleDocumentHtml({

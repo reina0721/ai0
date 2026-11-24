@@ -1,5 +1,13 @@
-import type { RuntimeConsolePage } from "@ai0/protocol";
-import type { PluginOrigin, RuntimeConsoleUiSlot, VerifiableTurnTrace } from "@ai0/protocol";
+import type {
+  AgentSkillRecord,
+  HostInfrastructureConfig,
+  PluginConfigField,
+  PluginOrigin,
+  RuntimeConsolePage,
+  RuntimeConsoleUiSlot,
+  SoulProfileAndCapabilitiesConfig,
+  VerifiableTurnTrace
+} from "@ai0/protocol";
 
 export interface LiveBlackboardSlotSnapshot {
   id: string;
@@ -34,6 +42,9 @@ export interface LiveKnowledgePackSnapshot {
 export interface LiveExtensionSnapshot {
   id: string;
   displayName?: string;
+  description?: string;
+  author?: string;
+  tags?: string[];
   version?: string;
   origin?: PluginOrigin;
   carrier: string;
@@ -42,6 +53,10 @@ export interface LiveExtensionSnapshot {
   rev: number;
   readDomains: string[];
   proposeDomains: string[];
+  maxAudienceScope?: string;
+  networkAccess?: boolean;
+  configFields?: PluginConfigField[];
+  currentConfig?: Record<string, unknown>;
   activationError?: string;
   missingAssets?: string[];
   generation?: string;
@@ -405,6 +420,11 @@ export interface ConsoleLiveSnapshot {
   pragmaStatus: { journal_mode: string; foreign_keys: number; secure_delete: number };
   recentTranscript: Array<{ id: string; role: "user" | "assistant"; text: string; timestamp?: string }>;
   studioConfig?: ConsoleStudioState;
+  infrastructure?: HostInfrastructureConfig;
+  soulProfiles?: SoulProfileAndCapabilitiesConfig;
+  providerUsages?: Record<string, Array<{ scope: string; targetId: string; targetLabel: string }>>;
+  modelUsages?: Record<string, Array<{ scope: string; targetId: string; targetLabel: string }>>;
+  skills?: AgentSkillRecord[];
   promptPreviewPrivate?: PromptCompiledPreview;
   promptPreviewPublic?: PromptCompiledPreview;
   conversations?: LiveConversationSession[];

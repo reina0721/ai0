@@ -1,18 +1,18 @@
 import { writeFile } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
-
 import { CONSOLE_ROUTES_30 } from "../src/router/routes.js";
 import { watchBrowser, workspaceGeometry } from "./browser-guard.js";
-import { ROUTE_CONTRACTS, ROUTE_VIEWPORTS, routeProbe, routeTarget } from "./route-contracts.js";
+import { expect, test } from "./console-preferences.js";
+import { ROUTE_CONTRACTS, ROUTE_VIEWPORTS, routeProbe } from "./route-contracts.js";
 
 for (const viewport of ROUTE_VIEWPORTS) {
-  test(`all 33 distinct workspaces hydrate and fit on ${viewport.name}`, async ({ page }, testInfo) => {
+  test(`all 33 distinct workspaces hydrate and fit on ${viewport.name}`, async ({ page, consolePreferences }, testInfo) => {
     test.setTimeout(160_000);
     const registered = CONSOLE_ROUTES_30.map((route) => route.id).sort();
     expect(registered).toHaveLength(33);
     expect(Object.keys(ROUTE_CONTRACTS).sort()).toEqual(registered);
     const browser = watchBrowser(page);
     const report: { id: string; path: string; failures: string[]; geometry?: Awaited<ReturnType<typeof workspaceGeometry>> }[] = [];
+    await consolePreferences.set({ appearance: viewport.appearance, soulTheme: viewport.theme });
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.emulateMedia({ reducedMotion: "reduce" });
 
@@ -22,7 +22,7 @@ for (const viewport of ROUTE_VIEWPORTS) {
       report.push(result);
       await test.step(path, async () => {
         try {
-          const response = await page.goto(routeTarget(path, viewport));
+          const response = await page.goto(path);
           expect(response?.ok()).toBe(true);
           const root = page.locator("[data-console-root]");
           await expect(root).toHaveAttribute("data-appearance", viewport.appearance);

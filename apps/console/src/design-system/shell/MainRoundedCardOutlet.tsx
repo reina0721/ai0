@@ -5,7 +5,7 @@ import { useEffect, type MouseEvent, type ReactElement, type ReactNode } from "r
 import { useConsole } from "../../context/ConsoleContext.js";
 import { CompactSelect, HoverTooltip, RippleButton } from "../primitives/index.js";
 import { renderConsoleIcon } from "../tokens/index.js";
-import { CONSOLE_ROUTES_30, findSidebarContext, resolveConsoleRoute, type ConsoleRoute, type PrimaryDomainId } from "../../router/routes.js";
+import { CONSOLE_ROUTES, findSidebarContext, resolveConsoleRoute, type ConsoleRoute, type PrimaryDomainId } from "../../router/routes.js";
 
 export interface InternalStickySubNavProps {
   domainId: PrimaryDomainId;
@@ -18,7 +18,7 @@ export function InternalStickySubNav(props: InternalStickySubNavProps): ReactEle
   const ctx = useConsole();
   const group = findSidebarContext(props.activePath);
   const active = resolveConsoleRoute(props.activePath);
-  const siblings = group ? CONSOLE_ROUTES_30.filter((route) =>
+  const siblings = group ? CONSOLE_ROUTES.filter((route) =>
     findSidebarContext(route.defaultConcretePath ?? route.path)?.item.id === group.item.id
   ) : [];
   const navigate = (route: ConsoleRoute) => {
@@ -76,7 +76,8 @@ export function InternalStickySubNav(props: InternalStickySubNavProps): ReactEle
       </div>
       {<HoverTooltip content="运行检视" interactiveChild>
         <RippleButton variant="ghost" size="sm" className="ai0-workspace-inspector-button"
-          data-open-inspector="trace" ariaLabel="打开或关闭运行检视"
+          data-open-inspector={ctx?.inspectorView ?? "trace"} ariaLabel="打开或关闭运行检视"
+          ariaExpanded={ctx ? ctx.inspectorMode !== "mini" : undefined}
           onClick={props.onToggleInspector ?? ctx?.toggleInspector}>
           {renderConsoleIcon("inspector", 15)}
           <span>运行检视</span>

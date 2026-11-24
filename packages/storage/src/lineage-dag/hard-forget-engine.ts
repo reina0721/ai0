@@ -795,7 +795,15 @@ function mutateFromPlan(
   }
 
   const tainted = new Set(plan.tainted_memory_ids);
+  const hasShellProcess = sql.tableExists("shell_run_process");
   for (const trace of plan.traces) {
+    if (hasShellProcess) {
+      sql.run("DELETE FROM shell_run_process WHERE event_id=?", [trace.turn_event_id]);
+      // A turn which recalled the forgotten memory can still be delivering its reply.
+      // Prevent a late delivery snapshot from restoring its withdrawn reasoning.
+      sql.run("UPDATE event_log SET payload_json=json_set(payload_json,'$.shell_process_redacted',1) WHERE event_id=? AND redacted_at_ts_ms IS NULL",
+        [trace.turn_event_id]);
+    }
     sql.run(
       `UPDATE turn_decision_traces
        SET step1_perception_json = ?, step3_memory_recall_json = ?, step7_emitted_intent_json = ?

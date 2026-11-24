@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from "@playwright/test";
+import type { Locator } from "@playwright/test";
+import { expect, test } from "./console-preferences.js";
 
 async function themeColor(root: Locator, variable: string): Promise<string> {
   return root.evaluate((element, token) => {
@@ -17,8 +18,9 @@ async function attachView(name: string, view: Locator): Promise<void> {
   await test.info().attach(name, { body, contentType: "image/png" });
 }
 
-test("console styles stay within the workspace and dark Material overlays retain its tokens", async ({ page }) => {
-  await page.goto("/dashboard?appearance=dark&theme=astral-blue");
+test("console styles stay within the workspace and dark Material overlays retain its tokens", async ({ page, consolePreferences }) => {
+  await consolePreferences.set({ appearance: "dark", soulTheme: "astral-blue" });
+  await page.goto("/dashboard");
   const root = page.locator("[data-console-root]");
   await expect(root).toHaveAttribute("data-appearance", "dark");
   await expect(root).toHaveAttribute("data-soul-theme", "astral-blue");
@@ -94,8 +96,9 @@ test("console styles stay within the workspace and dark Material overlays retain
   await expect(commands).toBeFocused();
 });
 
-test("provider controls and memory rows stay compact and closing the confirmation preserves data", async ({ page }) => {
-  await page.goto("/models/providers?appearance=dark");
+test("provider controls and memory rows stay compact and closing the confirmation preserves data", async ({ page, consolePreferences }) => {
+  await consolePreferences.set({ appearance: "dark" });
+  await page.goto("/models/providers");
   const model = page.locator('input[data-prov-model="prov_deepseek_v3"]');
   await expect(model).toBeEnabled();
   const field = page.locator(".ai0-compact-input").filter({ has: model });
@@ -107,8 +110,9 @@ test("provider controls and memory rows stay compact and closing the confirmatio
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/memory/hard-forget")) eraseRequests++;
   });
-  await page.goto("/memory/lineage?appearance=dark");
+  await page.goto("/memory/lineage");
   const root = page.locator("[data-console-root]");
+  await expect(root).toHaveAttribute("data-appearance", "dark");
   const table = page.getByRole("table", { name: "记忆节点" });
   const firstRecord = table.getByRole("row").nth(1);
   await expect(firstRecord).toBeVisible();
@@ -130,7 +134,8 @@ test("provider controls and memory rows stay compact and closing the confirmatio
   expect(eraseRequests).toBe(0);
 });
 
-test("a narrow reduced-motion console keeps focus and the WebChat composer usable after a failed send", async ({ page }) => {
+test("a narrow reduced-motion console keeps focus and the WebChat composer usable after a failed send", async ({ page, consolePreferences }) => {
+  await consolePreferences.set({ appearance: "dark" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.route("**/protocol/v0/shell/history?*", (route) => route.fulfill({ json: { turns: [] } }));
@@ -138,7 +143,7 @@ test("a narrow reduced-motion console keeps focus and the WebChat composer usabl
     route.fulfill({ status: 502, json: { error: "UPSTREAM_CONNECT_FAILED" } }));
   await page.route((url) => /^\/protocol\/v0\/shell\/runs\/[^/]+$/u.test(url.pathname), (route) =>
     route.fulfill({ status: 404, json: { error: "SHELL_RUN_NOT_FOUND" } }));
-  await page.goto("/webchat?appearance=dark");
+  await page.goto("/webchat");
 
   const root = page.locator("[data-console-root]");
   const commands = page.getByRole("button", { name: "打开命令面板", exact: true });

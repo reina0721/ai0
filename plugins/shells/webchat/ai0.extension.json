@@ -3,8 +3,10 @@
   "manifest_version": "1.1.0",
   "extension_id": "builtin.webchat",
   "display_name": "WebChat",
+  "description": "严格遵循 Protocol v0 标准的官方内置网页对话与流式具身舞台，支持流式打断与字数回执。",
   "version": "1.0.0",
   "author": "ai0-official",
+  "tags": ["shell", "webchat", "protocol-v0"],
   "carrier_kind": "native_code_plugin",
   "extension_bus": "ext.shell",
   "dimension": "ext.shell",
@@ -20,6 +22,38 @@
     "network_access": false
   },
   "console_contributions": {
+    "config_fields": [
+      {
+        "key": "stream_chunk_ms",
+        "label": "流式输出节拍 (ms)",
+        "type": "int",
+        "default": 36,
+        "min": 10,
+        "max": 200,
+        "hint": "控制 WebChat 舞台逐字吐字与打断字数追踪的渲染间隔"
+      },
+      {
+        "key": "show_viseme_stage",
+        "label": "显示伴生微表情状态条",
+        "type": "bool",
+        "default": true,
+        "hint": "在对话区顶部展示当前情感标签与三锚点表情提示"
+      },
+      {
+        "key": "allow_markdown_math",
+        "label": "启用 Markdown 与公式渲染",
+        "type": "bool",
+        "default": true,
+        "hint": "渲染代码块、表格与 LaTeX 数学公式"
+      },
+      {
+        "key": "welcome_banner",
+        "label": "欢迎语提示",
+        "type": "string",
+        "default": "已在 Protocol v0 具身舞台就绪，随时开始对话。",
+        "hint": "空会话时显示在舞台中央的引导语"
+      }
+    ],
     "pages": [
       {
         "path": "/webchat",

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+import { expect, test } from "./console-preferences.js";
 
 import { watchBrowser } from "./browser-guard.js";
 
@@ -37,9 +38,10 @@ async function expectListbox(root: Locator, trigger: Locator, page: Page) {
   return listbox;
 }
 
-test("dark shell select opens a themed listbox, takes keyboard selection, and restores focus", async ({ page }) => {
+test("dark shell select opens a themed listbox, takes keyboard selection, and restores focus", async ({ page, consolePreferences }) => {
   const browser = watchBrowser(page);
-  await page.goto("/dashboard?appearance=dark&theme=astral-blue");
+  await consolePreferences.set({ appearance: "dark", soulTheme: "astral-blue" });
+  await page.goto("/dashboard");
   const root = page.locator("[data-console-root]");
   await expect(root.getByRole("combobox", { name: "Soul 配色", exact: true })).toBeVisible();
   const trigger = root.locator('[role="combobox"][aria-label="Soul 配色"]');
@@ -51,37 +53,42 @@ test("dark shell select opens a themed listbox, takes keyboard selection, and re
   await expect(current).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("ArrowDown");
   await expect(listbox.getByRole("option", { name: "翠绿", exact: true })).toBeFocused();
+  const saved = page.waitForResponse((response) => response.request().method() === "PATCH" &&
+    new URL(response.url()).pathname === "/api/admin/v1/system/settings");
   await page.keyboard.press("Enter");
   await expect(listbox).toBeHidden();
   await expect(trigger).toBeFocused();
   await expect(trigger).toContainText("翠绿");
   await expect(root).toHaveAttribute("data-soul-theme", "cyber-emerald");
+  expect((await saved).ok()).toBe(true);
   expect(browser.takeErrors()).toEqual([]);
 });
 
 test.describe("touch Select and responsive portal", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test("related-page selector uses an on-screen listbox and navigates by tapping an option", async ({ page }) => {
+  test("related-page selector uses an on-screen listbox and navigates by tapping an option", async ({ page, consolePreferences }) => {
     const browser = watchBrowser(page);
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/soul/homeostasis?appearance=dark&theme=astral-blue");
+    await consolePreferences.set({ appearance: "dark", soulTheme: "astral-blue" });
+    await page.goto("/soul/homeostasis");
     const root = page.locator("[data-console-root]");
     await expect(root.getByRole("combobox", { name: "相关页面", exact: true })).toBeVisible();
     const trigger = root.locator('[role="combobox"][aria-label="相关页面"]');
     await trigger.tap();
     const listbox = await expectListbox(root, trigger, page);
     await listbox.getByRole("option", { name: /世界书/u }).tap();
-    await expect(page).toHaveURL(/\/soul\/lorebooks\?/u);
+    await expect(page).toHaveURL(/\/soul\/lorebooks$/u);
     await expect(root.getByRole("heading", { level: 1, name: "世界书", exact: true })).toBeVisible();
     await expect(listbox).toBeHidden();
     expect(browser.takeErrors()).toEqual([]);
   });
 });
 
-test("a nested configuration selector changes its field and Escape dismisses just the top layer", async ({ page }) => {
+test("a nested configuration selector changes its field and Escape dismisses just the top layer", async ({ page, consolePreferences }) => {
   const browser = watchBrowser(page);
-  await page.goto("/dashboard?appearance=dark&theme=cyber-emerald");
+  await consolePreferences.set({ appearance: "dark", soulTheme: "cyber-emerald" });
+  await page.goto("/dashboard");
   const root = page.locator("[data-console-root]");
   const start = root.locator('main [data-open-onboarding="true"]');
   await start.click();
@@ -106,9 +113,10 @@ test("a nested configuration selector changes its field and Escape dismisses jus
   expect(browser.takeErrors()).toEqual([]);
 });
 
-test("runtime configuration selector retains its stable marker and disables saved configuration in sandbox", async ({ page }) => {
+test("runtime configuration selector retains its stable marker and disables saved configuration in sandbox", async ({ page, consolePreferences }) => {
   const browser = watchBrowser(page);
-  await page.goto("/models/routing?appearance=dark&mode=sandbox");
+  await consolePreferences.set({ appearance: "dark" });
+  await page.goto("/models/routing?mode=sandbox");
   const root = page.locator("[data-console-root]");
   const primary = root.locator('[data-route-primary="W1_fast_dialogue"]');
   await expect(primary).toHaveAttribute("role", "combobox");
@@ -118,7 +126,7 @@ test("runtime configuration selector retains its stable marker and disables save
   expect(browser.takeErrors()).toEqual([]);
 });
 
-test("snapshot selection enables only the confirmation and browser downloads remain native", async ({ page }) => {
+test("snapshot selection enables only the confirmation and browser downloads remain native", async ({ page, consolePreferences }) => {
   const browser = watchBrowser(page);
   const snapshotId = "snapshot-ui-fixture";
   let snapshots: string[] = [];
@@ -131,7 +139,8 @@ test("snapshot selection enables only the confirmation and browser downloads rem
     }
   });
 
-  await page.goto("/system/instances-storage?appearance=dark");
+  await consolePreferences.set({ appearance: "dark" });
+  await page.goto("/system/instances-storage");
   const root = page.locator("[data-console-root]");
   const snapshot = root.locator('[role="combobox"][aria-labelledby~="rollback-snapshot-label"]');
   const rollback = root.getByRole("button", { name: "回滚到指定快照", exact: true });

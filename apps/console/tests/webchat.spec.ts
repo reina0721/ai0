@@ -37,9 +37,9 @@ test("persists one private WebChat turn and keeps drafts isolated by target", as
   const assistant = live.locator(`[data-message-turn-id="${requestId}"][data-message-role="assistant"]`);
   await expect(assistant).toHaveAttribute("data-message-status", "completed");
   const detailsTrigger = assistant.getByRole("button", { name: "查看本轮详情" });
-  const traceRead = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith(`/runs/${requestId}/trace`));
+  await expect(assistant.getByRole("button", { name: /本轮过程/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(live.locator(".ai0-chat-usage")).toContainText("本地生成");
   await detailsTrigger.click();
-  expect((await traceRead).ok()).toBe(true);
   const inspector = page.getByRole("complementary", { name: "会话详情" });
   await expect(inspector).toHaveCount(1);
   await expect(inspector.getByRole("heading", { name: "处理阶段 累计耗时" })).toBeVisible();
@@ -52,6 +52,8 @@ test("persists one private WebChat turn and keeps drafts isolated by target", as
 
   await page.reload();
   await expect(assistant).toHaveCount(1);
+  await assistant.getByRole("button", { name: /本轮过程/ }).click();
+  await expect(assistant.getByText("整理上下文")).toBeVisible();
   await live.getByRole("button", { name: "搜索对话" }).click();
   await live.getByRole("textbox", { name: "搜索此会话的记录" }).fill(original);
   await expect(live.locator("[data-message-role=assistant]")).toHaveCount(1);
@@ -72,11 +74,13 @@ test("persists one private WebChat turn and keeps drafts isolated by target", as
   await page.getByRole("button", { name: "SANDBOX", exact: true }).click();
   const sandbox = page.locator('[data-webchat-target="sandbox"]');
   await expect(sandbox.getByRole("textbox", { name: "输入聊天消息" })).toHaveValue("");
+  await expect(sandbox.locator(".ai0-chat-usage summary")).not.toContainText("本地生成");
   await expect(sandbox.locator(`[data-message-turn-id="${requestId}"]`)).toHaveCount(0);
   await page.getByRole("button", { name: "LIVE", exact: true }).click();
   await expect(composer).toHaveValue("正式环境草稿");
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(live.locator(".ai0-chat-usage summary")).toBeInViewport();
   await live.getByRole("button", { name: "会话详情", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "会话详情" });
   await expect(drawer).toBeVisible();
@@ -189,4 +193,126 @@ test("confirms Markdown links and preserves table actions in themed overlays", a
   await tableDialog.getByRole("button", { name: "关闭全屏表格" }).click();
   await expect(tableDialog).toHaveCount(0);
   await expect(fullscreen).toBeFocused();
+});
+
+test("keeps streamed reasoning separate across recovery, copying, and mobile history replay", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const reply = "这是本轮正文。";
+  const process = {
+    stages: [{ stage: "generating", elapsedMs: 12 }], elapsedMs: 1500, reasoning: "整理可用资料",
+    provider: { name: "deepseek", model: "demo-reasoner" },
+    usage: { inputTokens: 12000, contextWindow: 128000, outputTokens: 92, cachedInputTokens: 9000, reasoningTokens: 16 }
+  };
+  let requestId: string | undefined;
+  let delivered = false;
+  await page.route("**/protocol/v0/shell/history?*", route => route.fulfill({ json: { turns: delivered ? [{
+    requestId, eventId: "evt_" + requestId, targetInstance: "live", userText: "核对用量", assistantText: reply,
+    process, receipt: { status: "completed", spokenCharOffset: Array.from(reply).length }, timestamp: new Date().toISOString()
+  }] : [] } }));
+  await page.route("**/protocol/v0/shell/runs/**", route => {
+    const url = new URL(route.request().url());
+    const receipt = url.pathname.endsWith("/receipt");
+    requestId = url.pathname.split("/").at(receipt ? -2 : -1);
+    const snapshot = { requestId, targetInstance: "live", text: reply, process, deliveryFinished: true };
+    if (!receipt) return route.fulfill({ json: { ...snapshot, status: "delivering" } });
+    const { spokenCharOffset } = route.request().postDataJSON();
+    expect(spokenCharOffset).toBe(Array.from(reply).length);
+    delivered = true;
+    return route.fulfill({ json: { ...snapshot, status: "completed", receipt: { status: "completed", spokenCharOffset } } });
+  });
+  // Release the stream only after exercising the in-progress UI. Closing it without a
+  // final snapshot makes the client recover the same request through its status endpoint.
+  await page.addInitScript(path => {
+    const fetchOriginal = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      if (typeof input !== "string" || new URL(input, location.origin).pathname !== path || init?.method !== "POST") {
+        return fetchOriginal(input, init);
+      }
+      const { requestId } = JSON.parse(String(init.body));
+      const stream = new ReadableStream({
+        start(controller) {
+          const frame = (data: object) => controller.enqueue(new TextEncoder().encode("data: " + JSON.stringify(data) + "\n\n"));
+          frame({ type: "data-turn", data: { requestId, targetInstance: "live", status: "generating" } });
+          frame({ type: "data-turn-stage", data: { stage: "generating", elapsedMs: 12 } });
+          frame({ type: "data-turn-reasoning", data: { delta: "整理" } });
+          frame({ type: "data-turn-reasoning", data: { delta: "可用资料" } });
+          window.addEventListener("test-release-stream", () => controller.close(), { once: true });
+        }
+      });
+      return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+    };
+  }, runPath);
+  await page.goto(stagePath);
+  const live = page.locator('[data-webchat-target="live"]');
+  const assistant = live.locator('[data-message-role="assistant"]');
+  const toggle = assistant.getByRole("button", { name: /本轮过程/ });
+  await live.getByRole("textbox", { name: "输入聊天消息" }).fill("核对用量");
+  await live.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(assistant.getByText(process.reasoning)).toBeVisible();
+  await expect(assistant.locator(".ai0-chat-markdown")).toHaveCount(0);
+  const summary = live.locator(".ai0-chat-usage summary");
+  await expect(summary).toContainText("统计中");
+  await toggle.click();
+  await toggle.click();
+  await page.evaluate(() => window.dispatchEvent(new Event("test-release-stream")));
+  await expect(assistant).toHaveAttribute("data-message-status", "completed");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(summary).toContainText("上下文 12k / 128k（9.4%）");
+  await expect(summary).toContainText("缓存命中 75%");
+  await assistant.getByRole("button", { name: "复制消息" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(reply);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(assistant.getByText(process.reasoning)).toBeVisible();
+  await expect(summary).toBeInViewport();
+  await summary.click();
+  await expect(live.locator(".ai0-chat-usage dd")).toHaveText(["demo-reasoner", "128,000", "12,000", "92", "9,000", "16"]);
+});
+
+test("distinguishes missing and zero usage counters", async ({ page }) => {
+  const samples = [
+    { usage: { inputTokens: 100, cachedInputTokens: 0 }, context: "100", cache: "0%" },
+    { usage: { inputTokens: 100 }, context: "100", cache: "未提供" },
+    { usage: { inputTokens: 0, cachedInputTokens: 0 }, context: "0", cache: "未提供" }
+  ];
+  let sample = samples[0]!;
+  await page.route("**/protocol/v0/shell/history?*", route => route.fulfill({ json: { turns: [{
+    eventId: "fixture", targetInstance: "live", userText: "用量", assistantText: "已完成",
+    receipt: { status: "completed", spokenCharOffset: 3 }, timestamp: new Date().toISOString(),
+    process: { provider: { name: "upstream", model: "test" }, stages: [], usage: sample.usage }
+  }] } }));
+  for (sample of samples) {
+    await page.goto(stagePath);
+    const summary = page.locator('[data-webchat-target="live"] .ai0-chat-usage summary');
+    await expect(summary).toContainText("上下文 " + sample.context);
+    await expect(summary).toContainText("缓存命中 " + sample.cache);
+    await expect(summary).not.toContainText("/");
+  }
+});
+
+test("rebinds turn history and usage when the host switches soul", async ({ page }) => {
+  let switched = false;
+  await page.route("**/api/admin/v1/snapshot?*", async route => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    await route.fulfill({ json: switched ? { ...snapshot, soulId: "second.soul", personaName: "第二个角色" } : snapshot });
+  });
+  await page.route("**/protocol/v0/shell/history?*", route => route.fulfill({ json: { turns: switched ? [] : [{
+    eventId: "first-soul", targetInstance: "live", assistantText: "旧角色回复", userText: "旧角色对话",
+    receipt: { status: "completed", spokenCharOffset: 5 }, timestamp: new Date().toISOString(),
+    process: { stages: [], usage: { inputTokens: 100, cachedInputTokens: 81 } }
+  }] } }));
+  await page.goto(stagePath);
+  const live = page.locator('[data-webchat-target="live"]');
+  const summary = live.locator(".ai0-chat-usage summary");
+  await expect(summary).toContainText("81%");
+  const renewed = page.waitForRequest(request => /\/(?:shell|stage)-token\?/.test(request.url()));
+  switched = true;
+  await renewed;
+  await expect(live.getByText("旧角色回复")).toHaveCount(0);
+  await expect(summary).toContainText("上下文 —");
+  await expect(summary).not.toContainText("81%");
 });

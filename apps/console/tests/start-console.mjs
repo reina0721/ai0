@@ -23,6 +23,7 @@ const processes = [
     env: {
       ...process.env,
       AI0_PLUGINS_DIR: [createCompositionFixtures(scratch), process.env.AI0_PLUGINS_DIR].filter(Boolean).join(delimiter),
+      AI0_USER_PLUGINS_DIR: join(scratch, "user-plugins"),
       AI0_SOUL_DIR: soulDir,
       AI0_OWNER_TOKEN: randomUUID(),
       AI0_HOST: "127.0.0.1",

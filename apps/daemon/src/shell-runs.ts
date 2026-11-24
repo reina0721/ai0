@@ -1,20 +1,21 @@
+import { ModelContextLimitError } from "@ai0/kernel";
 import { readSoulArchiveConfig } from "@ai0/storage";
 import { timingSafeEqual } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 
 import type { Context, Hono } from "hono";
 
-import type { AudienceScope, VerifiableTurnTrace } from "@ai0/protocol";
+import type { AudienceScope, ShellRunPresentation, ShellRunProcess, ShellRunStage, VerifiableTurnTrace } from "@ai0/protocol";
 
 import type { Ai0DaemonRuntime } from "./index.js";
 
 type Mode = "live" | "sandbox";
 type Target = "live" | "sandbox:console";
-type Stage = "accepted" | "gate" | "recall" | "blackboard" | "generating" | "committed" | "delivering";
+type Stage = ShellRunStage;
 type Status = "accepted" | "generating" | "delivering" | "completed" | "interrupted" | "cancelled" | "failed";
 type Receipt = { status: "completed" | "interrupted"; spokenCharOffset: number };
 
-interface RunStatus {
+interface RunStatus extends ShellRunPresentation {
   requestId: string;
   eventId: string;
   shellId: string;
@@ -36,6 +37,7 @@ interface ActiveRun {
   state: RunStatus;
   trace?: VerifiableTurnTrace;
   sentChars: number;
+  startedAt: number;
 }
 
 interface AuthResult {
@@ -189,7 +191,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     const storage = storageFor(mode);
     const direct = storage.getEventById(EVENT_PREFIX + id) ?? storage.getEventById(LEGACY_PREFIX + id);
     return direct?.source_shell_id === shellId
-      && direct.redacted_at_ts_ms == null ? direct : undefined;
+      && direct.redacted_at_ts_ms == null && !JSON.parse(direct.payload_json).shell_process_redacted ? direct : undefined;
   };
 
   function accessible(auth: AuthResult, shellId: string, mode: Mode, id: string) {
@@ -209,9 +211,31 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     return trace?.target_instance === targetOf(mode) ? trace : undefined;
   }
 
+  function presentation(mode: Mode, eventId: string, trace?: VerifiableTurnTrace, activeProcess?: ShellRunProcess) {
+    const storage = storageFor(mode);
+    const event = storage.getEventById(eventId);
+    if (!event || event.redacted_at_ts_ms != null) return { process: undefined, sources: [] };
+    const meta = JSON.parse(event.payload_json);
+    if (meta.shell_process_redacted) return { process: undefined, sources: [] };
+    const process = activeProcess ?? storage.getShellRunProcess(eventId);
+    const sources = runtime.knowledgeSources(mode, eventId);
+    if (!trace) return { process, sources, ...(process?.error ? { error: process.error } : {}) };
+    const ids: string[] = meta.used_memory_ids ?? trace.steps.step3_memory_recall.recalled_memories.map(item => item.memory_id);
+    const memories = ids.length ? storage.queryMemoriesWithAudienceGuard({
+      memory_ids: ids, principal_trust: event.principal_trust, audience_scope: event.audience_scope,
+      current_virtual_ts: (mode === "live" ? runtime.virtualClock : runtime.sandboxClock).nowMs(),
+      limit: ids.length
+    }).map(memory => ({ id: memory.memory_id, text: memory.content_text })) : [];
+    // Older traces prove these stages occurred, but did not record their timings.
+    const stages: Stage[] = ["gate"];
+    if (trace.steps.step2_gate_safety.l0_sb243_crisis_check === "PASS") stages.push("recall", "generating");
+    stages.push("committed");
+    return { process: { ...(process ?? { stages: stages.map(stage => ({ stage })) }), memories }, sources };
+  }
+
   function getStatus(shellId: string, mode: Mode, id: string): RunStatus | undefined {
     const run = active.get(runKeyOf(shellId, mode, id));
-    if (run) return run.trace && !findStoredEvent(shellId, mode, id) ? undefined : { ...run.state };
+    if (run) return run.trace && !findStoredEvent(shellId, mode, id) ? undefined : { ...run.state, ...presentation(mode, run.state.eventId, run.trace, run.state.process) };
     const event = findStoredEvent(shellId, mode, id);
     if (!event) return undefined;
     const base = { requestId: id, eventId: event.event_id, shellId, targetInstance: targetOf(mode) };
@@ -222,7 +246,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
         webchat_run_status?: unknown;
       };
       const statusFlag = payload.shell_run_status ?? payload.webchat_run_status;
-      return { ...base, status: statusFlag === "cancelled" ? "cancelled" : "failed" };
+      return { ...base, ...presentation(mode, event.event_id), status: statusFlag === "cancelled" ? "cancelled" : "failed" };
     }
     const receipt = receiptOf(trace);
     return {
@@ -230,6 +254,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
       traceId: trace.trace_id,
       status: receipt?.status ?? "delivering",
       text: displayedText(trace),
+      ...presentation(mode, event.event_id, trace),
       deliveryFinished: true,
       receipt
     };
@@ -255,27 +280,24 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
     if (!mode) return c.json({ error: "INVALID_MODE" }, 400);
     const shellId = resolveShellId(auth, c.req.query("shellId") ?? c.req.header("x-ai0-shell-id"));
-    const turns = storageFor(mode).listShellDecisionTraces(shellId, 50, auth.audience ?? "only_owner",
-      auth.isOwner ? undefined : auth.principalId ?? "unknown", c.req.query("thread"))
-      .filter((trace) => {
-        const reqId = extractRequestIdFromEventId(trace.turn_event_id);
-        return trace.target_instance === targetOf(mode)
-          && (!reqId || !active.has(runKeyOf(shellId, mode, reqId)));
-      })
-      .reverse()
-      .map((trace) => ({
-        requestId: extractRequestIdFromEventId(trace.turn_event_id),
-        eventId: trace.turn_event_id,
-        shellId,
-        traceId: trace.trace_id,
-        targetInstance: targetOf(mode),
-        userText: trace.steps.step1_perception.summary_text,
-        assistantText: receiptOf(trace) ? displayedText(trace) : "",
-        generatedText: trace.steps.step7_emitted_intent.fallback_text,
-        deliveryStatus: receiptOf(trace)?.status ?? "unknown",
-        timestamp: new Date(trace.virtual_ts_ms).toISOString(),
-        receipt: receiptOf(trace)
-      }));
+    const storage = storageFor(mode);
+    const turns = storage.listShellRunEvents(shellId, auth.audience ?? "only_owner",
+      auth.isOwner ? undefined : auth.principalId ?? "unknown", c.req.query("thread")).reverse().flatMap(event => {
+      const requestId = extractRequestIdFromEventId(event.event_id);
+      if (requestId && active.has(runKeyOf(shellId, mode, requestId))) return [];
+      const trace = storage.getDecisionTraceByEvent(event.event_id);
+      if (trace && trace.target_instance !== targetOf(mode)) return [];
+      const receipt = trace && receiptOf(trace);
+      const status = trace ? receipt?.status : JSON.parse(event.payload_json).shell_run_status;
+      return [{
+        requestId, eventId: event.event_id, shellId, traceId: trace?.trace_id, targetInstance: targetOf(mode),
+        userText: trace?.steps.step1_perception.summary_text ?? event.summary_text, ...presentation(mode, event.event_id, trace),
+        assistantText: trace && receipt ? displayedText(trace) : "",
+        generatedText: trace?.steps.step7_emitted_intent.fallback_text,
+        deliveryStatus: status ?? "unknown", status,
+        timestamp: new Date(event.virtual_ts_ms).toISOString(), receipt
+      }];
+    });
     return c.json({ shellId, turns });
   });
 
@@ -347,6 +369,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     const run: ActiveRun = { principalId: auth.principalId, audience: auth.audience, thread,
       controller,
       sentChars: 0,
+      startedAt: performance.now(),
       state: { requestId: id, eventId: existingEvent?.event_id ?? eventId, shellId, targetInstance, status: "accepted" }
     };
     if (!archived) active.set(runKey, run);
@@ -356,20 +379,28 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     requestSignal.addEventListener("abort", disconnect, { once: true });
     if (requestSignal.aborted) disconnect();
     const messageId = `${run.state.eventId}:a`;
-    const start = performance.now();
+    const start = run.startedAt;
+    const process: ShellRunProcess = { stages: [] };
+    if (!archived) run.state.process = process;
+    const saveProcess = () => {
+      process.elapsedMs ??= Math.round(performance.now() - start);
+      storageFor(mode).saveShellRunProcess(run.state.eventId, process);
+    };
 
     return createSseResponse(async (write) => {
       const stage = (value: Stage) => {
         run.state.stage = value;
         if (value === "generating") run.state.status = "generating";
-        write({
-          type: "data-turn-stage",
-          data: { stage: value, elapsedMs: Math.round(performance.now() - start) }
-        });
+        const data = { stage: value, elapsedMs: Math.round(performance.now() - start) };
+        process.stages.push(data);
+        write({ type: "data-turn-stage", data });
       };
       const emitState = () => {
         const { text: _text, ...metadata } = run.state;
-        write({ type: "data-turn", data: metadata });
+        const visible = accessible(auth, shellId, mode, id)
+          ? presentation(mode, run.state.eventId, run.trace ?? (archived ? getTrace(shellId, mode, id) : undefined), run.state.process)
+          : { process: undefined, sources: [] };
+        write({ type: "data-turn", data: { ...metadata, ...visible } });
       };
 
       try {
@@ -384,14 +415,25 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
             eventId: run.state.eventId,
             signal: controller.signal,
             onStage: stage,
+            onReasoning: delta => {
+              controller.signal.throwIfAborted();
+              if (!findStoredEvent(shellId, mode, id) || !accessible(auth, shellId, mode, id)) return;
+              process.reasoning = delta === null ? undefined : (process.reasoning ?? "") + delta;
+              write({ type: "data-turn-reasoning", data: { delta } });
+            },
             deferDeliveryReceipt: true
           });
           run.trace = turn.trace;
           run.state.traceId = turn.trace.trace_id;
           run.state.provider = turn.provider;
+          process.provider = turn.provider?.name === "local-persona-synthesizer"
+            ? { name: turn.provider.name, model: turn.provider.name }
+            : turn.provider ?? { name: "local", model: "safety-guard" };
+          process.usage = turn.usage;
           stage("committed");
           run.state.status = "delivering";
           stage("delivering");
+          storageFor(mode).saveShellRunProcess(run.state.eventId, process);
           emitState();
           run.state.text = "";
           write({ type: "text-start", id: messageId });
@@ -408,6 +450,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
           }
           write({ type: "text-end", id: messageId });
           run.state.deliveryFinished = true;
+          saveProcess();
         }
 
         if (archived?.text) {
@@ -417,7 +460,9 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
         }
         emitState();
         write({ type: "finish", finishReason: "stop" });
-      } catch {
+      } catch (error) {
+        if (error instanceof ModelContextLimitError && !controller.signal.aborted) process.error = error.code;
+        if (!archived) saveProcess();
         if (!run.trace) {
           const status = controller.signal.aborted ? "cancelled" : "failed";
           run.state.status = status;
@@ -426,7 +471,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
           run.state.status = "failed";
         }
         emitState();
-        if (run.state.status === "failed") write({ type: "error", errorText: "SHELL_TURN_FAILED" });
+        if (run.state.status === "failed") write({ type: "error", errorText: process.error ?? "SHELL_TURN_FAILED" });
         write({ type: "finish", finishReason: run.state.status === "failed" ? "error" : "other" });
       } finally {
         if (!archived) active.delete(runKey);
@@ -463,6 +508,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
       run.state.status = "cancelled";
       storageFor(mode).markShellRunEnded(shellId, run.state.eventId, "cancelled");
     }
+    if (run?.state.process) run.state.process.elapsedMs ??= Math.round(performance.now() - run.startedAt);
     run?.controller.abort();
     const current = getStatus(shellId, mode, id);
     return current ? c.json(current) : c.json({ error: "SHELL_RUN_NOT_FOUND" }, 404);

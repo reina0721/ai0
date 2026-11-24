@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Ai0StageMode } from "@ai0/sdk";
 import {
   createWebChatProtocolApi, isFinishedChatRun, spokenCharOffset, WebChatHttpError,
-  type WebChatHistoryTurn, type WebChatReceipt, type WebChatRun, type WebChatStageEvent, type WebChatStatus, type WebChatStreamChunk
+  type WebChatHistoryTurn, type WebChatReceipt, type WebChatRun, type WebChatStatus, type WebChatStreamChunk
 } from "./api.js";
 
 export interface ChatTurn {
+  sources?: WebChatRun["sources"];
   key: string;
   requestId?: string;
   eventId?: string;
@@ -16,7 +17,7 @@ export interface ChatTurn {
   status: WebChatStatus;
   provider?: WebChatRun["provider"];
   receipt?: WebChatReceipt;
-  stages?: readonly WebChatStageEvent[];
+  process?: WebChatRun["process"];
   unconfirmed?: boolean;
 }
 
@@ -29,7 +30,7 @@ interface ActiveRun {
   ready: boolean;
   stopping: boolean;
   confirming: boolean;
-  stages: WebChatStageEvent[];
+  process: NonNullable<WebChatRun["process"]>;
 }
 
 function newRequestId(): string {
@@ -42,7 +43,7 @@ function newRequestId(): string {
 function newRun(requestId: string): ActiveRun {
   return {
     requestId, stream: new AbortController(), controls: new AbortController(),
-    text: "", displayed: 0, ready: false, stopping: false, confirming: false, stages: []
+    text: "", displayed: 0, ready: false, stopping: false, confirming: false, process: { stages: [] }
   };
 }
 
@@ -50,17 +51,21 @@ function fromHistory(turn: WebChatHistoryTurn): ChatTurn {
   return {
     ...turn,
     key: turn.requestId ?? turn.eventId,
-    status: turn.receipt?.status ?? "completed",
-    unconfirmed: Boolean(turn.requestId && !turn.receipt)
+    status: turn.status ?? turn.receipt?.status ?? "completed",
+    unconfirmed: Boolean(turn.requestId && !turn.status && !turn.receipt)
   };
 }
 
-function mergeHistory(history: readonly ChatTurn[], current: readonly ChatTurn[]): ChatTurn[] {
+function mergeHistory(history: ChatTurn[], current: readonly ChatTurn[], initialKeys: Set<string>, activeKey?: string): ChatTurn[] {
   const merged = [...history];
   for (const turn of current) {
-    const index = merged.findIndex((item) => item.key === turn.key || (turn.eventId && item.eventId === turn.eventId));
-    if (index === -1) merged.push(turn);
-    else merged[index] = { ...merged[index]!, ...turn };
+    const index = merged.findIndex(item => item.key === turn.key || (turn.eventId && item.eventId === turn.eventId));
+    if (index >= 0) {
+      if (turn.key === activeKey) merged[index] = turn;
+    } else if (turn.key === activeKey || !initialKeys.has(turn.key) || (!turn.eventId && turn.status === "failed")) {
+      // Keep a local turn when history was requested before its commit.
+      merged.push(turn);
+    }
   }
   return merged;
 }
@@ -90,6 +95,8 @@ export function useWebChatSession(
   const storageKey = `ai0:webchat:hidden:${soulId}:${targetInstance}`;
   const active = useRef<ActiveRun | null>(null);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const currentTurns = useRef(turns);
+  currentTurns.current = turns;
   const [hiddenTurns, setHiddenTurns] = useState<string[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(false);
@@ -123,12 +130,15 @@ export function useWebChatSession(
     run.text = result.status === "interrupted" && result.receipt
       ? Array.from(text).slice(0, result.receipt.spokenCharOffset).join("")
       : text;
+    if (result.process) run.process = result.process;
     run.ready ||= result.deliveryFinished === true;
     updateTurn(run, {
       ...(result.eventId ? { eventId: result.eventId } : {}),
       ...(result.traceId ? { traceId: result.traceId } : {}),
+      ...(result.sources ? {sources:result.sources} : {}),
       ...(result.provider ? { provider: result.provider } : {}),
       ...(result.receipt ? { receipt: result.receipt } : {}),
+      process: run.process,
       assistantText: run.text,
       status: result.status,
       unconfirmed: false
@@ -138,7 +148,10 @@ export function useWebChatSession(
       setRunning(false);
       setStopping(false);
       setNeedsRecovery(false);
-      setNotice(result.status === "failed" ? "本次回复生成失败。" : null);
+      const failureNotice = result.error === "MODEL_CONTEXT_LIMIT"
+        ? "本轮内容超出模型上下文窗口。请缩短消息，或检查模型参数中的上下文窗口覆盖值。"
+        : "本次回复生成失败。";
+      setNotice(result.status === "failed" ? failureNotice : null);
       run.stream.abort();
     }
   }, [targetInstance, updateTurn]);
@@ -176,10 +189,11 @@ export function useWebChatSession(
     const controller = new AbortController();
     setHistoryLoading(true);
     setHistoryError(false);
+    const initialKeys = new Set(currentTurns.current.map(turn => turn.key));
     void api.history(controller.signal).then(({ turns: history }) => {
       if (controller.signal.aborted) return;
       const targetHistory = history.filter((turn) => turn.targetInstance === targetInstance);
-      setTurns((current) => mergeHistory(targetHistory.map(fromHistory), current));
+      setTurns((current) => mergeHistory(targetHistory.map(fromHistory), current, initialKeys, active.current?.requestId));
     }).catch(() => {
       if (!controller.signal.aborted) setHistoryError(true);
     }).finally(() => {
@@ -230,8 +244,12 @@ export function useWebChatSession(
           acceptStatus(run, chunk.data);
         } else if (chunk.type === "data-turn-stage") {
           const stage = chunk.data;
-          run.stages = [...run.stages.filter((item) => item.stage !== stage.stage), stage];
-          updateTurn(run, { stages: run.stages });
+          run.process = { ...run.process, stages: [...run.process.stages.filter(item => item.stage !== stage.stage), stage] };
+          updateTurn(run, { process: run.process });
+        } else if (chunk.type === "data-turn-reasoning" && !run.stopping) {
+          const delta = chunk.data.delta;
+          run.process = { ...run.process, reasoning: delta === null ? undefined : (run.process.reasoning ?? "") + delta };
+          updateTurn(run, { process: run.process });
         } else if (chunk.type === "text-delta" && !run.stopping) {
           run.text += chunk.delta;
           updateTurn(run, { assistantText: run.text, status: "delivering" });

@@ -8,6 +8,8 @@ export interface ConsoleBootstrapPayload {
   snapshot: ConsoleLiveSnapshot;
 }
 
+export class BootstrapUnavailableError extends Error {}
+
 export async function fetchBootstrap(mode: ConsoleMode, signal?: AbortSignal): Promise<ConsoleBootstrapPayload> {
   const res = await fetch(`/api/studio/bootstrap?mode=${encodeURIComponent(mode)}`, {
     cache: "no-store",
@@ -17,6 +19,9 @@ export async function fetchBootstrap(mode: ConsoleMode, signal?: AbortSignal): P
     error?: string;
     message?: string;
   };
+  if ([502, 503, 504].includes(res.status)) {
+    throw new BootstrapUnavailableError(data.error ?? data.message ?? `HTTP_${res.status}`);
+  }
   if (!res.ok || !data.snapshot || !data.ownerToken) {
     throw new Error(data.error ?? data.message ?? `HTTP_${res.status}`);
   }
@@ -59,6 +64,37 @@ export function postJson<T = Record<string, unknown>>(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload)
   }, ownerToken);
+}
+
+export function patchJson<T = Record<string, unknown>>(
+  url: string,
+  payload: Record<string, unknown> = {},
+  ownerToken = ""
+): Promise<T> {
+  return requestJson<T>(url, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  }, ownerToken);
+}
+
+export function putJson<T = Record<string, unknown>>(
+  url: string,
+  payload: Record<string, unknown> = {},
+  ownerToken = ""
+): Promise<T> {
+  return requestJson<T>(url, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  }, ownerToken);
+}
+
+export function deleteJson<T = Record<string, unknown>>(
+  url: string,
+  ownerToken = ""
+): Promise<T> {
+  return requestJson<T>(url, { method: "DELETE" }, ownerToken);
 }
 
 export function subscribeTelemetryStream(onFrame: (frame: unknown) => void): () => void {

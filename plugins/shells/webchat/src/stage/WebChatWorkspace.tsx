@@ -21,7 +21,8 @@ import {
 
 import { isFinishedChatRun } from "./api.js";
 import { useWebChatSession, type ChatTurn } from "./useWebChatSession.js";
-import { STAGE_LABELS, WebChatInspector } from "./WebChatInspector.js";
+import { ProcessPanel, STAGE_LABELS, UsageBar } from "./WebChatProcess.js";
+import { WebChatInspector } from "./WebChatInspector.js";
 import { WebChatMarkdown } from "./WebChatMarkdown.js";
 
 const PROMPTS = [
@@ -115,7 +116,7 @@ function MessageRow() {
   if (!turn || !scope || !shown) return null;
   const pending = !isFinishedChatRun(turn.status);
   const canReuse = isUser && ["interrupted", "cancelled", "failed"].includes(turn.status);
-  const hasDetails = !isUser && !pending && Boolean(turn.traceId || turn.stages?.length);
+  const hasDetails = !isUser && !pending && Boolean(turn.traceId || turn.process?.stages.length);
 
   return (
     <MessagePrimitive.Root asChild>
@@ -134,10 +135,14 @@ function MessageRow() {
             <strong>{isUser ? "我" : scope.name}</strong>
             <time dateTime={turn.timestamp}>{displayTime(turn.timestamp)}</time>
           </div>
+          {!isUser && <ProcessPanel turn={turn} pending={pending} />}
           {isUser ? <p className="ai0-chat-message__user-text">{text}</p>
             : text ? <WebChatMarkdown text={text} streaming={pending} onToast={scope.showToast} />
             : pending ? <span className="ai0-chat-message__pending" aria-hidden="true"><i /><i /><i /></span>
             : null}
+          {!isUser && turn.sources?.filter(s=>text.includes("[K"+s.marker+"]")).map(s=>(
+            <details key={s.chunkId}><summary>[K{s.marker}] {s.title} · {s.location}</summary><blockquote>{s.excerpt}</blockquote></details>
+          ))}
           {!isUser && (turn.status === "interrupted" || turn.status === "cancelled" || turn.status === "failed") ? (
             <small className="ai0-chat-message__result">
               {turn.status === "interrupted" ? "回复已打断" : turn.status === "failed" ? "未完成回复" : "已取消请求"}
@@ -235,7 +240,7 @@ function WebChatThread({ mode, visible, host, hostState, soulId }: {
   const query = search.trim().toLocaleLowerCase();
   const latestTurn = session.turns.at(-1);
   const inspectedTurn = inspection === "latest" ? latestTurn : session.turns.find((turn) => turn.key === inspection);
-  const currentStage = latestTurn?.stages?.at(-1)?.stage;
+  const currentStage = latestTurn?.process?.stages.at(-1)?.stage;
   const inspectTurn = useCallback((key: string, trigger: HTMLElement) => {
     inspectorTrigger.current = trigger;
     setInspection(key);
@@ -441,16 +446,14 @@ function WebChatThread({ mode, visible, host, hostState, soulId }: {
                     </ComposerPrimitive.Send>
                   )}
                 </ComposerPrimitive.Root>
+                <UsageBar key={latestTurn?.key ?? "empty"} turn={latestTurn} />
                 <small className="ai0-chat-key-hint">Enter 发送 · Shift + Enter 换行</small>
               </footer>
             </div>
             <WebChatInspector
               id={inspectorId}
               open={visible && inspection !== null}
-              mode={mode}
               turn={inspectedTurn}
-              host={host}
-              hostState={hostState}
               onClose={closeInspector}
             />
           </div>

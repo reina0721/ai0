@@ -13,6 +13,7 @@ export interface RippleButtonProps {
   className?: string;
   ariaLabel?: string;
   ariaExpanded?: boolean;
+  ariaControls?: string;
   ariaHasPopup?: "menu" | "dialog";
   autoFocus?: boolean;
   title?: string;
@@ -38,6 +39,7 @@ export function RippleButton(props: RippleButtonProps): ReactElement {
       title={props.title}
       aria-label={props.ariaLabel}
       aria-expanded={props.ariaExpanded}
+      aria-controls={props.ariaControls}
       aria-haspopup={props.ariaHasPopup}
       autoFocus={props.autoFocus}
       aria-busy={props.loading || undefined}

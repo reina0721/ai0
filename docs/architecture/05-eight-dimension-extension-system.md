@@ -183,9 +183,9 @@ config_schema:
 * **架构升维：开箱即用内建混合 RAG 引擎 + 可插拔外部知识连接器**：
   为了确保使用者无需依赖第三方插件即可开箱即用高质量的本地知识库检索体验，同时保留连接外部知识生态的自由度，本总线采用**“内建底座 + 扩展连接器”**双层设计：
   1. **内建混合 RAG 知识库引擎（Built-in Hybrid Knowledge Engine in `@ai0/storage`）**：
-     * 原生支持在控制台上传或同步本地文档（Markdown / PDF / DOCX / 代码文件 / 设定集），提供可视化分块（Chunking）预览；
-     * 检索层采用 **`sqlite-vec` 稠密向量检索（Dense Cosine Similarity） + SQLite `FTS5` BM25 稀疏关键词检索（Sparse Retrieval） + 可插拔 Reranker 模型重排** 的混合检索管线；
-     * 所有来自外部文档的知识切片在进入上下文时，由代码强制打上 `taint_level = 'untrusted_external'` 标签，严防文档中的间接 Prompt 注入篡改核心人设或主人画像。
+     * 控制台按库导入 Markdown、UTF-8 文本、代码和文字型 PDF。SQLite 保存原始文件、当前版本、切片位置与索引状态，成功建立新索引后切换版本。
+     * 管理端试搜、知识搜索任务与 W1 对话共用检索服务。全文分词与查询使用同一套中文分词规则，由 FTS5 计算 BM25。绑定嵌入模型后，SQLite 对相同模型与维度的向量计算余弦相似度；绑定精排模型后对候选重排。
+     * W1 按实例、配置档挂载和会话受众筛选资料，将预算内的切片作为 `untrusted_external` 证据传入生成请求。Shell 的可选 `sources` 字段提供文档名、位置和原文。完整送达后，引用记录按回合与切片去重。
   2. **外部活体知识连接器接口（`IKnowledgeConnectorExtension` — 如 Obsidian / Notion / MediaWiki / GitHub 连接器）**：
      ```typescript
      export interface IKnowledgeConnectorExtension {

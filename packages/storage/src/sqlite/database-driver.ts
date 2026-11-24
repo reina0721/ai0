@@ -9,6 +9,7 @@ import {
 import {
   VerifiableTurnTraceSchema,
   type AudienceScope,
+  type ShellRunProcess,
   type EpistemicType,
   type GroundingStatus,
   type LineageRelationType,
@@ -101,6 +102,7 @@ export interface MemoryAudienceQuery {
   query_text?: string;
   embedding?: ReadonlyArray<number>;
   memory_tier?: MemoryTier;
+  memory_ids?: readonly string[];
   current_virtual_ts?: number;
   limit?: number;
 }
@@ -956,6 +958,10 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     } else {
       conditions.push("m.visibility_scope = 'public_all'");
     }
+    if (query.memory_ids) {
+      conditions.push("m.memory_id IN (SELECT value FROM json_each(?))");
+      parameters.push(JSON.stringify(query.memory_ids));
+    }
     if (query.memory_tier !== undefined) {
       conditions.push("m.memory_tier = ?");
       parameters.push(query.memory_tier);
@@ -1062,6 +1068,30 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
       )
       .all(shellId, audienceScope, principalId ?? null, principalId ?? null, thread ?? null, clampLimit(limit));
     return rows.map((row) => this.deserializeTurnTrace(row));
+  }
+
+  listShellRunEvents(shellId: string, audience: AudienceScope, principal?: string, thread?: string): StoredEventLogEntry[] {
+    return plainRows<StoredEventLogEntry>(this.#database.prepare(
+      `SELECT e.* FROM event_log e WHERE e.source_shell_id=? AND e.audience_scope=?
+       AND (? IS NULL OR e.principal_id=?) AND json_extract(e.payload_json,'$.thread') IS ?
+       AND e.redacted_at_ts_ms IS NULL AND (
+         EXISTS (SELECT 1 FROM turn_decision_traces t WHERE t.turn_event_id=e.event_id) OR
+         json_extract(e.payload_json,'$.shell_run_status') IN ('cancelled','failed'))
+       ORDER BY e.event_seq DESC LIMIT 50`
+    ).all(shellId, audience, principal ?? null, principal ?? null, thread ?? null));
+  }
+
+  saveShellRunProcess(eventId: string, process: ShellRunProcess): void {
+    this.#database.prepare(
+      `INSERT OR REPLACE INTO shell_run_process(event_id, snapshot_json)
+       SELECT event_id, ? FROM event_log WHERE event_id = ? AND redacted_at_ts_ms IS NULL
+       AND json_extract(payload_json,'$.shell_process_redacted') IS NULL`
+    ).run(JSON.stringify(process), eventId);
+  }
+
+  getShellRunProcess(eventId: string): ShellRunProcess | undefined {
+    const row = this.#database.prepare("SELECT snapshot_json FROM shell_run_process WHERE event_id = ?").get(eventId);
+    return row ? JSON.parse(String(row.snapshot_json)) as ShellRunProcess : undefined;
   }
 
   markShellRunEnded(

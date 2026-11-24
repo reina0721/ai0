@@ -2,7 +2,10 @@
   "manifest_version": "1.1.0",
   "extension_id": "builtin.terminal",
   "display_name": "终端文字客户端",
+  "description": "面向 CLI / SSH 环境的轻量化 Protocol v0 零代码终端交互桥接。",
   "version": "1.0.0",
+  "author": "ai0-official",
+  "tags": ["shell", "cli", "terminal"],
   "carrier_kind": "zero_code_protocol_bridge",
   "dimension": "ext.shell",
   "permissions": {

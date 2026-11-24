@@ -102,15 +102,40 @@ export interface RuntimeConsolePage {
   iframe_src_url?: string;
   style_sheet_urls?: string[];
 }
+export const PluginConfigFieldOptionSchema = z.object({
+  value: z.string(),
+  label: z.string()
+});
+export type PluginConfigFieldOption = z.infer<typeof PluginConfigFieldOptionSchema>;
+
+export const PluginConfigFieldSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  type: z.enum(["string", "text", "int", "float", "bool", "secret", "select", "list"]),
+  hint: z.string().optional(),
+  default: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]).optional(),
+  required: z.boolean().optional(),
+  options: z.array(PluginConfigFieldOptionSchema).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  group: z.string().optional()
+});
+export type PluginConfigField = z.infer<typeof PluginConfigFieldSchema>;
+
 export const RuntimePluginDescriptorSchema = z.object({
   extension_id: z.string(),
   display_name: z.string(),
+  description: z.string().optional(),
   version: z.string(),
   author: z.string(),
+  tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
   dimension: ExtensionDimensionSchema,
   origin: PluginOriginSchema,
   enabled: z.boolean(),
+  permissions: ExtensionPermissionsSchema.optional(),
+  config_fields: z.array(PluginConfigFieldSchema).optional(),
+  config_schema: z.union([z.string(), z.record(z.unknown())]).optional(),
   module_urls: z.array(z.string()).optional(),
   missing_assets: z.array(z.string()).optional(),
   pages: z.array(ConsolePageSchema.omit({ entry_module: true, style_sheets: true }).extend({ entry_module_url: z.string().optional(), iframe_src_url: z.string().optional(), style_sheet_urls: z.array(z.string()).optional() })).optional(),
@@ -123,6 +148,7 @@ export type RuntimePluginDescriptor = z.infer<
 export const ConsoleContributionsSchema = z.object({
   pages: z.array(ConsolePageSchema).optional(),
   modules: z.array(z.string().min(1)).optional(),
+  config_fields: z.array(PluginConfigFieldSchema).optional(),
   config_schema: z
     .union([z.string(), z.record(z.unknown())])
     .optional(),
@@ -136,8 +162,11 @@ export const Ai0ExtensionManifestSchema = z.object({
   manifest_version: z.literal("1.1.0"),
   extension_id: z.string(),
   display_name: z.string(),
+  description: z.string().optional(),
   version: z.string(),
   author: z.string(),
+  homepage: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
   dimension: ExtensionDimensionSchema,
   entry: z.string().optional(),

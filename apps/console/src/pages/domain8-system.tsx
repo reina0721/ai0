@@ -34,32 +34,33 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
   const route = resolveConsoleRoute(props.pathname);
   const snap = props.snapshot ?? ctx?.snapshot;
   const studio = snap?.studioConfig;
-  const sys = studio?.systemSettings;
+  const sys = snap?.infrastructure?.systemSettings ?? studio?.systemSettings;
   const souls = snap?.availableSouls ?? [];
 
   const canWrite = Boolean(ctx?.ownerToken && ctx.mode === "live");
+  const canEditPreferences = Boolean(ctx?.canEditPreferences);
   const settings = useWorkspaceDraft({
     auth2faEnabled: sys?.auth2faEnabled ?? false, codeSandboxEnabled: sys?.codeSandboxEnabled ?? true, proxyUrl: sys?.proxyUrl ?? ""
   });
   const compliance = useWorkspaceDraft({
     sb243BreakMinutes: sys?.sb243BreakMinutes ?? 180, crisisHotlineRegion: sys?.crisisHotlineRegion ?? ""
   });
-  const settingsForm = useWorkspaceSave(route?.id === "system.settings-security" ? route.id : undefined,
-    settings.dirty, settings.discard, async () => { await ctx?.postStudio("config", { systemSettings: settings.value }); },
+  const settingsForm = useWorkspaceSave(route?.id === "system.security" ? route.id : undefined,
+    settings.dirty, settings.discard, async () => { await ctx?.patchAdmin("system/settings", settings.value as unknown as Record<string, unknown>, "live"); },
     "系统安全与代理设置已保存", settings.accept);
-  const complianceForm = useWorkspaceSave(route?.id === "system.safety-sb243" ? route.id : undefined,
+  const complianceForm = useWorkspaceSave(route?.id === "system.compliance" ? route.id : undefined,
     compliance.dirty, compliance.discard, async () => {
       if (compliance.value.sb243BreakMinutes < 30 || compliance.value.sb243BreakMinutes > 180) {
         throw new Error("提醒间隔应为 30 至 180 分钟。");
       }
-      await ctx?.postStudio("config", { systemSettings: compliance.value });
-    }, "合规存档配置已保存", compliance.accept);
+      await ctx?.patchAdmin("system/settings", compliance.value as unknown as Record<string, unknown>, "live");
+    }, "合规护栏配置已保存", compliance.accept);
   const [snapshotId, setSnapshotId] = useState("");
   const [rollbackMode, setRollbackMode] = useState<RollbackMode>("meta_reconciled");
   const [confirmRollback, setConfirmRollback] = useState(false);
   const [operating, setOperating] = useState(false);
   const snapshots = useAdminResource<{ snapshot_ids: string[] }>(
-    canWrite && route?.id === "system.instances-storage" ? "system/snapshots/rollback" : undefined
+    canWrite && route?.id === "system.settings" ? "system/snapshots/rollback" : undefined
   );
 
   // Export & multi-instance state
@@ -74,11 +75,11 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
   const [newSoulName, setNewSoulName] = useState("");
   const [newSoulRole, setNewSoulRole] = useState("digital_employee");
 
-  if (route?.id === "system.safety-sb243") {
+  if (route?.id === "system.compliance") {
     return (
       <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
         <WorkspacePage>
-          <WorkspaceHeader title="权限矩阵与合规护栏">
+          <WorkspaceHeader title="合规护栏 (SB 243)">
 
             <WorkspaceSaveButton form={complianceForm} />
           </WorkspaceHeader>
@@ -130,11 +131,11 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
     );
   }
 
-  if (route?.id === "system.settings-security") {
+  if (route?.id === "system.security") {
     return (
       <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
         <WorkspacePage data-system-settings-page="true">
-          <WorkspaceHeader title="安全与外观">
+          <WorkspaceHeader title="安全认证与外观">
 
             <WorkspaceSaveButton form={settingsForm} name="保存设置" />
 
@@ -170,11 +171,12 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
               </WorkspaceField>
             </WorkspaceSection>
             <WorkspaceSection>
-              <h2>控制台外观模式</h2>
-              <div className="ai0-workspace-actions">
+              <h2>控制台偏好</h2>
+              <div className="ai0-workspace-actions" role="group" aria-label="外观模式">
                 <RippleButton
                   variant={ctx?.appearance === "light" ? "primary" : "secondary"}
                   data-set-appearance="light"
+                  disabled={!canEditPreferences}
                   onClick={() => void ctx?.setAppearance("light")}
                 >
                   {renderConsoleIcon("sun", 14)}
@@ -183,16 +185,40 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
                 <RippleButton
                   variant={ctx?.appearance === "dark" ? "primary" : "secondary"}
                   data-set-appearance="dark"
+                  disabled={!canEditPreferences}
                   onClick={() => void ctx?.setAppearance("dark")}
                 >
                   {renderConsoleIcon("moon", 14)}
                   <span>深色模式</span>
                 </RippleButton>
               </div>
-              <CompactSelect ariaLabel="主题色" value={ctx?.soulTheme ?? "sakura-pink"} options={[
-                { value: "sakura-pink", label: "樱花粉" }, { value: "astral-blue", label: "星蓝" }, { value: "cyber-emerald", label: "翡翠绿" }
-              ]} onChange={(theme) => void ctx?.setSoulTheme(theme)} />
-              <small>正式实例中的外观与主题色偏好保存至存档。</small>
+              <WorkspaceField>
+                <span>主题色</span>
+                <CompactSelect ariaLabel="主题色" value={ctx?.soulTheme ?? "sakura-pink"} disabled={!canEditPreferences} options={[
+                  { value: "sakura-pink", label: "樱花粉" },
+                  { value: "astral-blue", label: "星蓝" },
+                  { value: "cyber-emerald", label: "翡翠绿" }
+                ]} onChange={(theme) => void ctx?.setSoulTheme(theme)} />
+              </WorkspaceField>
+              <WorkspaceField>
+                <span>导航栏布局</span>
+                <CompactSelect ariaLabel="导航栏布局" value={ctx?.navRailMode ?? "expanded"} disabled={!canEditPreferences} options={[
+                  { value: "mini", label: "折叠" },
+                  { value: "expanded", label: "展开" },
+                  { value: "dual", label: "加宽" }
+                ]} onChange={(mode) => void ctx?.setNavRailMode(mode)} />
+              </WorkspaceField>
+              <WorkspaceField>
+                <span>运行检视类型</span>
+                <CompactSelect ariaLabel="运行检视类型" value={ctx?.inspectorView ?? "trace"} disabled={!canEditPreferences} options={[
+                  { value: "trace", label: "运行追踪" },
+                  { value: "sandbox-diff", label: "沙盒 A/B 对照" }
+                ]} onChange={(view) => void ctx?.setInspectorView(view)} />
+              </WorkspaceField>
+              <small role="status">
+                {ctx?.mode === "sandbox" ? "切换至 LIVE 可更改控制台偏好。"
+                  : ctx?.preferencesSaving ? "正在保存控制台偏好…" : "偏好更改后自动保存，LIVE 和 SANDBOX 共用。"}
+              </small>
             </WorkspaceSection>
           </WorkspaceGrid>
         </WorkspacePage>
@@ -283,7 +309,7 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
   return (
     <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
       <WorkspacePage data-creator-publish-page="true">
-        <WorkspaceHeader title="导出与多实例">
+        <WorkspaceHeader title="灵魂实例与导出">
 
         </WorkspaceHeader>
 

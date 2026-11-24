@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from "@playwright/test";
+import type { Locator } from "@playwright/test";
+import { expect, test } from "./console-preferences.js";
 
 import { watchBrowser } from "./browser-guard.js";
 
@@ -12,7 +13,8 @@ async function expectDisclosure(button: Locator, region: Locator) {
   await expect(button).toBeFocused();
 }
 
-test("event payload and trace disclosures expose persisted records and track filters", async ({ page }) => {
+test("event payload and trace disclosures expose persisted records and track filters", async ({ page, consolePreferences }) => {
+  await consolePreferences.set({ appearance: "dark" });
   const browser = watchBrowser(page);
   const text = "浏览器折叠验收 " + crypto.randomUUID().slice(0, 8);
   const { ownerToken } = await (await page.request.get("/api/studio/bootstrap")).json();
@@ -23,7 +25,7 @@ test("event payload and trace disclosures expose persisted records and track fil
   await expect(perception).toBeOK();
   const { trace } = await perception.json() as { trace: { trace_id: string } };
 
-  await page.goto("/memory/events-media?appearance=dark");
+  await page.goto("/memory/events-media");
   const events = page.getByRole("table", { name: "事件记录" });
   await events.getByRole("button", { name: text, exact: true }).click();
   const payloadButton = page.getByRole("button", { name: "查看存档载荷" });
@@ -79,7 +81,8 @@ async function expectConfirmation(trigger: Locator, dialog: Locator) {
   await expect(trigger).toBeFocused();
 }
 
-test("archive and relationship confirmations open, cancel, and restore focus without writes", async ({ page }) => {
+test("archive and relationship confirmations open, cancel, and restore focus without writes", async ({ page, consolePreferences }) => {
+  await consolePreferences.set({ appearance: "dark" });
   const browser = watchBrowser(page);
   const writes: string[] = [];
   page.on("request", (request) => {
@@ -89,7 +92,7 @@ test("archive and relationship confirmations open, cancel, and restore focus wit
         (path.endsWith("/distill-apply") && request.postDataJSON().apply)) writes.push(path);
   });
 
-  await page.goto("/memory/relationship?appearance=dark");
+  await page.goto("/memory/relationship");
   await expectConfirmation(page.getByRole("button", { name: "解除未解张力" }), page.getByRole("dialog", { name: "解除未解张力" }));
 
   await page.goto("/soul/distiller");
@@ -135,9 +138,10 @@ test("sandbox report discloses assertions from an actual regression run", async 
   expect(browser.takeErrors()).toEqual([]);
 });
 
-test("compact rail tooltips remain keyboard accessible and the shell brand retains its density", async ({ page }) => {
+test("compact rail tooltips remain keyboard accessible and the shell brand retains its density", async ({ page, consolePreferences }) => {
+  await consolePreferences.set({ appearance: "dark", navRailMode: "mini" });
   const browser = watchBrowser(page);
-  await page.goto("/dashboard?rail=mini&appearance=dark");
+  await page.goto("/dashboard");
   const brand = page.getByRole("link", { name: "ai0", exact: true });
   await expect(brand).toHaveCSS("height", "32px");
   await expect(brand).toHaveCSS("font-size", "16px");

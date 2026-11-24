@@ -91,7 +91,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     publicPreview: { promptText: string; totalTokens: number };
   }>();
   const [pending, setPending] = useState(false);
-  const form = useWorkspaceSave(route?.id === "dashboard.blackboard" ? route.id : undefined,
+  const form = useWorkspaceSave(route?.id === "config.blackboard" ? route.id : undefined,
     draft.dirty, () => { draft.discard(); setPreview(undefined); },
     async () => { await ctx?.postStudio("config", { soulStudio: { maxBlackboardTokens: maxBudget, promptBricks: bricks } }); },
     "上下文黑板配置已保存", draft.accept);
@@ -105,7 +105,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     }
   };
 
-  if (route?.id === "dashboard.blackboard") {
+  if (route?.id === "config.blackboard") {
     const privatePreview = preview?.privatePreview ?? snap?.promptPreviewPrivate;
     const publicPreview = preview?.publicPreview ?? snap?.promptPreviewPublic;
     const usedTokens = privatePreview?.totalTokens ?? snap?.totalBlackboardTokens;
@@ -151,9 +151,9 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     };
 
     return (
-      <MainRoundedCardOutlet domainId="dashboard" activePath={props.pathname} onNavigate={props.onNavigate}>
+      <MainRoundedCardOutlet domainId="config" activePath={props.pathname} onNavigate={props.onNavigate}>
         <WorkspacePage data-prompt-bricks-page="true">
-          <WorkspaceHeader title="上下文黑板">
+          <WorkspaceHeader title="上下文黑板编排">
 
             <WorkspaceStatus data-tone={usedTokens !== undefined && usedTokens > maxBudget ? "warn" : "info"} id="brick-budget-badge">
               {usedTokens ?? "—"} / {maxBudget} Tokens
@@ -326,7 +326,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     );
   }
 
-  if (route?.id === "dashboard.conversations") {
+  if (route?.id === "overview.conversations") {
     const conversations = snap?.conversations ?? [];
     const handleSleepRun = async () => {
       if (!ctx || !canWrite || pending) return;
@@ -343,19 +343,19 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     };
 
     return (
-      <MainRoundedCardOutlet domainId="dashboard" activePath={props.pathname} onNavigate={props.onNavigate}>
+      <MainRoundedCardOutlet domainId="overview" activePath={props.pathname} onNavigate={props.onNavigate}>
         <WorkspacePage>
-          <WorkspaceHeader title="会话记录">
+          <WorkspaceHeader title="会话管理">
 
             <WorkspaceLink
-              href="/profiles/rules"
-              onClick={navClick("/profiles/rules")}
+              href="/config/routing"
+              onClick={navClick("/config/routing")}
 
               data-variant="secondary"
             >
               <span className="ai0-workspace-link-content">
                 {renderConsoleIcon("rules", 14)}
-                <span>受众策略</span>
+                <span>会话路由规则</span>
               </span>
             </WorkspaceLink>
             <RippleButton
@@ -425,12 +425,12 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                           <span className="ai0-workspace-link-content">打开 {page?.title}</span>
                         </WorkspaceLink> : null}
                         <WorkspaceLink
-                          href="/profiles/rules"
-                          onClick={navClick("/profiles/rules")}
+                          href="/config/routing"
+                          onClick={navClick("/config/routing")}
 
                           data-size="sm"
                         >
-                          <span className="ai0-workspace-link-content">规则</span>
+                          <span className="ai0-workspace-link-content">路由规则</span>
                         </WorkspaceLink>
                       </div>
                     </WorkspaceTableCell>
@@ -474,13 +474,13 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
 
   const shellPages = registeredPages(snap).filter(page => page.shell_id);
   const primaryPage = shellPages.length === 1 ? shellPages[0] : undefined;
-  const primaryStageHref = primaryPage?.path ?? "/shells/topology";
-  const primaryStageLabel = primaryPage ? "打开 " + primaryPage.title : "查看接入通道";
+  const primaryStageHref = primaryPage?.path ?? "/integrations/platforms";
+  const primaryStageLabel = primaryPage ? "进入 " + primaryPage.title : "管理消息平台";
 
   return (
-    <MainRoundedCardOutlet domainId="dashboard" activePath={props.pathname} onNavigate={props.onNavigate}>
+    <MainRoundedCardOutlet domainId="overview" activePath={props.pathname} onNavigate={props.onNavigate}>
       <WorkspacePage>
-        <WorkspaceHeader title="系统概览">
+        <WorkspaceHeader title="仪表盘">
           <RippleButton variant="ghost" data-open-onboarding="true" onClick={() => ctx?.setOnboardingOpen(true)}>
             {renderConsoleIcon("wizard", 14)}初始化向导
           </RippleButton>
@@ -523,11 +523,11 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
               <small>{policy ? `配置用量 ${(policy.usedTokensToday / 1000).toFixed(1)}k / ${(policy.dailyTokenBudget / 1000).toFixed(0)}k Tokens` : "等待预算状态"}</small>
             </div>
             <div className="ai0-workspace-metric">
-              <span className="ai0-workspace-metric__label">{renderConsoleIcon("shells", 14)}在线连接</span>
+              <span className="ai0-workspace-metric__label">{renderConsoleIcon("shells", 14)}平台与路由</span>
               <strong className="ai0-workspace-metric__value">
-                {snap?.activeConnections ?? "—"}
+                {snap?.infrastructure?.platforms.length ?? snap?.activeConnections ?? "—"}
               </strong>
-              <small>{(studio?.customRules ?? []).length} 条会话路由规则</small>
+              <small>{(snap?.soulProfiles?.routingRules ?? studio?.customRules ?? []).length} 条会话路由规则</small>
             </div>
             <div className="ai0-workspace-metric">
               <span className="ai0-workspace-metric__label">{renderConsoleIcon("memory", 14)}任务与长期记忆</span>
@@ -542,8 +542,8 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
             <WorkspaceRow>
               <h2>近期睡眠巩固与好奇心摘要</h2>
               <WorkspaceLink
-                href="/memory/retrieval-sleep"
-                onClick={navClick("/memory/retrieval-sleep")}
+                href="/capabilities/sleep"
+                onClick={navClick("/capabilities/sleep")}
                 className="ai0-workspace-link-quiet"
               >
                 查看全部
@@ -565,8 +565,8 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
             <WorkspaceRow>
               <h2>待审批提案与异步任务</h2>
               <WorkspaceLink
-                href="/runtime/coordinator-agency"
-                onClick={navClick("/runtime/coordinator-agency")}
+                href="/capabilities/extensions/agents"
+                onClick={navClick("/capabilities/extensions/agents")}
                 className="ai0-workspace-link-quiet"
               >
                 管理任务
@@ -593,8 +593,8 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                     <span>合入 {prop.targetFile}</span>
                   </RippleButton>
                   <WorkspaceLink
-                    href="/memory/retrieval-sleep"
-                    onClick={navClick("/memory/retrieval-sleep")}
+                    href="/capabilities/sleep"
+                    onClick={navClick("/capabilities/sleep")}
 
                     data-size="sm"
                   >
@@ -630,25 +630,25 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
 
         <WorkspaceSection>
           <WorkspaceRow>
-            <h2>常用配置入口</h2>
+            <h2>快速导航</h2>
 
           </WorkspaceRow>
           <WorkspaceGrid columns={4}>
-            <WorkspaceChoice href="/soul/distiller" onClick={navClick("/soul/distiller")}  >
-              <span className="ai0-workspace-choice-title">{renderConsoleIcon("persona", 15)}<span>角色卡片与关系契约</span></span>
-              <small>导入并清洗外部角色卡，配置核心人格与跨场景关系定位</small>
+            <WorkspaceChoice href="/integrations/providers" onClick={navClick("/integrations/providers")}  >
+              <span className="ai0-workspace-choice-title">{renderConsoleIcon("models", 15)}<span>服务提供商接入</span></span>
+              <small>统一接入 LLM、Embedding、Rerank、TTS/STT 上游算力池</small>
             </WorkspaceChoice>
-            <WorkspaceChoice href="/dashboard/blackboard" onClick={navClick("/dashboard/blackboard")}  >
-              <span className="ai0-workspace-choice-title">{renderConsoleIcon("blackboard", 15)}<span>上下文黑板编排</span></span>
-              <small>自定义 9 块提示词模板与配额，实时对比公私受众编译结果</small>
+            <WorkspaceChoice href="/integrations/platforms" onClick={navClick("/integrations/platforms")}  >
+              <span className="ai0-workspace-choice-title">{renderConsoleIcon("shells", 15)}<span>消息平台与躯壳</span></span>
+              <small>管理 WebChat、QQ、Telegram、Discord 与外部具身通道</small>
             </WorkspaceChoice>
-            <WorkspaceChoice href="/profiles/rules" onClick={navClick("/profiles/rules")}  >
-              <span className="ai0-workspace-choice-title">{renderConsoleIcon("rules", 15)}<span>场景配置与会话规则</span></span>
-              <small>按会话 UMO 绑定不同模型、知识库、唤醒策略与隐私面具</small>
+            <WorkspaceChoice href="/config/profiles" onClick={navClick("/config/profiles")}  >
+              <span className="ai0-workspace-choice-title">{renderConsoleIcon("rules", 15)}<span>配置文件与路由</span></span>
+              <small>按场景组装模型、防抖门控、隐私面具与 UMO 路由规则</small>
             </WorkspaceChoice>
-            <WorkspaceChoice href="/system/instances-storage" onClick={navClick("/system/instances-storage")}  >
-              <span className="ai0-workspace-choice-title">{renderConsoleIcon("export", 15)}<span>资产导出与多实例</span></span>
-              <small>剥离隐私记忆与密钥，生成 SHA-256 校验的可分发角色模板</small>
+            <WorkspaceChoice href="/capabilities/knowledge" onClick={navClick("/capabilities/knowledge")}  >
+              <span className="ai0-workspace-choice-title">{renderConsoleIcon("knowledge", 15)}<span>知识库与通用能力</span></span>
+              <small>管理 RAG 知识库、语音多模态、插件、MCP 与 SKILL.md 技能</small>
             </WorkspaceChoice>
           </WorkspaceGrid>
         </WorkspaceSection>

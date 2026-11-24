@@ -8,5 +8,6 @@ export * from "./blackboard/blackboard-compiler.js";
 export * from "./workers/index.js";
 export * from "./extension-bus/polymorphic-extension-host.js";
 export * from "./router/brain-region-router.js";
+export * from "./router/umo-profile-resolver.js";
 export * from "./replay-eval/scenario-runner.js";
 export * from "./router/llm-provider-client.js";

@@ -18,6 +18,10 @@ export interface CompactInputProps {
   step?: number;
   name?: string;
   placeholder?: string;
+  required?: boolean;
+  autoFocus?: boolean;
+  maxLength?: number;
+  ariaDescribedBy?: string;
   unit?: string;
   error?: string;
   disabled?: boolean;
@@ -48,6 +52,8 @@ export function CompactInput(props: CompactInputProps): ReactElement {
     <div data-invalid={Boolean(props.error)} className={wrapperClass + " " + (props.className ?? "")} style={props.style}>
       <InputBase
         fullWidth
+        autoFocus={props.autoFocus}
+        required={props.required}
         multiline={props.multiline}
         rows={props.multiline ? (props.rows ?? 3) : undefined}
         id={props.id}
@@ -65,7 +71,8 @@ export function CompactInput(props: CompactInputProps): ReactElement {
           ...dataAttributes(props),
           className: fieldClass + " " + (props.inputClassName ?? ""),
           "aria-label": props.ariaLabel,
-          "aria-describedby": errorId,
+          "aria-describedby": [props.ariaDescribedBy, errorId].filter(Boolean).join(" ") || undefined,
+          maxLength: props.maxLength,
           "aria-invalid": Boolean(props.error),
           min: props.min,
           max: props.max,

@@ -51,7 +51,7 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
   const ownerToken = ctx?.ownerToken ?? "";
   const mode: Ai0StageMode = ctx?.mode ?? (snapshot?.targetInstance === "sandbox:console" ? "sandbox" : "live");
   const targetInstance = mode === "sandbox" ? "sandbox:console" : "live";
-  const tokenRequestKey = JSON.stringify([pluginId, page.path, ownerToken, mode, generation]);
+  const tokenRequestKey = JSON.stringify([pluginId, page.path, ownerToken, mode, generation, snapshot?.soulId]);
 
   // Mint a Channel A ScopedCapabilityToken for this mounted stage (Zero-Privilege isolation).
   useEffect(() => {

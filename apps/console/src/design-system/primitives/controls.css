@@ -119,14 +119,14 @@
 .ai0-select .MuiSelect-icon.Mui-disabled,
 .ai0-select .ai0-select__field.Mui-disabled { color: var(--ai0-interaction-disabled); }
 .ai0-select__placeholder { color: var(--ai0-on-surface-muted); }
-.ai0-select__menu.MuiPaper-root {
+.ai0-select__menu.MuiPaper-root, .ai0-compact-menu.MuiPaper-root {
   max-width: calc(100vw - 24px);
   max-height: min(360px, 54vh);
   border-radius: var(--ai0-control-radius);
   overscroll-behavior: contain;
 }
-.ai0-select__options.MuiList-root { padding: 4px; }
-.ai0-select__options .MuiMenuItem-root {
+.ai0-select__options.MuiList-root, .ai0-compact-menu__items.MuiList-root { padding: 4px; }
+.ai0-select__options .MuiMenuItem-root, .ai0-compact-menu__items .MuiMenuItem-root {
   gap: 12px;
   padding: 6px 9px;
   min-height: var(--ai0-ctrl-height-md);

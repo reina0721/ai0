@@ -256,7 +256,7 @@ function Simulator() {
 
   return (
     <WorkspacePage>
-      <WorkspaceHeader title="躯壳协议模拟器">
+      <WorkspaceHeader title="协议模拟器">
         {sandbox ? <WorkspaceStatus data-tone="sandbox">sandbox:console</WorkspaceStatus>
           : <RippleButton onClick={() => ctx?.setMode("sandbox")}>切换到沙盒</RippleButton>}
       </WorkspaceHeader>

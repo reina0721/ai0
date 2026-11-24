@@ -30,6 +30,7 @@ try {
     const requestId = randomUUID();
     const response = await request("runs", { requestId, mode, shellId, text });
     let offset = 0;
+    let sources = [];
     let pending = "";
     for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
       pending += chunk;
@@ -41,6 +42,7 @@ try {
         if (!data || data === "[DONE]") continue;
         const item = JSON.parse(data);
         if (item.type === "error") throw new Error(item.errorText);
+        if (item.type === "data-turn" && item.data.sources) sources = item.data.sources;
         if (item.type === "text-delta") {
           await new Promise((resolve, reject) => process.stdout.write(item.delta, err => err ? reject(err) : resolve()));
           offset += Array.from(item.delta).length;
@@ -48,6 +50,7 @@ try {
       }
     }
     await request("runs/" + requestId + "/receipt", { mode, spokenCharOffset: offset });
+    for(const s of sources) process.stdout.write("\n[K"+s.marker+"] "+s.title+" · "+s.location);
     process.stdout.write("\n");
   }
 } finally {

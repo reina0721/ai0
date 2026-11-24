@@ -1,14 +1,16 @@
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode
 } from "react";
-import { useBeforeUnload, useBlocker, useNavigate, useSearchParams, type BlockerFunction } from "react-router";
+import { useBeforeUnload, useBlocker, useLocation, useNavigate, type BlockerFunction } from "react-router";
 
 import {
-  fetchBootstrap, fetchSnapshot, getJson, postJson, subscribeTelemetryStream, type ConsoleMode
+  BootstrapUnavailableError, deleteJson, fetchBootstrap, fetchSnapshot, getJson, patchJson, postJson, putJson,
+  subscribeTelemetryStream, type ConsoleMode
 } from "../api/client.js";
 import type { ContextInspectorMode, NavRailMode } from "../design-system/shell/index.js";
 import type { ConsoleSoulTheme } from "../design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
+import { useConsolePreferences, type ConsolePreferences } from "./console-preferences.js";
 
 export type ConsoleAppearance = "light" | "dark";
 type TargetInstance = "live" | "sandbox:console";
@@ -29,6 +31,9 @@ export interface ConsoleContextValue {
   soulTheme: ConsoleSoulTheme;
   appearance: ConsoleAppearance;
   navRailMode: NavRailMode;
+  canEditPreferences: boolean;
+  preferencesSaving: boolean;
+  inspectorView: ConsolePreferences["inspectorView"];
   inspectorMode: ContextInspectorMode;
   approvalsOpen: boolean;
   onboardingOpen: boolean;
@@ -44,8 +49,9 @@ export interface ConsoleContextValue {
   setSoulTheme: (theme: ConsoleSoulTheme) => Promise<void>;
   setAppearance: (appearance: ConsoleAppearance) => Promise<void>;
   toggleAppearance: () => Promise<void>;
-  setNavRailMode: (mode: NavRailMode) => void;
-  setInspectorMode: (mode: ContextInspectorMode) => void;
+  setNavRailMode: (mode: NavRailMode) => Promise<void>;
+  setInspectorView: (view: ConsolePreferences["inspectorView"]) => Promise<void>;
+  closeInspector: () => void;
   toggleInspector: () => void;
   setApprovalsOpen: (open: boolean) => void;
   setOnboardingOpen: (open: boolean) => void;
@@ -58,13 +64,14 @@ export interface ConsoleContextValue {
   postStudio: <T = Record<string, unknown>>(path: string, payload?: Record<string, unknown>) => Promise<T>;
   getAdmin: <T = Record<string, unknown>>(path: string, signal?: AbortSignal, targetOverride?: TargetInstance) => Promise<T>;
   postAdmin: <T = Record<string, unknown>>(path: string, payload?: Record<string, unknown>, targetOverride?: TargetInstance) => Promise<T>;
+  patchAdmin: <T = Record<string, unknown>>(path: string, payload?: Record<string, unknown>, targetOverride?: TargetInstance) => Promise<T>;
+  putAdmin: <T = Record<string, unknown>>(path: string, payload?: Record<string, unknown>, targetOverride?: TargetInstance) => Promise<T>;
+  deleteAdmin: <T = Record<string, unknown>>(path: string, targetOverride?: TargetInstance) => Promise<T>;
   postProtocol: <T = Record<string, unknown>>(path: string, payload?: Record<string, unknown>) => Promise<T>;
 }
 
 const ConsoleContext = createContext<ConsoleContextValue | null>(null);
-const THEMES = new Set(["sakura-pink", "astral-blue", "cyber-emerald"]);
-const RAILS = new Set(["mini", "expanded", "dual"]);
-const INSPECTORS = new Set(["mini", "trace", "sandbox-diff"]);
+const RETIRED_PREFERENCE_PARAMS = ["theme", "soulTheme", "appearance", "rail", "navRailMode", "inspector", "inspectorMode"];
 const LIVE_STUDIO_WRITES = new Set(["config", "plugin-enabled", "co-work-task", "growth-proposal", "sleep-run", "rag-ingest", "instances", "onboarding"]);
 
 export interface ConsoleProviderProps {
@@ -90,13 +97,10 @@ function modeFromSearch(search: URLSearchParams, fallback: ConsoleMode = "live")
   return mode === "sandbox" || mode === "live" ? mode : fallback;
 }
 
-function readAppearance(): ConsoleAppearance | undefined {
-  try {
-    const value = globalThis.localStorage?.getItem("ai0_appearance");
-    return value === "light" || value === "dark" ? value : undefined;
-  } catch {
-    return undefined;
-  }
+function routeSearchParams(search: string): URLSearchParams {
+  const params = new URLSearchParams(search);
+  for (const key of RETIRED_PREFERENCE_PARAMS) params.delete(key);
+  return params;
 }
 
 function adminUrl(path: string, target: TargetInstance): string {
@@ -107,7 +111,8 @@ function adminUrl(path: string, target: TargetInstance): string {
 }
 
 export function ConsoleProvider(props: ConsoleProviderProps) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { pathname, search, hash, state: locationState } = useLocation();
+  const searchParams = useMemo(() => routeSearchParams(search), [search]);
   const navigate = useNavigate();
   const mode = modeFromSearch(searchParams, props.initialMode);
   const targetInstance = mode === "sandbox" ? "sandbox:console" : "live";
@@ -115,8 +120,10 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
     [mode]: { snapshot: props.initialSnapshot, ready: Boolean(props.initialSnapshot) }
   }));
   const [ownerToken, setOwnerToken] = useState(props.initialOwnerToken ?? "");
-  const [storedAppearance, setStoredAppearance] = useState(readAppearance);
   const [bootVersion, setBootVersion] = useState(0);
+  const [inspectorOpen, setInspectorOpen] = useState(() =>
+    Boolean(props.initialInspectorMode && props.initialInspectorMode !== "mini")
+  );
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -128,21 +135,6 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
   const snapshot = current?.snapshot;
   const loading = !props.disableAutoFetch && !current?.ready && !current?.error;
   const error = current?.error ?? null;
-
-  const requestedTheme = searchParams.get("soulTheme") ?? searchParams.get("theme");
-  const theme = requestedTheme === "cerasus-pink" ? "sakura-pink" : requestedTheme;
-  const soulTheme = theme && THEMES.has(theme) ? theme as ConsoleSoulTheme :
-    props.initialTheme ?? snapshot?.studioConfig?.systemSettings.soulTheme ??
-    cache.live?.snapshot?.studioConfig?.systemSettings.soulTheme ?? "sakura-pink";
-  const requestedAppearance = searchParams.get("appearance");
-  const appearance = requestedAppearance === "light" || requestedAppearance === "dark" ? requestedAppearance :
-    props.initialAppearance ?? storedAppearance ?? snapshot?.studioConfig?.systemSettings.appearance ?? "light";
-  const requestedRail = searchParams.get("navRailMode") ?? searchParams.get("rail");
-  const navRailMode = requestedRail && RAILS.has(requestedRail) ? requestedRail as NavRailMode :
-    props.initialNavRailMode ?? "expanded";
-  const requestedInspector = searchParams.get("inspectorMode") ?? searchParams.get("inspector");
-  const inspectorMode = requestedInspector && INSPECTORS.has(requestedInspector) ? requestedInspector as ContextInspectorMode :
-    props.initialInspectorMode ?? "mini";
 
   const registerDirtyEditor = useCallback((id: string, editor: DirtyEditor) => {
     editors.current.set(id, editor);
@@ -169,6 +161,23 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
     toastTimer.current = setTimeout(() => setToastMessage(null), 2800);
   }, []);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
+  const canEditPreferences = Boolean(mode === "live" && ownerToken && current?.ready);
+  const { preferences, saving: preferencesSaving, beginRead, save: savePreferences } = useConsolePreferences(
+    props.initialSnapshot, ownerToken, canEditPreferences, showToast
+  );
+  const soulTheme = props.initialTheme ?? preferences.soulTheme;
+  const appearance = props.initialAppearance ?? preferences.appearance;
+  const navRailMode = props.initialNavRailMode ?? preferences.navRailMode;
+  const inspectorView = props.initialInspectorMode && props.initialInspectorMode !== "mini"
+    ? props.initialInspectorMode : preferences.inspectorView;
+  const inspectorMode = inspectorOpen ? inspectorView : "mini";
+
+  useEffect(() => {
+    const currentParams = new URLSearchParams(search);
+    if (!RETIRED_PREFERENCE_PARAMS.some((key) => currentParams.has(key))) return;
+    void navigate({ pathname, search: searchParams.toString(), hash }, { replace: true, state: locationState });
+  }, [hash, locationState, navigate, pathname, search, searchParams]);
 
   const dirtyNavigation = useMemo<ConsoleContextValue["dirtyNavigation"]>(() => {
     if (blocker.state !== "blocked") return null;
@@ -199,24 +208,41 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
   useEffect(() => {
     if (props.disableAutoFetch) return;
     const controller = new AbortController();
-    void fetchBootstrap(mode, controller.signal).then((result) => {
-      if (controller.signal.aborted) return;
-      setOwnerToken(result.ownerToken);
-      setCache((prev) => ({ ...prev, [mode]: { snapshot: result.snapshot, ready: true, error: null } }));
-    }).catch((failure: unknown) => {
-      if (controller.signal.aborted) return;
-      const message = failure instanceof Error ? failure.message : String(failure);
-      setCache((prev) => ({ ...prev, [mode]: { ...prev[mode], error: message } }));
-    });
-    return () => controller.abort();
-  }, [mode, bootVersion, props.disableAutoFetch]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = 1500;
+    async function connect() {
+      const acceptPreferences = beginRead();
+      try {
+        const result = await fetchBootstrap(mode, controller.signal);
+        if (controller.signal.aborted) return;
+        acceptPreferences(result.snapshot);
+        setOwnerToken(result.ownerToken);
+        setCache(prev => ({ ...prev, [mode]: { snapshot: result.snapshot, ready: true, error: null } }));
+      } catch (failure) {
+        if (controller.signal.aborted) return;
+        const message = failure instanceof Error ? failure.message : String(failure);
+        setCache(prev => ({ ...prev, [mode]: { ...prev[mode], error: message } }));
+        if (failure instanceof BootstrapUnavailableError || failure instanceof TypeError) {
+          timer = setTimeout(() => void connect(), delay);
+          delay = Math.min(delay * 2, 15000);
+        }
+      }
+    }
+    void connect();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [beginRead, mode, bootVersion, props.disableAutoFetch]);
 
   const refreshSnapshot = useCallback(async (overrideMode?: ConsoleMode) => {
     const target = overrideMode ?? mode;
     const sequence = ++refreshSequence.current[target];
+    const acceptPreferences = beginRead();
     try {
       const next = await fetchSnapshot(target);
       if (sequence === refreshSequence.current[target]) {
+        acceptPreferences(next);
         setCache((prev) => ({ ...prev, [target]: {
           ...prev[target], snapshot: next, error: prev[target]?.ready ? null : prev[target]?.error
         } }));
@@ -229,7 +255,7 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
       }
       return undefined;
     }
-  }, [mode]);
+  }, [beginRead, mode]);
 
   useEffect(() => {
     if (props.disableAutoFetch || !current?.ready) return;
@@ -261,21 +287,14 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
     return () => document.removeEventListener("keydown", handleShortcut);
   }, []);
 
-  const syncQueryParam = useCallback((key: string, value: string, alias?: string, replace = true) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (alias) next.delete(alias);
-      next.set(key, value);
-      return next;
-    }, { replace });
-  }, [setSearchParams]);
-
   const setMode = useCallback((next: ConsoleMode) => {
-    if (mode !== next) syncQueryParam("mode", next, undefined, false);
-  }, [mode, syncQueryParam]);
-  const setNavRailMode = useCallback((next: NavRailMode) => syncQueryParam("rail", next, "navRailMode"), [syncQueryParam]);
-  const setInspectorMode = useCallback((next: ContextInspectorMode) => syncQueryParam("inspector", next, "inspectorMode"), [syncQueryParam]);
-  const toggleInspector = useCallback(() => setInspectorMode(inspectorMode === "mini" ? "trace" : "mini"), [inspectorMode, setInspectorMode]);
+    if (mode === next) return;
+    const params = new URLSearchParams(searchParams);
+    params.set("mode", next);
+    void navigate({ pathname, search: params.toString(), hash });
+  }, [hash, mode, navigate, pathname, searchParams]);
+  const closeInspector = useCallback(() => setInspectorOpen(false), []);
+  const toggleInspector = useCallback(() => setInspectorOpen((open) => !open), []);
 
   const postStudio = useCallback(async <T = Record<string, unknown>>(
     path: string, payload: Record<string, unknown> = {}
@@ -290,42 +309,38 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
     getJson<T>(adminUrl(path, target ?? targetInstance), ownerToken, signal), [ownerToken, targetInstance]);
   const postAdmin = useCallback(<T,>(path: string, payload?: Record<string, unknown>, target?: TargetInstance) =>
     postJson<T>(adminUrl(path, target ?? targetInstance), payload, ownerToken), [ownerToken, targetInstance]);
+  const patchAdmin = useCallback(<T,>(path: string, payload?: Record<string, unknown>, target?: TargetInstance) =>
+    patchJson<T>(adminUrl(path, target ?? targetInstance), payload, ownerToken), [ownerToken, targetInstance]);
+  const putAdmin = useCallback(<T,>(path: string, payload?: Record<string, unknown>, target?: TargetInstance) =>
+    putJson<T>(adminUrl(path, target ?? targetInstance), payload, ownerToken), [ownerToken, targetInstance]);
+  const deleteAdmin = useCallback(<T,>(path: string, target?: TargetInstance) =>
+    deleteJson<T>(adminUrl(path, target ?? targetInstance), ownerToken), [ownerToken, targetInstance]);
   const postProtocol = useCallback(<T,>(path: string, payload?: Record<string, unknown>) =>
     postJson<T>(path.startsWith("/protocol/") ? path : "/protocol/" + path.replace(/^\//, ""), payload, ownerToken), [ownerToken]);
 
-  const setSoulTheme = useCallback(async (next: ConsoleSoulTheme) => {
-    syncQueryParam("theme", next, "soulTheme");
-    if (mode === "live" && ownerToken) {
-      try { await postStudio("config", { systemSettings: { soulTheme: next } }); }
-      catch { showToast("主题已在本页切换，存档保存失败。"); }
-    }
-  }, [mode, ownerToken, postStudio, showToast, syncQueryParam]);
-  const setAppearance = useCallback(async (next: ConsoleAppearance) => {
-    setStoredAppearance(next);
-    syncQueryParam("appearance", next);
-    try { globalThis.localStorage?.setItem("ai0_appearance", next); } catch { /* storage unavailable */ }
-    if (mode === "live" && ownerToken) {
-      try { await postStudio("config", { systemSettings: { appearance: next } }); }
-      catch { showToast("外观已在本页切换，存档保存失败。"); }
-    }
-  }, [mode, ownerToken, postStudio, showToast, syncQueryParam]);
+  const setSoulTheme = useCallback((next: ConsoleSoulTheme) => savePreferences({ soulTheme: next }), [savePreferences]);
+  const setAppearance = useCallback((next: ConsoleAppearance) => savePreferences({ appearance: next }), [savePreferences]);
+  const setNavRailMode = useCallback((next: NavRailMode) => savePreferences({ navRailMode: next }), [savePreferences]);
+  const setInspectorView = useCallback((next: ConsolePreferences["inspectorView"]) =>
+    savePreferences({ inspectorView: next }), [savePreferences]);
   const toggleAppearance = useCallback(() => setAppearance(appearance === "dark" ? "light" : "dark"), [appearance, setAppearance]);
 
   const getConsoleHref = useCallback((path: string) => {
     const target = new URL(path, "http://console.local");
     const params = new URLSearchParams(searchParams);
-    target.searchParams.forEach((value, key) => params.set(key, value));
+    routeSearchParams(target.search).forEach((value, key) => params.set(key, value));
     const query = params.toString();
     return target.pathname + (query ? "?" + query : "") + target.hash;
   }, [searchParams]);
   const navigateConsole = useCallback((path: string) => void navigate(getConsoleHref(path)), [getConsoleHref, navigate]);
 
   const value: ConsoleContextValue = {
-    snapshot, loading, error, ownerToken, mode, targetInstance, soulTheme, appearance, navRailMode, inspectorMode,
+    snapshot, loading, error, ownerToken, mode, targetInstance, soulTheme, appearance, navRailMode, canEditPreferences,
+    preferencesSaving, inspectorView, inspectorMode,
     approvalsOpen, onboardingOpen, paletteOpen, toastMessage, dirtyNavigation, registerDirtyEditor, setMode,
-    setSoulTheme, setAppearance, toggleAppearance, setNavRailMode, setInspectorMode, toggleInspector, setApprovalsOpen,
+    setSoulTheme, setAppearance, toggleAppearance, setNavRailMode, setInspectorView, closeInspector, toggleInspector, setApprovalsOpen,
     setOnboardingOpen, setPaletteOpen, showToast, getConsoleHref, navigateConsole, retryBootstrap, refreshSnapshot,
-    postStudio, getAdmin, postAdmin, postProtocol
+    postStudio, getAdmin, postAdmin, patchAdmin, putAdmin, deleteAdmin, postProtocol
   };
 
   return <ConsoleContext.Provider value={value}>{props.children}</ConsoleContext.Provider>;

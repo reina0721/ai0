@@ -2,6 +2,8 @@ import {
   ExpressionEnvelopeSchema,
   VerifiableTurnTraceSchema,
   type AudienceScope,
+  type ShellTokenUsage,
+  type KnowledgeSource, type KnowledgeCitation,
   type CapabilityRisk,
   type ExpressionEnvelope,
   type PrincipalTrust,
@@ -99,6 +101,7 @@ export class ThreeDimensionalPolicyEngine {
 }
 
 export interface W1TurnInput {
+  knowledgeRecall?: (signal?: AbortSignal) => Promise<KnowledgeSource[]>;
   event_id: string;
   principal: PrincipalTrust;
   venue_type: VenueType;
@@ -114,18 +117,25 @@ export interface W1TurnInput {
     bannedCliches?: readonly string[];
     matchedLoreEntries?: readonly { title: string; content: string }[];
     compiledBlackboardOverride?: string;
+    publicMask?: boolean;
+    workingTurnText?: string;
+    workingTurnHistory?: Iterable<string>;
+    allowUnsaidRemainder?: boolean;
     dynamicLlmConfig?: LlmProviderConfig;
     maxTotalTokens?: number;
   };
 }
 
-import { BlackboardCompiler } from "../blackboard/blackboard-compiler.js";
+import { ADDITIONAL_BLACKBOARD_SLOT_TOKENS, BlackboardCompiler, estimateBlackboardTokens } from "../blackboard/blackboard-compiler.js";
 import type { CompiledBlackboard } from "../blackboard/blackboard-compiler.js";
 import { PolymorphicExtensionHost } from "../extension-bus/polymorphic-extension-host.js";
 import { BrainRegionRouter } from "../router/brain-region-router.js";
 import type { RegionRoute } from "../router/brain-region-router.js";
 import {
   UniversalLlmProviderClient,
+  estimateDialogueInputTokens,
+  planDialogueWindow,
+  type LlmDialogueSynthesisInput,
   type LlmDialogueSynthesisOutput,
   type LlmProviderConfig
 } from "../router/llm-provider-client.js";
@@ -140,6 +150,10 @@ export interface W1FastDialogueWorkerOptions {
 }
 
 export interface W1AsyncTurnResult {
+  usage?: ShellTokenUsage;
+  usedMemoryIds?: string[];
+  usedKnowledge?: boolean;
+  knowledgeSources?: KnowledgeCitation[];
   expression: ExpressionEnvelope;
   trace: VerifiableTurnTrace;
   compiledBlackboard: CompiledBlackboard;
@@ -149,8 +163,24 @@ export interface W1AsyncTurnResult {
 
 export interface W1AsyncTurnOptions {
   signal?: AbortSignal;
+  onReasoning?: (delta: string | null) => void;
   onStage?: (stage: "gate" | "recall" | "blackboard" | "generating") => void;
   deferDeliveryReceipt?: boolean;
+}
+
+const W1_SAFETY_INVARIANTS = "Tier 0 SB 243: Honest AI companion; zero exit-guilt; strict audience privacy boundary.";
+
+function fitRecentHistory(newestFirst: Iterable<string>, tokenBudget: number): string {
+  const selected: string[] = [];
+  let remaining = tokenBudget;
+  for (const turn of newestFirst) {
+    if (remaining <= 0) break;
+    const tokens = estimateBlackboardTokens(`${turn}\n`);
+    if (tokens > remaining) break;
+    selected.push(turn);
+    remaining -= tokens;
+  }
+  return selected.reverse().join("\n");
 }
 
 export class W1FastDialogueWorker {
@@ -293,6 +323,31 @@ export class W1FastDialogueWorker {
     );
     const crisis = evaluateCrisisGuard(input.summary_text, this.clock);
     onStage?.("gate");
+    const live = input.liveStudioContext;
+    const ownerPrivate = input.audience_scope === "only_owner" && input.principal === "owner_verified";
+    const publicMask = Boolean(live?.publicMask || !ownerPrivate);
+    const dialogueBase: LlmDialogueSynthesisInput = {
+      userText: input.summary_text,
+      compiledBlackboardText: `[slot.tier0_safety_invariants]\n${W1_SAFETY_INVARIANTS}`,
+      knowledgeEvidence: [],
+      personaName: live?.personaName || this.personaName,
+      corePersonalityPrompt: live?.corePersonalityPrompt,
+      roleLabel: live?.roleLabel,
+      catchphrases: live?.catchphrases,
+      bannedCliches: live?.bannedCliches,
+      dynamicLlmConfig: live?.dynamicLlmConfig,
+      venueType: input.venue_type,
+      audienceScope: input.audience_scope,
+      socialMaskActive: publicMask,
+      moodValence: publicMask ? affect.mood_baseline_val + 0.3 * (affect.instant_valence - affect.mood_baseline_val) : affect.instant_valence,
+      metabolicEnergy: affect.metabolic_energy,
+      drowsyDowngraded: route.drowsy_downgraded,
+      recalledMemorySnippets: [],
+      routedModelId: live?.dynamicLlmConfig?.model || route.selected_model_id
+    };
+    const profileBudget = live?.maxTotalTokens ?? 2200;
+    const windowPlan = crisis.status !== "INTERCEPTED_CRISIS" ? planDialogueWindow(live?.dynamicLlmConfig, dialogueBase, profileBudget) : undefined;
+    const mandatoryTokens = windowPlan ? estimateDialogueInputTokens(dialogueBase) : 0;
     const { recalled, sqlFilter } =
       crisis.status === "INTERCEPTED_CRISIS"
         ? { recalled: [] as readonly RecalledMemoryItem[], sqlFilter: "SHORT_CIRCUITED_BY_L0_SB243" }
@@ -300,8 +355,7 @@ export class W1FastDialogueWorker {
     if (crisis.status !== "INTERCEPTED_CRISIS") onStage?.("recall");
 
     const organContributions: string[] = [];
-    const ownerPrivate = input.audience_scope === "only_owner" && input.principal === "owner_verified";
-    if (this.extensionHost && ownerPrivate) {
+    if (this.extensionHost && ownerPrivate && !input.liveStudioContext?.publicMask) {
       for (const ext of this.extensionHost.listExtensions()) {
         if (ext.buses.includes("ext.cognitive_organ")) {
           const item = await this.extensionHost.contributeOrgan(ext.id, preSnapshot, 120);
@@ -311,19 +365,66 @@ export class W1FastDialogueWorker {
       }
     }
 
-    const live = input.liveStudioContext;
+    const projectedMemories = live?.publicMask && input.audience_scope === "only_owner"
+      ? recalled.filter(memory => memory.visibility_scope === "public_all") : recalled;
+    const maxTokens = windowPlan ? Math.min(windowPlan.maxInputTokens - mandatoryTokens,
+      windowPlan.useModelWindow ? Number.POSITIVE_INFINITY : profileBudget) : profileBudget;
+    const candidates = crisis.status !== "INTERCEPTED_CRISIS" ? await input.knowledgeRecall?.(signal) ?? [] : [];
+    signal?.throwIfAborted();
+    // Reserve a bounded part of the same turn budget for external evidence, sent as data.
+    let remaining = Math.floor(maxTokens * 2.5 / 3);
+    const evidence: KnowledgeCitation[] = [];
+    const wireEvidence: NonNullable<LlmDialogueSynthesisInput["knowledgeEvidence"]>[number][] = [];
+    const referenceTokenLimit = mandatoryTokens + Math.floor(maxTokens / 3);
+    for (const source of candidates) {
+      const excerpt = source.excerpt.slice(0, Math.min(800, remaining - 100));
+      if (remaining <= 130 || !excerpt) break;
+      const entry = { marker: evidence.length + 1, excerpt, taint_level: source.taint_level };
+      if (windowPlan && estimateDialogueInputTokens({ ...dialogueBase, knowledgeEvidence: [...wireEvidence, entry] }) > referenceTokenLimit) break;
+      wireEvidence.push(entry);
+      evidence.push({ ...source, ...entry });
+      remaining -= excerpt.length + 100;
+    }
+    let matchedLoreEntries = live?.matchedLoreEntries;
+    let unsaidRemainder = ownerPrivate && live?.allowUnsaidRemainder !== false
+      ? preSnapshot.D1_WORKING_TURN.unsaid_remainder ?? undefined : undefined;
+    let evidenceTokens = Math.ceil(evidence.reduce((tokens, item) => tokens + item.excerpt.length + 100, 0) / 2.5);
+    if (windowPlan) {
+      const withEvidence = { ...dialogueBase, knowledgeEvidence: wireEvidence };
+      const fittingLore: NonNullable<LlmDialogueSynthesisInput["matchedLoreEntries"]>[number][] = [];
+      for (const entry of matchedLoreEntries ?? []) {
+        if (estimateDialogueInputTokens({ ...withEvidence, matchedLoreEntries: [...fittingLore, entry] }) > referenceTokenLimit) break;
+        fittingLore.push(entry);
+      }
+      matchedLoreEntries = fittingLore;
+      const withLore = { ...withEvidence, matchedLoreEntries };
+      if (estimateDialogueInputTokens({ ...withLore, unsaidRemainder }) > referenceTokenLimit) unsaidRemainder = undefined;
+      evidenceTokens = estimateDialogueInputTokens({ ...withLore, unsaidRemainder }) - mandatoryTokens;
+    }
+    const safetyTokens = estimateBlackboardTokens(W1_SAFETY_INVARIANTS);
+    const workingContextTokens = Math.max(0, maxTokens - evidenceTokens - ADDITIONAL_BLACKBOARD_SLOT_TOKENS);
+    const workingHistory = windowPlan && live?.workingTurnHistory
+      ? fitRecentHistory(live.workingTurnHistory, workingContextTokens) : live?.workingTurnText;
     const compiledBlackboard = await this.blackboardCompiler.compile(
       preSnapshot,
       {
-        max_total_tokens: live?.maxTotalTokens ?? 2_200,
-        tier0_safety_invariants:
-          "Tier 0 SB 243: Honest AI companion; zero exit-guilt; strict audience privacy boundary.",
+        max_total_tokens: windowPlan ? safetyTokens + workingContextTokens : Math.max(1, maxTokens - evidenceTokens),
+        narrative_self_text: live?.compiledBlackboardOverride,
+        slot_content: workingHistory !== undefined ? { "slot.tier1_working_turn": workingHistory } : undefined,
+        slot_token_budgets: {
+          "slot.tier2_narrative_self": Math.floor(maxTokens / 3),
+          ...(windowPlan?.useModelWindow ? {
+            "slot.tier1_working_turn": workingContextTokens,
+            "slot.tier1_memory_projection": workingContextTokens
+          } : {})
+        },
+        tier0_safety_invariants: W1_SAFETY_INVARIANTS,
         memory_projection_text: [
-          ...recalled.map((item) => `(${item.memory_tier}/${item.visibility_scope}) ${item.content_text}`),
+          ...projectedMemories.map((item) => `(${item.memory_tier}/${item.visibility_scope}) ${item.content_text}`),
           ...organContributions
         ].join("\n")
       },
-      input.audience_scope
+      publicMask ? "public_all" : input.audience_scope
     );
     signal?.throwIfAborted();
     onStage?.("blackboard");
@@ -350,45 +451,39 @@ export class W1FastDialogueWorker {
       (task) => task.status === "running" || task.status === "waiting_owner_approval"
     );
     const progressSummary = activeTasks.map((task) => task.current_step_summary.slice(0, 100)).join("；");
-    const workingTurn = preSnapshot.D1_WORKING_TURN as typeof preSnapshot.D1_WORKING_TURN & {
-      unsaid_remainder?: string | null;
-    };
+    const inputMemories = projectedMemories.filter(memory =>
+      compiledBlackboard.slots.find(slot => slot.slot_id === "slot.tier1_memory_projection")?.content.includes(memory.content_text));
     onStage?.("generating");
     const synthesized = await this.llmClient.generateDialogue({
-      userText: input.summary_text,
-      compiledBlackboardText: live?.compiledBlackboardOverride || compiledBlackboard.compiled_prompt_text,
-      customSystemPrompt: live?.compiledBlackboardOverride,
-      personaName: live?.personaName || this.personaName,
-      corePersonalityPrompt: live?.corePersonalityPrompt,
-      roleLabel: live?.roleLabel,
-      catchphrases: live?.catchphrases,
-      bannedCliches: live?.bannedCliches,
-      matchedLoreEntries: live?.matchedLoreEntries,
-      dynamicLlmConfig: live?.dynamicLlmConfig,
-      venueType: input.venue_type,
-      audienceScope: input.audience_scope,
+      ...dialogueBase,
+      compiledBlackboardText: compiledBlackboard.compiled_prompt_text,
+      knowledgeEvidence: wireEvidence,
+      matchedLoreEntries,
       socialMaskActive: compiledBlackboard.social_mask_active,
       moodValence: compiledBlackboard.effective_mood_valence,
-      metabolicEnergy: affect.metabolic_energy,
-      drowsyDowngraded: route.drowsy_downgraded,
-      recalledMemorySnippets: recalled.map((item) => item.content_text),
-      unsaidRemainder: ownerPrivate ? workingTurn.unsaid_remainder ?? undefined : undefined,
-      activeTaskSummary: ownerPrivate ? progressSummary || undefined : undefined,
-      routedModelId: live?.dynamicLlmConfig?.model || route.selected_model_id
-    }, signal);
+      recalledMemorySnippets: inputMemories.map(memory => memory.content_text),
+      unsaidRemainder,
+      activeTaskSummary: ownerPrivate ? progressSummary || undefined : undefined
+    }, signal, options.onReasoning);
     signal?.throwIfAborted();
 
+    const checked = {...synthesized, surface_utterance:synthesized.surface_utterance.replace(/\[K(\d+)\]/g,(marker,id:string)=>
+      evidence.some(source=>source.marker===Number(id) && marker==="[K"+source.marker+"]")?marker:"").trim()};
     const committed = this.commitTurnResult(
       input,
       preSnapshot,
       stateRevBefore,
       recalled,
       sqlFilter,
-      synthesized,
+      checked,
       options.deferDeliveryReceipt
     );
     return {
       ...committed,
+      usedMemoryIds: inputMemories.map(memory => memory.memory_id),
+      usage: synthesized.usage,
+      usedKnowledge:evidence.length>0,
+      knowledgeSources: evidence.filter(source=>committed.expression.fallback_text.includes("[K"+source.marker+"]")),
       compiledBlackboard,
       route,
       provider: { name: synthesized.provider_used, model: synthesized.model_used }

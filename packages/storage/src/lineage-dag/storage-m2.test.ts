@@ -423,6 +423,19 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         }
       });
 
+      const related = storage.getDecisionTraceByEvent("evt_101")!;
+      related.trace_id = "trc_102";
+      related.turn_event_id = related.steps.step1_perception.event_id = "evt_102";
+      related.steps.step3_memory_recall.recalled_memories.push({
+        memory_id: "mem_pure_secret", memory_tier: "semantic_fact", epistemic_type: "observed_firsthand",
+        visibility_scope: "only_owner", taint_level: "trusted_owner", score: 1,
+        content_text: "sensitive memory", source_event_ids: ["evt_101"]
+      });
+      storage.saveTurnDecisionTrace(related);
+      const process = { stages: [], reasoning: "sensitive memory" };
+      storage.saveShellRunProcess("evt_101", process);
+      storage.saveShellRunProcess("evt_102", process);
+
       // Preview impact radius before mutating
       const preview = previewHardForgetRadius(storage, {
         target_event_ids: ["evt_101"]
@@ -442,6 +455,10 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         virtualTsMs: ts + 5000
       });
       expect(result.dry_run_preview).toBe(false);
+      expect(storage.getShellRunProcess("evt_101")).toBeUndefined();
+      expect(storage.getShellRunProcess("evt_102")).toBeUndefined();
+      storage.saveShellRunProcess("evt_102", process);
+      expect(storage.getShellRunProcess("evt_102")).toBeUndefined();
 
       // Verify 5-table scrubbing & micro-reprojection
       const redactedEvt = storage.getEventById("evt_101");

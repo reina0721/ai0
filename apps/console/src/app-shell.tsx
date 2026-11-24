@@ -135,7 +135,7 @@ function OnboardingWizardOverlay(props: {
       });
       await ctx.refreshSnapshot();
       const pages = registeredPages(props.snapshot).filter(page => page.shell_id);
-      const nextPath = pages.length === 1 ? pages[0]!.path : "/shells/topology";
+      const nextPath = pages.length === 1 ? pages[0]!.path : "/integrations/platforms";
       ctx.showToast("初始化配置已保存，正在进入交互工作区");
       props.onClose();
       ctx.navigateConsole(nextPath);
@@ -181,12 +181,13 @@ function OnboardingWizardOverlay(props: {
                 value={providerId}
                 onChange={(id) => {
                   setProviderId(id);
-                  setBaseUrl(studio?.providers.find((provider) => provider.id === id)?.baseUrl ?? "");
+                  const hostProv = props.snapshot?.infrastructure?.providers.find((provider) => provider.id === id);
+                  setBaseUrl(hostProv?.baseUrl ?? studio?.providers.find((provider) => provider.id === id)?.baseUrl ?? "");
                 }}
                 options={[
-                  { value: "prov_deepseek_v3", label: "DeepSeek Flash (主力对话)" },
-                  { value: "prov_claude_sonnet", label: "Claude 3.7 Sonnet (推理与规划)" },
-                  { value: "prov_ollama_local", label: "Ollama 本地模型 (离线运行)" }
+                  { value: "prov_deepseek_v3", label: "DeepSeek" },
+                  { value: "prov_claude_sonnet", label: "Anthropic Claude" },
+                  { value: "prov_ollama_local", label: "Ollama (本地离线)" }
                 ]}
               />
             </div>
@@ -296,10 +297,20 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
   const route = resolveConsoleRoute(pathname);
   const pages = registeredPages(snapshot);
   const page = resolvePluginPage(pathname, pages);
-  const pageLinks = pages.filter(item => item.navigation).map(item => ({ id: item.pluginId + item.path, path: item.path, label: item.title }));
-  const links = [...pageLinks, ...extensionLinks.filter(item => (resolveConsoleRoute(item.path) || resolvePluginPage(item.path, pages)) && !pageLinks.some(link => link.path === item.path))];
+  const pageLinks = pages.filter(item => item.navigation).map(item => ({
+    id: item.pluginId + item.path,
+    path: item.path,
+    label: item.title,
+    placement: item.shell_id ? "overview_chat" as const : "capabilities_ext" as const
+  }));
+  const links = [
+    ...pageLinks,
+    ...extensionLinks
+      .filter(item => (resolveConsoleRoute(item.path) || resolvePluginPage(item.path, pages)) && !pageLinks.some(link => link.path === item.path))
+      .map(item => ({ ...item, placement: "capabilities_ext" as const }))
+  ];
   const inspectorMode = page ? "mini" : props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
-  const activeDomain = route?.domainId ?? "extensions";
+  const activeDomain = route?.domainId ?? (page?.shell_id ? "overview" : "capabilities");
   const targetInstance = mode === "live" ? "live" : "sandbox:console";
   const smallNav = useMediaQuery("(max-width: 1079px)");
   const overlayInspector = useMediaQuery(inspectorMode === "sandbox-diff" ? "(max-width: 1450px)" : "(max-width: 1310px)");
@@ -367,7 +378,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
     trace={snapshot?.latestTrace}
     baselineTrace={(mode === "live" ? snapshot : compare.live)?.latestTrace}
     sandboxTrace={(mode === "sandbox" ? snapshot : compare.sandbox)?.latestTrace}
-    onModeChange={ctx?.setInspectorMode}
+    onModeChange={ctx?.closeInspector}
   />;
   const dirty = ctx?.dirtyNavigation;
 
@@ -399,6 +410,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
             approvals={approvals}
             pending={approvalPending}
             approvalsOpen={ctx?.approvalsOpen ?? false}
+            preferencesDisabled={ctx ? !ctx.canEditPreferences : undefined}
             onTargetModeChange={(nextMode) => ctx?.setMode(nextMode)}
             onSoulThemeChange={(nextTheme) => void ctx?.setSoulTheme(nextTheme)}
             onToggleAppearance={() => void ctx?.toggleAppearance()}
@@ -419,7 +431,8 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
               mode={smallNav ? "mini" : navRailMode}
               activeDomain={activeDomain}
               activePath={pathname}
-              onModeChange={(nextRail) => ctx?.setNavRailMode(nextRail)}
+              preferencesDisabled={ctx ? !ctx.canEditPreferences : undefined}
+              onModeChange={smallNav ? undefined : (nextRail) => void ctx?.setNavRailMode(nextRail)}
               onNavigate={(path) => ctx?.navigateConsole(path)}
               hrefFor={ctx?.getConsoleHref}
             />
@@ -454,7 +467,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
                 onNavigate={(path) => { setNavOpen(false); ctx?.navigateConsole(path); }} />
             </Drawer>
             <Drawer anchor="right" open={overlayInspector && inspectorMode !== "mini"}
-              onClose={() => ctx?.setInspectorMode("mini")} transitionDuration={reduced ? 0 : 220}
+              onClose={ctx?.closeInspector} transitionDuration={reduced ? 0 : 220}
               slotProps={{ paper: { className: "ai0-mobile-inspector-drawer", "aria-label": "运行检视" } }}>
               {overlayInspector ? inspector : null}
             </Drawer>

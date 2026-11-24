@@ -4,7 +4,9 @@
   "id": "community.organ.dream-journal",
   "name": "Dream Journal",
   "version": "1.0.0",
-  "description": "Turns conversational afterglow and sleep-cycle fragments into a poetic, read-only blackboard contribution and proposed episodic memories.",
+  "author": "ai0-community",
+  "tags": ["sleep", "memory", "poetic"],
+  "description": "在 W3 睡眠反思期间将日常对话余温整理为富有诗意的梦境片段，并以只读方式注入意识黑板与情节记忆候选。",
   "carrier": "native_code_plugin",
   "bus": "ext.cognitive_organ",
   "entry": "./dist/index.js",
@@ -23,6 +25,50 @@
     "actuation": false
   },
   "console_contributions": {
+    "config_fields": [
+      {
+        "key": "poetic_style",
+        "label": "梦境文风",
+        "type": "select",
+        "default": "warm_nocturne",
+        "hint": "控制 W3 睡眠反思生成梦境余温时的叙事语调",
+        "options": [
+          { "value": "warm_nocturne", "label": "温柔夜曲（默认）" },
+          { "value": "starlight_minimal", "label": "星光留白（极简）" },
+          { "value": "cinema_sketch", "label": "胶片速写（意象丰富）" }
+        ]
+      },
+      {
+        "key": "max_fragments_per_sleep",
+        "label": "每次睡眠最大片段数",
+        "type": "int",
+        "default": 3,
+        "min": 1,
+        "max": 10,
+        "hint": "单次睡眠周期最多结晶的梦境手记条数"
+      },
+      {
+        "key": "inject_blackboard_slot",
+        "label": "注入意识黑板第 9 槽位",
+        "type": "bool",
+        "default": true,
+        "hint": "开启后会将最近一条梦境余温注入上下文黑板供晨间问候自然衔接"
+      },
+      {
+        "key": "quiet_hours_only",
+        "label": "仅在免打扰时段结晶",
+        "type": "bool",
+        "default": true,
+        "hint": "避免白天高频对话期间打断正常上下文缓存"
+      },
+      {
+        "key": "motif_tags",
+        "label": "偏好意象关键词",
+        "type": "list",
+        "default": ["海风", "台灯", "星空"],
+        "hint": "逗号分隔，引导梦境隐喻风格"
+      }
+    ],
     "pages": [
       {
         "path": "/dream-journal",

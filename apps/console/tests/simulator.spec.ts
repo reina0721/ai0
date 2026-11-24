@@ -1,9 +1,10 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./console-preferences.js";
 import { watchBrowser } from "./browser-guard.js";
 
-test("simulator submits the selected audience and venue to the sandbox daemon", async ({ page }) => {
+test("simulator submits the selected audience and venue to the sandbox daemon", async ({ page, consolePreferences }) => {
+  await consolePreferences.set({ soulTheme: "astral-blue" });
   const browser = watchBrowser(page);
-  await page.goto("/shells/simulator?mode=sandbox&theme=astral-blue");
+  await page.goto("/shells/simulator?mode=sandbox");
   const root = page.locator("[data-console-root]");
   const main = root.locator('main[data-workspace-id="shells.simulator"]');
   const audience = main.getByRole("combobox", { name: "受众", exact: true });

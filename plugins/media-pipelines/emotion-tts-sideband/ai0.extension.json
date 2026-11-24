@@ -3,8 +3,10 @@
   "manifest_version": "1.1.0",
   "extension_id": "builtin.media.emotion-tts-sideband",
   "display_name": "Emotion TTS Sideband",
+  "description": "对接 FishAudio / GPT-SoVITS 生成带情感标签的流式语音与口型 Visemes，精确反算打断字数偏移。",
   "version": "1.0.0",
   "author": "ai0-official",
+  "tags": ["tts", "viseme", "emotion"],
   "carrier_kind": "native_code_plugin",
   "dimension": "ext.media_pipeline",
   "entry": "./dist/index.js",
@@ -13,5 +15,55 @@
     "propose_mutation_domains": [],
     "max_audience_scope": "only_owner",
     "network_access": false
+  },
+  "console_contributions": {
+    "config_fields": [
+      {
+        "key": "voice_profile",
+        "label": "默认情感声线档位",
+        "type": "select",
+        "default": "warm_natural",
+        "hint": "对应 TTS 服务端配置的音色参考预设",
+        "options": [
+          { "value": "warm_natural", "label": "温柔自然 (warm_natural)" },
+          { "value": "bright_playful", "label": "轻快俏皮 (bright_playful)" },
+          { "value": "quiet_late_night", "label": "深夜低语 (quiet_late_night)" }
+        ]
+      },
+      {
+        "key": "emotion_gain",
+        "label": "情绪表现强度",
+        "type": "float",
+        "default": 0.75,
+        "min": 0,
+        "max": 1.5,
+        "hint": "将 D2 心境读数映射到语调起伏的缩放系数"
+      },
+      {
+        "key": "viseme_fps",
+        "label": "口型同步帧率 (FPS)",
+        "type": "int",
+        "default": 30,
+        "min": 15,
+        "max": 60,
+        "hint": "驱动 Live2D / 3D 躯壳口型的 Viseme 采样率"
+      },
+      {
+        "key": "barge_in_offset_ms",
+        "label": "打断补偿延迟 (ms)",
+        "type": "int",
+        "default": 120,
+        "min": 0,
+        "max": 1000,
+        "hint": "用户插话打断时，反算已朗读字数偏移的音频缓冲补偿"
+      },
+      {
+        "key": "enable_breath_tags",
+        "label": "启用气口与停顿韵律标签",
+        "type": "bool",
+        "default": true,
+        "hint": "在长句停顿处插入自然呼吸与轻笑标记"
+      }
+    ]
   }
 }

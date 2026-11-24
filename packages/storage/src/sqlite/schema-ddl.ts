@@ -71,6 +71,15 @@ CREATE INDEX IF NOT EXISTS idx_event_log_virtual_ts ON event_log(virtual_ts_ms);
 CREATE INDEX IF NOT EXISTS idx_event_log_audience ON event_log(audience_scope, virtual_ts_ms);
 CREATE INDEX IF NOT EXISTS idx_event_log_category ON event_log(event_category, virtual_ts_ms);
 
+CREATE TABLE IF NOT EXISTS shell_run_process (
+    event_id TEXT PRIMARY KEY REFERENCES event_log(event_id) ON DELETE CASCADE,
+    snapshot_json TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS redact_shell_run_process AFTER UPDATE OF redacted_at_ts_ms ON event_log
+WHEN NEW.redacted_at_ts_ms IS NOT NULL BEGIN
+    DELETE FROM shell_run_process WHERE event_id = NEW.event_id;
+END;
+
 CREATE TABLE IF NOT EXISTS memories (
     memory_id               TEXT PRIMARY KEY,
     memory_tier             TEXT NOT NULL CHECK (memory_tier IN (
@@ -207,6 +216,40 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks_vec (
     embedding_json  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_collections (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, audience TEXT NOT NULL DEFAULT 'only_owner'
+);
+CREATE TABLE IF NOT EXISTS knowledge_documents (
+    id TEXT PRIMARY KEY, collection_id TEXT NOT NULL REFERENCES knowledge_collections(id),
+    name TEXT NOT NULL, digest TEXT NOT NULL, original BLOB NOT NULL, format TEXT NOT NULL,
+    revision INTEGER NOT NULL, warning TEXT NOT NULL DEFAULT '', embedding_key TEXT NOT NULL DEFAULT '',
+    UNIQUE(collection_id, name), UNIQUE(collection_id, digest)
+);
+CREATE TABLE IF NOT EXISTS knowledge_mount_overrides (
+    profile_id TEXT NOT NULL, collection_id TEXT NOT NULL REFERENCES knowledge_collections(id),
+    mounted INTEGER NOT NULL, PRIMARY KEY(profile_id,collection_id)
+);
+CREATE TABLE IF NOT EXISTS knowledge_import_errors (
+    collection_id TEXT NOT NULL REFERENCES knowledge_collections(id), name TEXT NOT NULL, reason TEXT NOT NULL,
+    PRIMARY KEY(collection_id, name)
+);
+CREATE TABLE IF NOT EXISTS knowledge_update_errors (
+    document_id TEXT PRIMARY KEY REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, reason TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS knowledge_locations (
+    chunk_id TEXT PRIMARY KEY REFERENCES knowledge_chunks(chunk_id) ON DELETE CASCADE,
+    document_id TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+    location TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, legacy_citations INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS knowledge_locations_document ON knowledge_locations(document_id);
+CREATE TABLE IF NOT EXISTS knowledge_turn_sources (
+    event_id TEXT NOT NULL REFERENCES event_log(event_id) ON DELETE CASCADE,
+    chunk_id TEXT NOT NULL REFERENCES knowledge_chunks(chunk_id) ON DELETE CASCADE,
+    marker INTEGER NOT NULL, counted INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(event_id, chunk_id)
+);
+
 CREATE TABLE IF NOT EXISTS soul_milestones_ledger (
     milestone_id            TEXT PRIMARY KEY,
     title                   TEXT NOT NULL,
@@ -230,5 +273,17 @@ CREATE TABLE IF NOT EXISTS kernel_runtime_meta (
 
 export function applyStorageSchema(database: DatabaseSync): void {
   database.exec(SQLITE_PRAGMA_DDL);
-  database.exec(SQLITE_SCHEMA_DDL);
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec(SQLITE_SCHEMA_DDL);
+    // Earlier indexed archives predate retirement of superseded chunks.
+    const columns = database.prepare("PRAGMA table_info(knowledge_locations)").all();
+    if (!columns.some(column => column.name === "active")) {
+      database.exec("ALTER TABLE knowledge_locations ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    if (database.isTransaction) database.exec("ROLLBACK");
+    throw error;
+  }
 }

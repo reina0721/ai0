@@ -1,5 +1,9 @@
 import Box from "@mui/material/Box";
 import ButtonBase from "@mui/material/ButtonBase";
+import Card from "@mui/material/Card";
+import CardActionArea from "@mui/material/CardActionArea";
+import {Link as RouterLink} from "react-router";
+import {useReducedMotion} from "motion/react";
 import Chip from "@mui/material/Chip";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
@@ -93,6 +97,25 @@ export function WorkspaceChoice(props: ChoiceProps) {
   }
   const { type = "button", className, ...button } = props;
   return <ButtonBase {...button} type={type} className={classNames("ai0-workspace-choice", className)} />;
+}
+
+type EntryAction =
+  | { label: string; href: string }
+  | { label: string; onSelect: () => void; current?: boolean };
+
+export function WorkspaceEntryCard({className, action, children, ...props}: BlockProps & { action: EntryAction }) {
+  const ctx = useConsole();
+  const reduced = useReducedMotion();
+  // Keep the full-size primary action and secondary controls as siblings.
+  const stateLayer = { className: "ai0-entry-card-action", "aria-label": action.label,
+    disableRipple: reduced === true, focusRipple: reduced !== true, centerRipple: false };
+  return <Card component="article" elevation={0} {...props}
+    className={classNames("ai0-workspace-entry-card", className)}>
+    {"href" in action
+      ? <CardActionArea {...stateLayer} component={RouterLink} to={ctx?.getConsoleHref(action.href) ?? action.href}/>
+      : <CardActionArea {...stateLayer} aria-current={action.current} onClick={action.onSelect}/>}
+    {children}
+  </Card>;
 }
 
 export function WorkspaceTable({ className, viewportHeight, ...props }: TableProps & { viewportHeight?: string }) {

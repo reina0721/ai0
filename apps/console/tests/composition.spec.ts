@@ -57,13 +57,13 @@ test("WebChat owns its navigation, page and composer extensions", async ({ page,
     await page.getByRole("button", { name: "扩展工具" }).click();
     await expect(page.getByText("工具已打开")).toBeVisible();
     const manager = await page.context().newPage();
-    await manager.goto("/extensions/marketplace");
+    await manager.goto("/capabilities/extensions");
     const toggle = manager.locator('[data-plugin-card="builtin.webchat"]').getByRole("switch");
     await toggle.click();
     await expect(chat).toHaveCount(0);
     await expect(page.getByText("工具已打开")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "页面不可用" })).toBeVisible();
-    await expect(navigation.getByRole("link", { name: "躯壳协议模拟器" })).toBeVisible();
+    await expect(navigation.getByRole("link", { name: "追踪与沙盒调试" })).toBeVisible();
     await page.goto("/shells/stage/builtin.webchat");
     await expect(page.getByRole("heading", { name: "页面不可用" })).toBeVisible();
     await toggle.click();

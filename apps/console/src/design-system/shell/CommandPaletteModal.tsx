@@ -3,7 +3,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import TextField from "@mui/material/TextField";
 import { useRef, useState, type ReactElement } from "react";
-import { CONSOLE_ROUTES_30 } from "../../router/routes.js";
+import { CONSOLE_ROUTES } from "../../router/routes.js";
 import { RippleButton } from "../primitives/index.js";
 
 export interface CommandPaletteExtensionItem {
@@ -34,7 +34,7 @@ export function isCommandPaletteShortcut(event: CommandPaletteShortcutEvent): bo
   return event.key.toLowerCase() === "k" && Boolean(event.ctrlKey || event.metaKey);
 }
 
-const routes: readonly CommandPaletteExtensionItem[] = CONSOLE_ROUTES_30.filter(route => !route.path.includes(":")).map((route) => ({
+const routes: readonly CommandPaletteExtensionItem[] = CONSOLE_ROUTES.filter(route => !route.path.includes(":")).map((route) => ({
   id: route.id, label: route.label, path: route.defaultConcretePath ?? route.path,
   description: route.path, keywords: route.keywords
 }));

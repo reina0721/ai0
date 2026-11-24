@@ -12,6 +12,11 @@ import {
   StateDomainSchema
 } from "../plugin-manifests/index.js";
 import * as PluginManifests from "../plugin-manifests/index.js";
+import * as OrthogonalConfig from "./orthogonal-config.js";
+
+export * from "./orthogonal-config.js";
+export * from "./provider-templates.js";
+export * from "./model-reasoning.js";
 
 /** Trust classification for a principal that contributed an input. */
 export const PrincipalTrustSchema = z.enum([
@@ -333,6 +338,7 @@ export function exportProtocolSchemaCatalog() {
       ConsoleWidgetTypeSchema: descriptor("ConsoleWidgetTypeSchema", PluginManifests.ConsoleWidgetTypeSchema),
       ConsoleUiSlotContributionSchema: descriptor("ConsoleUiSlotContributionSchema", PluginManifests.ConsoleUiSlotContributionSchema),
       PluginOriginSchema: descriptor("PluginOriginSchema", PluginManifests.PluginOriginSchema),
+      PluginConfigFieldSchema: descriptor("PluginConfigFieldSchema", PluginManifests.PluginConfigFieldSchema),
       RuntimeConsoleUiSlotSchema: descriptor("RuntimeConsoleUiSlotSchema", PluginManifests.RuntimeConsoleUiSlotSchema),
       RuntimePluginDescriptorSchema: descriptor("RuntimePluginDescriptorSchema", PluginManifests.RuntimePluginDescriptorSchema),
       ConsoleContributionsSchema: descriptor("ConsoleContributionsSchema", PluginManifests.ConsoleContributionsSchema),
@@ -385,7 +391,21 @@ export function exportProtocolSchemaCatalog() {
       SandboxForkRequestSchema: descriptor("SandboxForkRequestSchema", SandboxForkRequestSchema),
       ClockAdvanceRequestSchema: descriptor("ClockAdvanceRequestSchema", ClockAdvanceRequestSchema),
       SandboxInjectRequestSchema: descriptor("SandboxInjectRequestSchema", SandboxInjectRequestSchema),
-      HardForgetRequestSchema: descriptor("HardForgetRequestSchema", HardForgetRequestSchema)
+      HardForgetRequestSchema: descriptor("HardForgetRequestSchema", HardForgetRequestSchema),
+      ProviderSourceSchema: descriptor("ProviderSourceSchema", OrthogonalConfig.ProviderSourceSchema),
+      ModelInstanceSchema: descriptor("ModelInstanceSchema", OrthogonalConfig.ModelInstanceSchema),
+      McpServerConfigSchema: descriptor("McpServerConfigSchema", OrthogonalConfig.McpServerConfigSchema),
+      AgentSkillRecordSchema: descriptor("AgentSkillRecordSchema", OrthogonalConfig.AgentSkillRecordSchema),
+      ExtensionMarketEntrySchema: descriptor("ExtensionMarketEntrySchema", OrthogonalConfig.ExtensionMarketEntrySchema),
+      ProviderInstanceSchema: descriptor("ProviderInstanceSchema", OrthogonalConfig.ProviderInstanceSchema),
+      PlatformChannelInstanceSchema: descriptor("PlatformChannelInstanceSchema", OrthogonalConfig.PlatformChannelInstanceSchema),
+      HostInfrastructureConfigSchema: descriptor("HostInfrastructureConfigSchema", OrthogonalConfig.HostInfrastructureConfigSchema),
+      AgentConfigProfileSchema: descriptor("AgentConfigProfileSchema", OrthogonalConfig.AgentConfigProfileSchema),
+      UmoRoutingRuleSchema: descriptor("UmoRoutingRuleSchema", OrthogonalConfig.UmoRoutingRuleSchema),
+      KnowledgeCapabilityConfigSchema: descriptor("KnowledgeCapabilityConfigSchema", OrthogonalConfig.KnowledgeCapabilityConfigSchema),
+      MultimodalCapabilityConfigSchema: descriptor("MultimodalCapabilityConfigSchema", OrthogonalConfig.MultimodalCapabilityConfigSchema),
+      SoulProfileAndCapabilitiesConfigSchema: descriptor("SoulProfileAndCapabilitiesConfigSchema", OrthogonalConfig.SoulProfileAndCapabilitiesConfigSchema),
+      ResolvedSessionRouteSchema: descriptor("ResolvedSessionRouteSchema", OrthogonalConfig.ResolvedSessionRouteSchema)
     }
   } as const satisfies ProtocolSchemaCatalog;
 }

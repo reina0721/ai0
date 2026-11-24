@@ -92,6 +92,10 @@ const DEFAULT_BUDGET: Record<BlackboardSlotId, number> = {
 export const estimateBlackboardTokens = (text: string): number =>
   Math.ceil(text.length / 2.5);
 
+export const ADDITIONAL_BLACKBOARD_SLOT_TOKENS = estimateBlackboardTokens(
+  SLOT_ORDER.slice(1).map((slotId) => `\n\n[${slotId}]\n`).join("")
+);
+
 function truncate(text: string, maxTokens: number): string {
   if (maxTokens <= 0) return "";
   if (estimateBlackboardTokens(text) <= maxTokens) return text;
