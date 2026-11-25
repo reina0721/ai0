@@ -88,7 +88,7 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
       mode,
       targetInstance,
       soulId: snapshot?.soulId,
-      personaName: snapshot?.personaName ?? "Mio",
+      personaName: snapshot?.personaName || "未唤醒",
       soulTheme: ctx?.soulTheme ?? snapshot?.studioConfig?.systemSettings.soulTheme ?? "sakura-pink",
       appearance: ctx?.appearance ?? snapshot?.studioConfig?.systemSettings.appearance ?? "light",
       connected: shellConnected,

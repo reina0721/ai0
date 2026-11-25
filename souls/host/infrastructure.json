@@ -1,0 +1,1231 @@
+{
+  "schemaVersion": 2,
+  "providerSources": [
+    {
+      "id": "prov_deepseek_v3",
+      "label": "DeepSeek Flash",
+      "vendor": "DeepSeek",
+      "adapterType": "deepseek",
+      "supportedCapabilities": [
+        "chat"
+      ],
+      "baseUrl": "https://api.deepseek.com",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [],
+      "enabled": true
+    },
+    {
+      "id": "prov_claude_sonnet",
+      "label": "Claude 3.7 Sonnet",
+      "vendor": "Anthropic",
+      "adapterType": "anthropic",
+      "supportedCapabilities": [
+        "chat"
+      ],
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [],
+      "enabled": true
+    },
+    {
+      "id": "prov_ollama_local",
+      "label": "Qwen 2.5 7B",
+      "vendor": "Ollama (本地)",
+      "adapterType": "ollama",
+      "supportedCapabilities": [
+        "chat"
+      ],
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [],
+      "enabled": true
+    },
+    {
+      "id": "prov_bge_embed",
+      "label": "BGE-M3",
+      "vendor": "Ollama / SiliconFlow",
+      "adapterType": "ollama",
+      "supportedCapabilities": [
+        "embedding"
+      ],
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [],
+      "enabled": true
+    },
+    {
+      "id": "prov_bge_rerank",
+      "label": "BGE-Reranker-v2-M3",
+      "vendor": "SiliconFlow",
+      "adapterType": "custom_http",
+      "supportedCapabilities": [
+        "rerank"
+      ],
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [],
+      "enabled": true
+    },
+    {
+      "id": "prov_fish_tts",
+      "label": "FishAudio / GPT-SoVITS",
+      "vendor": "FishAudio / GPT-SoVITS",
+      "adapterType": "custom_http",
+      "supportedCapabilities": [
+        "tts"
+      ],
+      "baseUrl": "http://127.0.0.1:9880",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [],
+      "enabled": true
+    },
+    {
+      "id": "prov_sensevoice_stt",
+      "label": "SenseVoice-Small",
+      "vendor": "FunASR / SenseVoice",
+      "adapterType": "custom_http",
+      "supportedCapabilities": [
+        "stt"
+      ],
+      "baseUrl": "http://127.0.0.1:8009",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [],
+      "enabled": true
+    },
+    {
+      "id": "prov_local_guard_lora",
+      "label": "Local LoRA / Guard",
+      "vendor": "Local LoRA / Guard",
+      "adapterType": "builtin_local",
+      "supportedCapabilities": [
+        "guard_lora"
+      ],
+      "baseUrl": "local://safety-l0-guard",
+      "apiKeys": [],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [
+        {
+          "modelId": "safety-l0-guard-v1",
+          "inferredCapability": "guard_lora",
+          "ownedBy": "ai0-builtin",
+          "capabilities": {
+            "vision": false,
+            "tools": false,
+            "reasoning": false,
+            "streaming": false
+          }
+        }
+      ],
+      "catalogSource": "built_in",
+      "lastFetchedAt": "2026-11-24T22:23:06.769Z",
+      "enabled": true
+    },
+    {
+      "id": "src_mwv3l0hs",
+      "label": "OpenCode Go",
+      "vendor": "OpenCode Go",
+      "adapterType": "opencode_go",
+      "supportedCapabilities": [
+        "chat"
+      ],
+      "baseUrl": "https://opencode.ai/inference/go/openai/v1",
+      "apiKeys": [
+        {
+          "id": "key_b740bd45",
+          "label": "主密钥",
+          "kind": "vault_secret",
+          "maskedPreview": "oc_s••••••RyXL",
+          "enabled": true
+        }
+      ],
+      "keyRotationStrategy": "round_robin",
+      "proxyUrl": "",
+      "timeoutMs": 60000,
+      "customHeaders": {},
+      "discoveredModels": [
+        {
+          "modelId": "beam-free",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": false,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "modelId": "claude-haiku-5-5",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": false,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "modelId": "deepseek-v4-pro",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": false,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 384000,
+          "supportedReasoningEfforts": [
+            "high",
+            "max"
+          ]
+        },
+        {
+          "modelId": "deepseek-v4.1-flash",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 384000,
+          "supportedReasoningEfforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        {
+          "modelId": "gemini-4-argon",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": false,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 65536,
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        {
+          "modelId": "glm-5.3",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": false,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        {
+          "modelId": "glm-5.3-flash",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        {
+          "modelId": "gpt-5.6-luna",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1050000,
+          "maxOutputTokens": 128000,
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "modelId": "gpt-6-luna",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1050000,
+          "maxOutputTokens": 128000,
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "modelId": "grok-4.7",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 500000,
+          "maxOutputTokens": 500000,
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        },
+        {
+          "modelId": "hungerg-free",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "contextWindow": 1000000,
+          "maxOutputTokens": 65536
+        },
+        {
+          "modelId": "hy3",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": false,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 256000,
+          "maxOutputTokens": 128000,
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "high"
+          ]
+        },
+        {
+          "modelId": "hy4",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 65536,
+          "supportedReasoningEfforts": [
+            "none",
+            "high"
+          ]
+        },
+        {
+          "modelId": "hy4-flash-free",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 65536,
+          "supportedReasoningEfforts": [
+            "none",
+            "high"
+          ]
+        },
+        {
+          "modelId": "hy4-preview",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": false,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 65536,
+          "supportedReasoningEfforts": [
+            "none",
+            "high"
+          ]
+        },
+        {
+          "modelId": "iceman-contributor-free",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": false,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "contextWindow": 262144,
+          "maxOutputTokens": 131072
+        },
+        {
+          "modelId": "kimi-k2.7-code",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": false,
+          "contextWindow": 262144,
+          "maxOutputTokens": 262144
+        },
+        {
+          "modelId": "kimi-k3",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": false,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 1048576,
+          "supportedReasoningEfforts": [
+            "max"
+          ]
+        },
+        {
+          "modelId": "kimi-k3.1-pro",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": false,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 1048576,
+          "supportedReasoningEfforts": [
+            "low",
+            "high",
+            "max"
+          ]
+        },
+        {
+          "modelId": "longcat-2.5",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": false,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 262144,
+          "supportedReasoningEfforts": [
+            "none"
+          ]
+        },
+        {
+          "modelId": "mimo-v2.6-flash",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 131072
+        },
+        {
+          "modelId": "mimo-v2.6-pro",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 131072
+        },
+        {
+          "modelId": "minimax-m3",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "none"
+          ]
+        },
+        {
+          "modelId": "minimax-m3.1-flash",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 512000,
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        },
+        {
+          "modelId": "muse-spark-1.2-contributor",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        },
+        {
+          "modelId": "muse-spark-1.3-contributor",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1048576,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        },
+        {
+          "modelId": "qwen3.7-plus",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 65536,
+          "supportedReasoningEfforts": [
+            "none"
+          ]
+        },
+        {
+          "modelId": "qwen3.8-flash",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "medium",
+            "xhigh"
+          ]
+        },
+        {
+          "modelId": "qwen3.8-max",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 131072,
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "medium",
+            "xhigh"
+          ]
+        },
+        {
+          "modelId": "qwen4-max",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 262144,
+          "supportedReasoningEfforts": [
+            "none",
+            "low",
+            "high",
+            "xhigh"
+          ]
+        },
+        {
+          "modelId": "step-5-preview",
+          "inferredCapability": "chat",
+          "ownedBy": "opencode",
+          "capabilities": {
+            "vision": true,
+            "tools": true,
+            "reasoning": true,
+            "streaming": true
+          },
+          "chatProtocol": "chat_completions",
+          "supportsTemperature": true,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 65536,
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      ],
+      "catalogSource": "upstream",
+      "lastFetchedAt": "2026-11-24T22:11:37.437Z",
+      "enabled": true
+    }
+  ],
+  "modelInstances": [
+    {
+      "id": "mdl_prov_claude_sonnet_claude_3_7_sonnet_latest",
+      "sourceId": "prov_claude_sonnet",
+      "displayName": "claude-3-7-sonnet-latest",
+      "modelId": "claude-3-7-sonnet-latest",
+      "capabilityKind": "chat",
+      "enabled": true,
+      "capabilities": {
+        "vision": true,
+        "tools": true,
+        "reasoning": true,
+        "streaming": true
+      },
+      "defaultTemperature": 0.45,
+      "defaultMaxTokens": 8192,
+      "customParams": {},
+      "health": {
+        "status": "ready",
+        "latencyMs": 282
+      }
+    },
+    {
+      "id": "mdl_prov_ollama_local_qwen2_5_7b_instruct",
+      "sourceId": "prov_ollama_local",
+      "displayName": "qwen2.5:7b-instruct",
+      "modelId": "qwen2.5:7b-instruct",
+      "capabilityKind": "chat",
+      "enabled": true,
+      "capabilities": {
+        "vision": false,
+        "tools": true,
+        "reasoning": false,
+        "streaming": true
+      },
+      "defaultTemperature": 0.65,
+      "defaultMaxTokens": 2048,
+      "customParams": {},
+      "health": {
+        "status": "ready",
+        "latencyMs": 9
+      }
+    },
+    {
+      "id": "mdl_prov_bge_embed_bge_m3",
+      "sourceId": "prov_bge_embed",
+      "displayName": "bge-m3",
+      "modelId": "bge-m3",
+      "capabilityKind": "embedding",
+      "enabled": true,
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "reasoning": false,
+        "streaming": false
+      },
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 512,
+      "customParams": {},
+      "health": {
+        "status": "error",
+        "latencyMs": 1,
+        "lastCheckedAt": "2026-11-24T22:14:52.864Z",
+        "detail": "fetch failed"
+      }
+    },
+    {
+      "id": "mdl_prov_bge_rerank_baai_bge_reranker_v2_m3",
+      "sourceId": "prov_bge_rerank",
+      "displayName": "BAAI/bge-reranker-v2-m3",
+      "modelId": "BAAI/bge-reranker-v2-m3",
+      "capabilityKind": "rerank",
+      "enabled": true,
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "reasoning": false,
+        "streaming": false
+      },
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 512,
+      "customParams": {},
+      "health": {
+        "status": "error",
+        "latencyMs": 138,
+        "httpStatus": 401,
+        "lastCheckedAt": "2026-11-24T22:14:50.676Z",
+        "detail": "HTTP 401: {\"code\":30014,\"data\":null,\"message\":\"Token is invalid.\"}"
+      }
+    },
+    {
+      "id": "mdl_prov_fish_tts_ai0_tts_warm_v2",
+      "sourceId": "prov_fish_tts",
+      "displayName": "ai0-tts-warm-v2",
+      "modelId": "ai0-tts-warm-v2",
+      "capabilityKind": "tts",
+      "enabled": true,
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "reasoning": false,
+        "streaming": true
+      },
+      "defaultTemperature": 0.7,
+      "defaultMaxTokens": 1024,
+      "customParams": {},
+      "health": {
+        "status": "error",
+        "latencyMs": 1,
+        "lastCheckedAt": "2026-11-24T22:14:49.121Z",
+        "detail": "fetch failed"
+      }
+    },
+    {
+      "id": "mdl_prov_sensevoice_stt_sensevoicesmall",
+      "sourceId": "prov_sensevoice_stt",
+      "displayName": "SenseVoiceSmall",
+      "modelId": "SenseVoiceSmall",
+      "capabilityKind": "stt",
+      "enabled": true,
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "reasoning": false,
+        "streaming": false
+      },
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 1024,
+      "customParams": {},
+      "health": {
+        "status": "error",
+        "latencyMs": 9,
+        "lastCheckedAt": "2026-11-24T22:22:49.086Z",
+        "detail": "fetch failed"
+      }
+    },
+    {
+      "id": "mdl_prov_local_guard_lora_safety_l0_guard_v1",
+      "sourceId": "prov_local_guard_lora",
+      "displayName": "safety-l0-guard-v1",
+      "modelId": "safety-l0-guard-v1",
+      "capabilityKind": "guard_lora",
+      "enabled": true,
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "reasoning": false,
+        "streaming": false
+      },
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 256,
+      "customParams": {},
+      "health": {
+        "status": "ready",
+        "latencyMs": 0,
+        "lastCheckedAt": "2026-11-24T22:22:50.992Z",
+        "detail": "本地安全守卫已内建就绪"
+      }
+    },
+    {
+      "id": "mdl_prov_deepseek_v3_deepseek_flash",
+      "sourceId": "prov_deepseek_v3",
+      "displayName": "deepseek-flash",
+      "modelId": "deepseek-flash",
+      "capabilityKind": "chat",
+      "enabled": true,
+      "capabilities": {
+        "vision": false,
+        "tools": true,
+        "reasoning": false,
+        "streaming": true
+      },
+      "defaultTemperature": 0.78,
+      "defaultMaxTokens": 4096,
+      "customParams": {},
+      "health": {
+        "status": "configured",
+        "latencyMs": 0,
+        "lastCheckedAt": "2026-11-24T22:09:15.083Z",
+        "detail": "尚未配置有效 API Key（或 $ENV 环境变量未注入），无法发起上游实测"
+      }
+    },
+    {
+      "id": "mdl_src_mwv3l0hs_deepseek_v4_1_flash",
+      "sourceId": "src_mwv3l0hs",
+      "displayName": "deepseek-v4.1-flash",
+      "modelId": "deepseek-v4.1-flash",
+      "capabilityKind": "chat",
+      "enabled": true,
+      "capabilities": {
+        "vision": true,
+        "tools": true,
+        "reasoning": true,
+        "streaming": true
+      },
+      "chatProtocol": "chat_completions",
+      "supportsTemperature": true,
+      "defaultTemperature": 0.75,
+      "defaultMaxTokens": 4096,
+      "customParams": {},
+      "health": {
+        "status": "ready",
+        "latencyMs": 1937,
+        "httpStatus": 200,
+        "lastCheckedAt": "2026-11-24T22:23:32.758Z",
+        "detail": "实测通过 · 1937ms · 回复: \"OK\"",
+        "lastResponseSnippet": "OK"
+      }
+    }
+  ],
+  "providers": [
+    {
+      "id": "prov_deepseek_v3",
+      "label": "DeepSeek Flash",
+      "vendor": "DeepSeek",
+      "capabilityKind": "chat",
+      "adapterType": "deepseek",
+      "baseUrl": "https://api.deepseek.com",
+      "apiKeyMasked": "",
+      "models": [
+        "deepseek-flash"
+      ],
+      "defaultTemperature": 0.78,
+      "defaultMaxTokens": 4096,
+      "enabled": true,
+      "health": {
+        "status": "configured",
+        "latencyMs": 0,
+        "lastCheckedAt": "2026-11-24T22:09:15.083Z",
+        "detail": "尚未配置有效 API Key（或 $ENV 环境变量未注入），无法发起上游实测"
+      }
+    },
+    {
+      "id": "prov_claude_sonnet",
+      "label": "Claude 3.7 Sonnet",
+      "vendor": "Anthropic",
+      "capabilityKind": "chat",
+      "adapterType": "anthropic",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKeyMasked": "",
+      "models": [
+        "claude-3-7-sonnet-latest"
+      ],
+      "defaultTemperature": 0.45,
+      "defaultMaxTokens": 8192,
+      "enabled": true,
+      "health": {
+        "status": "ready",
+        "latencyMs": 282
+      }
+    },
+    {
+      "id": "prov_ollama_local",
+      "label": "Qwen 2.5 7B",
+      "vendor": "Ollama (本地)",
+      "capabilityKind": "chat",
+      "adapterType": "ollama",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeyMasked": "",
+      "models": [
+        "qwen2.5:7b-instruct"
+      ],
+      "defaultTemperature": 0.65,
+      "defaultMaxTokens": 2048,
+      "enabled": true,
+      "health": {
+        "status": "ready",
+        "latencyMs": 9
+      }
+    },
+    {
+      "id": "prov_bge_embed",
+      "label": "BGE-M3",
+      "vendor": "Ollama / SiliconFlow",
+      "capabilityKind": "embedding",
+      "adapterType": "ollama",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeyMasked": "",
+      "models": [
+        "bge-m3"
+      ],
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 512,
+      "enabled": true,
+      "health": {
+        "status": "error",
+        "latencyMs": 1,
+        "lastCheckedAt": "2026-11-24T22:14:52.864Z",
+        "detail": "fetch failed"
+      }
+    },
+    {
+      "id": "prov_bge_rerank",
+      "label": "BGE-Reranker-v2-M3",
+      "vendor": "SiliconFlow",
+      "capabilityKind": "rerank",
+      "adapterType": "custom_http",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKeyMasked": "",
+      "models": [
+        "BAAI/bge-reranker-v2-m3"
+      ],
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 512,
+      "enabled": true,
+      "health": {
+        "status": "error",
+        "latencyMs": 138,
+        "httpStatus": 401,
+        "lastCheckedAt": "2026-11-24T22:14:50.676Z",
+        "detail": "HTTP 401: {\"code\":30014,\"data\":null,\"message\":\"Token is invalid.\"}"
+      }
+    },
+    {
+      "id": "prov_fish_tts",
+      "label": "FishAudio / GPT-SoVITS",
+      "vendor": "FishAudio / GPT-SoVITS",
+      "capabilityKind": "tts",
+      "adapterType": "custom_http",
+      "baseUrl": "http://127.0.0.1:9880",
+      "apiKeyMasked": "",
+      "models": [
+        "ai0-tts-warm-v2"
+      ],
+      "defaultTemperature": 0.7,
+      "defaultMaxTokens": 1024,
+      "enabled": true,
+      "health": {
+        "status": "error",
+        "latencyMs": 1,
+        "lastCheckedAt": "2026-11-24T22:14:49.121Z",
+        "detail": "fetch failed"
+      }
+    },
+    {
+      "id": "prov_sensevoice_stt",
+      "label": "SenseVoice-Small",
+      "vendor": "FunASR / SenseVoice",
+      "capabilityKind": "stt",
+      "adapterType": "custom_http",
+      "baseUrl": "http://127.0.0.1:8009",
+      "apiKeyMasked": "",
+      "models": [
+        "SenseVoiceSmall"
+      ],
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 1024,
+      "enabled": true,
+      "health": {
+        "status": "error",
+        "latencyMs": 9,
+        "lastCheckedAt": "2026-11-24T22:22:49.086Z",
+        "detail": "fetch failed"
+      }
+    },
+    {
+      "id": "prov_local_guard_lora",
+      "label": "Local LoRA / Guard",
+      "vendor": "Local LoRA / Guard",
+      "capabilityKind": "guard_lora",
+      "adapterType": "builtin_local",
+      "baseUrl": "local://safety-l0-guard",
+      "apiKeyMasked": "",
+      "models": [
+        "safety-l0-guard-v1"
+      ],
+      "defaultTemperature": 0,
+      "defaultMaxTokens": 256,
+      "enabled": true,
+      "health": {
+        "status": "ready",
+        "latencyMs": 0,
+        "lastCheckedAt": "2026-11-24T22:22:50.992Z",
+        "detail": "本地安全守卫已内建就绪"
+      }
+    },
+    {
+      "id": "src_mwv3l0hs",
+      "label": "OpenCode Go",
+      "vendor": "OpenCode Go",
+      "capabilityKind": "chat",
+      "adapterType": "opencode_go",
+      "baseUrl": "https://opencode.ai/inference/go/openai/v1",
+      "apiKeyMasked": "oc_s••••••RyXL",
+      "models": [
+        "deepseek-v4.1-flash"
+      ],
+      "defaultTemperature": 0.75,
+      "defaultMaxTokens": 4096,
+      "enabled": true,
+      "health": {
+        "status": "ready",
+        "latencyMs": 1937,
+        "httpStatus": 200,
+        "lastCheckedAt": "2026-11-24T22:23:32.758Z",
+        "detail": "实测通过 · 1937ms · 回复: \"OK\"",
+        "lastResponseSnippet": "OK"
+      }
+    }
+  ],
+  "platforms": [
+    {
+      "id": "builtin.webchat",
+      "label": "WebChat (内置官方通道)",
+      "adapterKind": "builtin_webchat",
+      "endpoint": "/protocol/v0/shell",
+      "authMode": "local_builtin",
+      "defaultAudienceCeiling": "only_owner",
+      "enabled": true,
+      "builtinPluginId": "builtin.webchat",
+      "notes": "随仓官方网页交互通道，通过标准 Protocol v0 接入网关"
+    },
+    {
+      "id": "builtin.terminal",
+      "label": "Terminal CLI (内置终端通道)",
+      "adapterKind": "builtin_terminal",
+      "endpoint": "/protocol/v0/shell",
+      "authMode": "local_builtin",
+      "defaultAudienceCeiling": "only_owner",
+      "enabled": true,
+      "builtinPluginId": "builtin.terminal",
+      "notes": "命令行终端交互躯壳"
+    },
+    {
+      "id": "builtin.webchat.default",
+      "label": "WebChat (内置官方通道)",
+      "adapterKind": "builtin_webchat",
+      "endpoint": "ws://127.0.0.1:4173/protocol/v0/shell",
+      "authMode": "scoped_token",
+      "defaultAudienceCeiling": "only_owner",
+      "enabled": true,
+      "notes": ""
+    }
+  ],
+  "mcpServers": [],
+  "systemSettings": {
+    "auth2faEnabled": false,
+    "proxyUrl": "",
+    "codeSandboxEnabled": true,
+    "sb243BreakMinutes": 180,
+    "crisisHotlineRegion": "CN-4001619995 / US-988",
+    "appearance": "light",
+    "soulTheme": "astral-blue",
+    "navRailMode": "expanded",
+    "inspectorView": "sandbox-diff"
+  }
+}

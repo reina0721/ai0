@@ -16,9 +16,10 @@ export interface EmbodiedKeyframeTimelineProps {
 }
 
 const cue = (keyframe: EmbodiedKeyframe): string => [
-  keyframe.gaze && `gaze:${keyframe.gaze.target}`,
-  keyframe.facial && `face:${keyframe.facial.expression}`,
-  keyframe.gesture && `gesture:${keyframe.gesture.intent}`
+  keyframe.attention && `attn:${keyframe.attention.target}`,
+  keyframe.expression && `expr:${keyframe.expression.tag}`,
+  keyframe.gesture && `gesture:${keyframe.gesture.intent}`,
+  keyframe.haptic && `haptic:${keyframe.haptic.cue_tag}`
 ].filter(Boolean).join(" · ") || "neutral hold";
 
 export function EmbodiedKeyframeTimeline(props: EmbodiedKeyframeTimelineProps): ReactElement {

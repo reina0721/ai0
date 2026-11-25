@@ -19,7 +19,7 @@ export interface ShellTokenUsage {
 
 export interface ShellRunProcess {
   stages: ShellStageEvent[];
-  error?: "MODEL_CONTEXT_LIMIT";
+  error?: "MODEL_CONTEXT_LIMIT" | "PROVIDER_NOT_READY" | "SOUL_NOT_AWAKENED" | "UPSTREAM_INFERENCE_FAILED";
   elapsedMs?: number;
   reasoning?: string;
   provider?: { name: string; model: string };

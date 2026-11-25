@@ -1,5 +1,6 @@
 import type {
   AgentSkillRecord,
+  DeploymentReadinessReport,
   HostInfrastructureConfig,
   PluginConfigField,
   PluginOrigin,
@@ -429,5 +430,8 @@ export interface ConsoleLiveSnapshot {
   promptPreviewPublic?: PromptCompiledPreview;
   conversations?: LiveConversationSession[];
   availableSouls?: Array<{ id: string; name: string; role: string; path: string; active: boolean }>;
+  hasAwakenedSoul?: boolean;
+  readiness?: DeploymentReadinessReport;
+  hostCards?: Array<{ cardId: string; name: string; description: string; creator?: string; tags: string[] }>;
   narrativeText?: string;
 }

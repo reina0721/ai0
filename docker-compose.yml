@@ -8,7 +8,7 @@ services:
     environment:
       - AI0_HOST=0.0.0.0
       - AI0_PORT=4173
-      - AI0_SOUL_DIR=/data/souls/default.soul
+      - AI0_SOULS_ROOT=/data/souls
       - AI0_OWNER_TOKEN=${AI0_OWNER_TOKEN:-change-me-in-production}
       - AI0_LLM_PROVIDER=${AI0_LLM_PROVIDER:-openai-compatible}
       - AI0_LLM_BASE_URL=${AI0_LLM_BASE_URL:-}

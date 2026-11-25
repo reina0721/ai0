@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { ThemeColorPresetSchema } from "@ai0/protocol";
 import { z } from "zod";
 
@@ -146,7 +146,7 @@ export type ScheduledPromiseEntry = z.infer<typeof ScheduledPromiseEntrySchema>;
 
 export const SoulConsoleStudioConfigSchema = z.object({
   version: z.number().int().default(2),
-  onboardingCompleted: z.boolean().default(true),
+  onboardingCompleted: z.boolean().default(false),
   soulStudio: z.object({
     displayName: z.string().min(1),
     avatarEmoji: z.string().default("🌸"),
@@ -408,10 +408,10 @@ export const ROLE_ARCHETYPE_PRESETS: Record<
   }
 };
 
-export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConsoleStudioConfig {
+export function createDefaultConsoleStudioConfig(displayName = "Soul", onboardingCompleted = false): SoulConsoleStudioConfig {
   return {
     version: 6,
-    onboardingCompleted: true,
+    onboardingCompleted,
     soulStudio: {
       displayName,
       avatarEmoji: displayName.slice(0, 1).toUpperCase() || "M",
@@ -571,38 +571,7 @@ export function createDefaultConsoleStudioConfig(displayName = "Mio"): SoulConso
       ],
       dndStartHour: 0,
       dndEndHour: 7,
-      lorebooks: [
-        {
-          id: "lore_harbor_observatory",
-          title: "海港天文台与共同观星约定",
-          keys: ["观星", "天文台", "仙后座", "海港"],
-          secondaryKeys: ["望远镜", "星图"],
-          priority: 90,
-          tokenBudget: 160,
-          content: `每逢晴朗的夜晚，${displayName} 喜欢陪主人在海港天文台的虚拟星图前核对仙后座与夏季大三角，记录两人的安静时光。`,
-          enabled: true
-        },
-        {
-          id: "lore_coffee_evolution",
-          title: "饮品偏好演进（全糖奶茶 → 冰美式）",
-          keys: ["奶茶", "咖啡", "美式", "喝点什么"],
-          secondaryKeys: ["戒糖"],
-          priority: 82,
-          tokenBudget: 120,
-          content: `主人去年习惯喝全糖珍珠奶茶，今年开始自律控糖改喝冰美式；${displayName} 偶尔会打趣这种变化，提醒别空腹喝太浓。`,
-          enabled: true
-        },
-        {
-          id: "lore_work_architecture",
-          title: "ai0 架构协作默契",
-          keys: ["架构", "评审", "代码", "TypeScript", "部署"],
-          secondaryKeys: ["重构", "Bug"],
-          priority: 85,
-          tokenBudget: 160,
-          content: `讨论技术架构与代码时，${displayName} 自动切入冷静严谨又会顺手递热茶的工程搭档状态，善用知识库和 SubAgent 核查细节。`,
-          enabled: true
-        }
-      ]
+      lorebooks: []
     },
     providers: [
       {
@@ -940,45 +909,9 @@ export function getConsoleStudioConfigPath(soulDirPath: string): string {
   return join(resolve(soulDirPath), "config", "console_studio.json");
 }
 
-function normalizeDeepSeekModels(config: SoulConsoleStudioConfig): SoulConsoleStudioConfig {
-  return {
-    ...config,
-    providers: config.providers.map((provider) => {
-      const officialEndpoint = /^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/iu.test(provider.baseUrl);
-      const retiredModel = /^(deepseek-chat|deepseek-reasoner|deepseek-v4-flash)$/u.test(provider.modelId);
-      if (!officialEndpoint || !retiredModel) return provider;
-      return {
-        ...provider,
-        modelId: "deepseek-flash",
-        name: provider.name === "DeepSeek V3 · 主力对话" ? "DeepSeek Flash · 主力对话" : provider.name
-      };
-    })
-  };
-}
-
-// Full-record fingerprints of the shipped v5 fixtures. Edited records retain their original classification.
-const shippedDemoRecords = new Set([
-  "375ad728922e158243e95af26819c935a15b3228ada9b5a032404d90b552c1ff", // task_seed_arch_checklist
-  "64fcaf26ad6ec7d000aaf170c34c64147b1a0c510fc7eaa427c013fcd423a45a", // task_seed_stargazing_log
-  "a4426f490cd5bb91394c293a73c48a9ef47b5c24ef430ac3bab1d604626346d2", // prm_review_followup
-  "9bc4769c57d291057ced3edcd3d8216090854aa405caad3da0bc6c96b46d5934", // prm_rest_reminder
-  "1b98c90373153fc42c6a8d2784afa5c179b688ee214a984fd85e3a5a43b6910a", // prm_morning_brief
-  "1f30c155462d9e7b73417f3dd59f0e9489186ff973ecb1f68fe1e5ac2bcc8394", // drm_01
-  "99228374efd8efb5f059b06464e74303b0a4693bc0b7521b1523df7462ccf458", // cur_note_01
-  "c9c3d3ae326f37d9d661abacbc73505d7267846b84e3f5b298501f173397ab56", // prop_growth_01
-  "384810ca48c6b707b2bee4a603087347570bac1985c233a9fd61c69a51288ae4", // prop_growth_02
-]);
-function isShippedDemoRecord(record: unknown): boolean {
-  const canonical = JSON.stringify(record, (_key, value: unknown) =>
-    value && typeof value === "object" && !Array.isArray(value)
-      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))
-      : value);
-  return shippedDemoRecords.has(createHash("sha256").update(canonical).digest("hex"));
-}
-
 export function readConsoleStudioConfig(
   soulDirPath: string,
-  fallbackDisplayName = "Mio"
+  fallbackDisplayName = basename(resolve(soulDirPath), ".soul")
 ): SoulConsoleStudioConfig {
   const filePath = getConsoleStudioConfigPath(soulDirPath);
   if (!existsSync(filePath)) {
@@ -989,35 +922,19 @@ export function readConsoleStudioConfig(
   const raw = JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new TypeError("Invalid studio configuration");
   if (Number(raw.version ?? 0) > 6) throw new Error("Unsupported studio configuration version");
-  if (Number(raw.version ?? 0) === 6) return normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse(raw));
-  const defaults = createDefaultConsoleStudioConfig(fallbackDisplayName);
-  function fillMissing(defaultValue: unknown, value: unknown): unknown {
-    if (value === undefined) return defaultValue;
-    if (!value || typeof value !== "object" || Array.isArray(value) ||
-        !defaultValue || typeof defaultValue !== "object" || Array.isArray(defaultValue)) return value;
-    const merged = { ...value } as Record<string, unknown>;
-    for (const [key, fallback] of Object.entries(defaultValue)) merged[key] = fillMissing(fallback, merged[key]);
-    return merged;
-  }
-  const migrated = SoulConsoleStudioConfigSchema.parse(fillMissing(defaults, { ...raw, version: 6 }));
-  migrated.agency.activeTasks = migrated.agency.activeTasks.filter(record => !isShippedDemoRecord(record));
-  migrated.agency.scheduledPromises = migrated.agency.scheduledPromises.filter(record => !isShippedDemoRecord(record));
-  migrated.evolution.dreamJournal = migrated.evolution.dreamJournal.filter(record => !isShippedDemoRecord(record));
-  migrated.evolution.growthProposals = migrated.evolution.growthProposals.filter(record => !isShippedDemoRecord(record));
-  return raw.version === 5 ? migrated : writeConsoleStudioConfig(soulDirPath, migrated);
+  return SoulConsoleStudioConfigSchema.parse(raw);
 }
 
 export function writeConsoleStudioConfig(
   soulDirPath: string,
   config: SoulConsoleStudioConfig
 ): SoulConsoleStudioConfig {
-  const validated = normalizeDeepSeekModels(SoulConsoleStudioConfigSchema.parse({ ...config, version: 6 }));
+  const validated = SoulConsoleStudioConfigSchema.parse({ ...config, version: 6 });
   const filePath = getConsoleStudioConfigPath(soulDirPath);
   mkdirSync(dirname(filePath), { recursive: true });
   if (existsSync(filePath)) {
     const original = JSON.parse(readFileSync(filePath, "utf8"));
     if (Number(original.version) > 6) throw new Error("Unsupported studio configuration version");
-    if (original.version !== 6) copyFileSync(filePath, filePath + "." + randomUUID() + ".bak");
   }
   const temporary = filePath + "." + randomUUID() + ".tmp";
   try {

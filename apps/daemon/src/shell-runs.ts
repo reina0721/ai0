@@ -1,4 +1,4 @@
-import { ModelContextLimitError } from "@ai0/kernel";
+import { ModelContextLimitError, ProviderNotConfiguredError, UpstreamInferenceError } from "@ai0/agent-core";
 import { readSoulArchiveConfig } from "@ai0/storage";
 import { timingSafeEqual } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
@@ -7,7 +7,7 @@ import type { Context, Hono } from "hono";
 
 import type { AudienceScope, ShellRunPresentation, ShellRunProcess, ShellRunStage, VerifiableTurnTrace } from "@ai0/protocol";
 
-import type { Ai0DaemonRuntime } from "./index.js";
+import { SoulNotAwakenedError, type Ai0DaemonRuntime } from "./index.js";
 
 type Mode = "live" | "sandbox";
 type Target = "live" | "sandbox:console";
@@ -30,6 +30,7 @@ interface RunStatus extends ShellRunPresentation {
 }
 
 interface ActiveRun {
+  storage: Ai0DaemonRuntime["storage"];
   principalId?: string;
   audience?: AudienceScope;
   thread?: string;
@@ -51,7 +52,6 @@ interface AuthResult {
 }
 
 const EVENT_PREFIX = "evt_shell_";
-const LEGACY_PREFIX = "evt_webchat_";
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const SHELL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,95}$/iu;
 const MAX_TEXT_LENGTH = 12_000;
@@ -66,7 +66,6 @@ function parseShellId(value: unknown): string | undefined {
 
 function extractRequestIdFromEventId(eventId: string): string | undefined {
   if (eventId.startsWith(EVENT_PREFIX)) return requestIdOf(eventId.slice(EVENT_PREFIX.length));
-  if (eventId.startsWith(LEGACY_PREFIX)) return requestIdOf(eventId.slice(LEGACY_PREFIX.length));
   return undefined;
 }
 
@@ -180,7 +179,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
   const basePath = "/protocol/v0/shell";
   const active = new Map<string, ActiveRun>();
   const storageFor = (mode: Mode) => mode === "sandbox" ? runtime.sandboxStorage : runtime.storage;
-  const runKeyOf = (shellId: string, mode: Mode, id: string) => `${shellId}:${mode}:${id}`;
+  const runKeyOf = (shellId: string, mode: Mode, id: string) => JSON.stringify([runtime.soulDir, shellId, mode, id]);
 
   const resolveShellId = (auth: AuthResult, explicit?: unknown): string => {
     if (auth.scopedShellId) return auth.scopedShellId;
@@ -189,7 +188,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
 
   const findStoredEvent = (shellId: string, mode: Mode, id: string) => {
     const storage = storageFor(mode);
-    const direct = storage.getEventById(EVENT_PREFIX + id) ?? storage.getEventById(LEGACY_PREFIX + id);
+    const direct = storage.getEventById(EVENT_PREFIX + id);
     return direct?.source_shell_id === shellId
       && direct.redacted_at_ts_ms == null && !JSON.parse(direct.payload_json).shell_process_redacted ? direct : undefined;
   };
@@ -243,9 +242,8 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     if (!trace) {
       const payload = JSON.parse(event.payload_json) as {
         shell_run_status?: unknown;
-        webchat_run_status?: unknown;
       };
-      const statusFlag = payload.shell_run_status ?? payload.webchat_run_status;
+      const statusFlag = payload.shell_run_status;
       return { ...base, ...presentation(mode, event.event_id), status: statusFlag === "cancelled" ? "cancelled" : "failed" };
     }
     const receipt = receiptOf(trace);
@@ -339,14 +337,16 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     }
     const shellId = resolveShellId(auth, body.shellId ?? c.req.header("x-ai0-shell-id"));
     if (auth.target && auth.target !== mode) return c.json({ error: "TARGET_MISMATCH" }, 403);
+    if (mode === "live" && !runtime.hasAwakenedSoul)
+      return c.json({ error: "SOUL_NOT_AWAKENED", readiness: runtime.computeReadiness() }, 503);
     const eventId = EVENT_PREFIX + id;
     const targetInstance = targetOf(mode);
     const runKey = runKeyOf(shellId, mode, id);
     const thread = typeof body.thread === "string" ? body.thread : undefined;
     if (active.has(runKey)) return c.json({ error: "SHELL_RUN_IN_PROGRESS" }, 409);
 
-    const existingEvent =
-      storageFor(mode).getEventById(eventId) ?? storageFor(mode).getEventById(LEGACY_PREFIX + id);
+    const storage = storageFor(mode);
+    const existingEvent = storage.getEventById(eventId);
     if (existingEvent && !accessible(auth, shellId, mode, id)) return c.json({ error: "SHELL_RUN_ID_CONFLICT" }, 409);
     if (existingEvent && findStoredEvent(shellId, mode, id)?.summary_text !== input) {
       return c.json({ error: "SHELL_RUN_ID_CONFLICT" }, 409);
@@ -358,7 +358,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     if (
       !archived &&
       Array.from(active.values()).some(
-        (entry) => entry.state.shellId === shellId && entry.state.targetInstance === targetInstance &&
+        (entry) => entry.storage === storage && entry.state.shellId === shellId && entry.state.targetInstance === targetInstance &&
           entry.principalId === auth.principalId && entry.audience === auth.audience && entry.thread === thread
       )
     ) {
@@ -366,7 +366,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
     }
 
     const controller = new AbortController();
-    const run: ActiveRun = { principalId: auth.principalId, audience: auth.audience, thread,
+    const run: ActiveRun = { storage, principalId: auth.principalId, audience: auth.audience, thread,
       controller,
       sentChars: 0,
       startedAt: performance.now(),
@@ -426,9 +426,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
           run.trace = turn.trace;
           run.state.traceId = turn.trace.trace_id;
           run.state.provider = turn.provider;
-          process.provider = turn.provider?.name === "local-persona-synthesizer"
-            ? { name: turn.provider.name, model: turn.provider.name }
-            : turn.provider ?? { name: "local", model: "safety-guard" };
+          process.provider = turn.provider ?? { name: "local", model: "safety-guard" };
           process.usage = turn.usage;
           stage("committed");
           run.state.status = "delivering";
@@ -439,6 +437,7 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
           write({ type: "text-start", id: messageId });
           const characters = Array.from(turn.expression.fallback_text);
           for (let offset = 0; offset < characters.length; offset += 18) {
+            if (storageFor(mode) !== storage) throw new Error("SOUL_CHANGED");
             controller.signal.throwIfAborted();
             if (!findStoredEvent(shellId, mode, id)) throw new Error("SHELL_RUN_REDACTED");
             const chunk = characters.slice(offset, offset + 18);
@@ -461,7 +460,14 @@ export function registerShellProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRunt
         emitState();
         write({ type: "finish", finishReason: "stop" });
       } catch (error) {
-        if (error instanceof ModelContextLimitError && !controller.signal.aborted) process.error = error.code;
+        if (storageFor(mode) !== storage) {
+          write({ type: "error", errorText: "SOUL_CHANGED" });
+          write({ type: "finish", finishReason: "error" });
+          return;
+        }
+        if (!controller.signal.aborted && (error instanceof ModelContextLimitError ||
+            error instanceof ProviderNotConfiguredError || error instanceof SoulNotAwakenedError ||
+            error instanceof UpstreamInferenceError)) process.error = error.code;
         if (!archived) saveProcess();
         if (!run.trace) {
           const status = controller.signal.aborted ? "cancelled" : "failed";

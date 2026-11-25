@@ -2,7 +2,7 @@ import { createCompositionFixtures } from "./composition-fixtures.mjs";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
@@ -25,6 +25,8 @@ const processes = [
       AI0_PLUGINS_DIR: [createCompositionFixtures(scratch), process.env.AI0_PLUGINS_DIR].filter(Boolean).join(delimiter),
       AI0_USER_PLUGINS_DIR: join(scratch, "user-plugins"),
       AI0_SOUL_DIR: soulDir,
+      AI0_SOULS_ROOT: dirname(soulDir),
+      AI0_TEST_DETERMINISTIC_MODEL: "1",
       AI0_OWNER_TOKEN: randomUUID(),
       AI0_HOST: "127.0.0.1",
       ...(buildDir ? { AI0_CONSOLE_DIST_DIR: buildDir } : {}),

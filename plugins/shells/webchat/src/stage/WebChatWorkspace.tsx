@@ -215,7 +215,7 @@ function WebChatThread({ mode, visible, host, hostState, soulId }: {
   hostState: Ai0ShellStageHostState;
   soulId: string;
 }) {
-  const name = hostState.personaName || "Mio";
+  const name = hostState.personaName || "数字生命";
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const session = useWebChatSession(
     hostState.protocolBasePath,
@@ -525,7 +525,7 @@ export function WebChatWorkspace({ host, hostState }: {
             visible={target === mode}
             host={host}
             hostState={{ ...hostState, connected: Boolean(lease && lease === authToken) }}
-            soulId={identity.soulId || "default.soul"}
+            soulId={identity.soulId || "unawakened"}
           />
         </div>
       ))}

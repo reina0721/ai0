@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VirtualClock } from "@ai0/kernel";
+import { VirtualClock } from "@ai0/cognition-core";
 import {
   PrivilegedAdminServer,
   ShellProtocolGateway,

@@ -7,7 +7,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer, createUnifiedDaemonHttpApp } from "./index.js";
-import { createDefaultConsoleStudioConfig, getHostInfrastructureFilePath, readConsoleStudioConfig, readSoulArchiveConfig } from "@ai0/storage";
+import { CharacterCardV3Schema } from "@ai0/protocol";
+import { getHostInfrastructureFilePath, readConsoleStudioConfig, readHostInfrastructureConfig,
+  readHostOwnerClaim, readSoulArchiveConfig, resolveEffectiveSourceApiKeys } from "@ai0/storage";
+import { lifecycleFixture } from "./test-support/lifecycle.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -17,7 +20,7 @@ function fixture() {
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const soulDir = join(root, "person.soul"), builtinPluginsDir = join(root, "plugins");
   const ownerMasterToken = randomUUID();
-  const start = () => createDefaultDaemonRuntime({ soulDir, builtinPluginsDir, ownerMasterToken });
+  const start = () => createDefaultDaemonRuntime({ soulDir, builtinPluginsDir, ownerMasterToken, allowDeterministicSandbox: true });
   let runtime = start();
   let app = createUnifiedDaemonHttpApp(runtime);
   cleanups.push(() => runtime.close());
@@ -163,17 +166,104 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
   expect(readSoulArchiveConfig(join(f.root,"another.soul")).manifest.soul_id).not.toBe(empty.soulId);
 });
 
-it("preserves invalid originals and backs up legacy configuration before migration", () => {
+it("preserves damaged configuration originals without creating legacy .bak files", () => {
   const f = fixture();
   const configPath = join(f.soulDir, "config", "console_studio.json");
-  const source = { ...createDefaultConsoleStudioConfig("名字"), version: 4 };
-  writeFileSync(configPath, JSON.stringify(source));
-  expect(readConsoleStudioConfig(f.soulDir).soulStudio.displayName).toBe("名字");
-  const backup = readdirSync(join(f.soulDir, "config")).find(name => name.endsWith(".bak"))!;
-  expect(JSON.parse(readFileSync(join(f.soulDir, "config", backup), "utf8"))).toEqual(source);
-  writeFileSync(configPath, "damaged original");
+  writeFileSync(configPath, "damaged original", "utf8");
   expect(() => readConsoleStudioConfig(f.soulDir)).toThrow();
   expect(readFileSync(configPath, "utf8")).toBe("damaged original");
+  expect(readdirSync(join(f.soulDir, "config")).filter(name => name.endsWith(".bak"))).toEqual([]);
+});
+
+it("restores each selected archive's checkpoint, releases the old shell, and exports an archive without an imported card", async () => {
+  const f = fixture();
+  const { runtime } = f;
+  const original = readSoulArchiveConfig(f.soulDir);
+  const ownerTurn = "Only the original archive saw this conversation.";
+  const first = await runtime.handleShellTurn({ principalId: "owner:local", text: ownerTurn });
+  const firstSnapshot = runtime.coordinator.getSnapshot();
+  expect(firstSnapshot.D1_WORKING_TURN.recent_turns.some(turn => turn.text === ownerTurn)).toBe(true);
+  const exportResponse = await f.request("/api/admin/v1/souls/" + original.manifest.soul_id + "/export-card");
+  expect(exportResponse.status).toBe(200);
+  const { card } = await exportResponse.json();
+  expect(CharacterCardV3Schema.parse(card).data.name).toBe(original.identity.display_name);
+  expect(JSON.stringify(card)).not.toContain(ownerTurn);
+
+  const shellId = "composition.viewer";
+  const grant = await f.request("/api/studio/shell-grants", "POST", {
+    shellId, audience: "only_owner", principalId: "owner:local", externalUserId: "original-account"
+  });
+  expect(grant.status).toBe(200);
+  const { token } = await grant.json();
+  const manifest = {
+    protocol_version: "0.1.0", shell_id: shellId, shell_kind: "im_bridge", display_name: "Viewer",
+    venue_type: "private_1on1", current_audience: { scope: "only_owner", member_count: 1 }, latency_budget_ms: 300,
+    capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] }
+  };
+  expect((await f.request("/protocol/v0/shell/connections", "POST", manifest, token)).status).toBe(200);
+  expect(runtime.shellGateway.listConnections("live")).toHaveLength(1);
+
+  const created = await f.request("/api/studio/instances", "POST", { slug: "second", displayName: "Second" });
+  expect(created.status).toBe(200);
+  const select = async (id: string) => {
+    expect((await f.request("/api/studio/souls/select", "POST", { id })).status).toBe(200);
+  };
+  await select("second.soul");
+  expect(runtime.shellGateway.listConnections("live")).toHaveLength(0);
+  const previousGrant = await f.request("/protocol/v0/shell/connections", "POST", manifest, token);
+  expect(previousGrant.status).toBe(403);
+  expect(await previousGrant.json()).toMatchObject({ error: "SOUL_MISMATCH" });
+  expect(runtime.coordinator.getSnapshot().D1_WORKING_TURN.recent_turns).toHaveLength(0);
+  expect(runtime.storage.getEventById(first.trace.turn_event_id)).toBeUndefined();
+  const second = await runtime.handleShellTurn({ principalId: "owner:local", text: "Private note from the second archive." });
+  const secondSnapshot = runtime.coordinator.getSnapshot();
+
+  await select(original.manifest.soul_id);
+  expect(runtime.coordinator.getSnapshot()).toEqual(firstSnapshot);
+  expect(runtime.storage.getDecisionTraceByEvent(first.trace.turn_event_id)).toEqual(first.trace);
+  expect(runtime.storage.getEventById(second.trace.turn_event_id)).toBeUndefined();
+  await select("second.soul");
+  expect(runtime.coordinator.getSnapshot()).toEqual(secondSnapshot);
+  expect(runtime.storage.getDecisionTraceByEvent(second.trace.turn_event_id)).toEqual(second.trace);
+});
+
+it("onboards a Markdown card with a vault key and reports a missing consciousness override on a second awakening", async ctx => {
+  const { runtime, request, readiness } = lifecycleFixture(ctx);
+  const apiKey = "offline-onboarding-test-key";
+  const providerId = "tpl_opencode_go";
+  const modelId = "onboarding-chat";
+  const description = "Records observations in the telescope log.";
+  const { soulId } = await request<{ soulId: string }>("/api/studio/onboarding", "POST", {
+    rawCard: "---\nname: Lyra\n---\n" + description,
+    apiKey, providerId, modelId, baseUrl: "http://127.0.0.1:1/v1"
+  });
+  expect(readHostOwnerClaim(runtime.hostDir)).toMatchObject({
+    claimed: true, deploymentMode: "local_sovereign", ownerTokenHash: expect.stringMatching(/^[0-9a-f]{64}$/u)
+  });
+  expect(readConsoleStudioConfig(runtime.soulDir)).toMatchObject({
+    onboardingCompleted: true, soulStudio: { displayName: "Lyra", corePersonalityPrompt: description }
+  });
+  const infra = readHostInfrastructureConfig(runtime.hostDir);
+  expect(infra.modelInstances.find(item => item.modelId === modelId)).toMatchObject({ health: { status: "ready" } });
+  const source = infra.providerSources.find(item => item.id === providerId)!;
+  expect(resolveEffectiveSourceApiKeys(runtime.hostDir, source)).toContain(apiKey);
+  expect(JSON.stringify(infra)).not.toContain(apiKey);
+  expect((await readiness("L4_SOUL_AWAKENED_NO_SHELL")).checks).toMatchObject({
+    providerReady: true, defaultChatModel: modelId, activeSoulId: soulId, bindingValid: true, hostCardsCount: 1
+  });
+
+  await request("/api/studio/onboarding", "POST", { awakenNew: true, card: {
+    spec: "chara_card_v3", spec_version: "3.0", data: { name: "Cygnus",
+      extensions: { "ai0.soul.v1": { module_overrides: { consciousness: { mode: "Override", sourceId: "unavailable", modelId } } } }
+    }
+  } });
+  const report = await readiness("L3_SOUL_AWAKENED_CONFIG_NEEDED");
+  expect(report.checks).toMatchObject({ providerReady: true, soulAwakened: true, bindingValid: false, hostCardsCount: 2 });
+  expect(report.missing_prerequisites.toSorted()).toEqual(["connected_compliant_shell", "soul_consciousness_model_binding"]);
+  expect(await request("/protocol/v0/shell/perception", "POST", { text: "Hello" }, 503))
+    .toMatchObject({ error: "PROVIDER_NOT_READY" });
+  await request("/api/admin/v1/souls/select", "POST", { id: soulId });
+  expect((await readiness("L4_SOUL_AWAKENED_NO_SHELL")).checks.activeSoulId).toBe(soulId);
 });
 
 it("persists console preferences across daemon restarts and keeps legacy patches compatible", async () => {

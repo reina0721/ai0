@@ -21,8 +21,35 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     const runtime = createDefaultDaemonRuntime({
       soulDir,
       ownerMasterToken: ownerToken,
-      seedIfEmpty: true
+      allowDeterministicSandbox: true
     });
+    cleanups.push(() => {
+      runtime.close();
+      rmSync(tempRoot, { recursive: true, force: true });
+    });
+    const observations = [
+      ["mem_test_01_tea", "今天喝的是绿茶。"],
+      ["mem_test_02_review", "周五要评审设计。"],
+      ["mem_test_03_private_wrist", "手腕不适，今天需要休息。"],
+      ["mem_test_04_notes", "图书笔记按主题归档。"],
+      ["mem_test_05_walk", "傍晚散步时见到了白鹭。"]
+    ] as const;
+    for (const [i, [memoryId, observation]] of observations.entries()) {
+      const eventId = "evt_test_" + i;
+      const now = runtime.virtualClock.nowMs();
+      runtime.storage.appendEvent({
+        event_id: eventId, wall_ts_ms: now, virtual_ts_ms: now, source_shell_id: "test.shell",
+        principal_id: "owner:local", principal_trust: "owner_verified", venue_type: "private_1on1",
+        audience_scope: "only_owner", event_category: "perception_committed", modality: "text",
+        summary_text: observation, payload_json: "{}", state_rev_after: i + 1, active_modules_mask: 1
+      });
+      runtime.storage.insertMemoryWithLineage({
+        memory_id: memoryId, memory_tier: "episodic_experience", epistemic_type: "observed_firsthand",
+        attributed_principal: "owner:local", visibility_scope: "only_owner", taint_level: "trusted_owner",
+        content_text: observation, emotional_valence: 0, base_importance: 0.8, stability_half_life: 168,
+        recall_count: 0, created_virtual_ts: now, last_recalled_ts: now, valid_from_virtual_ts: now, created_at_rev: i + 1
+      }, [{ parent_type: "event", parent_id: eventId }]);
+    }
     const server = createUnifiedDaemonHttpServer(runtime);
 
     await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
@@ -31,8 +58,6 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
 
     cleanups.push(async () => {
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
-      runtime.close();
-      rmSync(tempRoot, { recursive: true, force: true });
     });
 
     // 1. Live snapshot from seeded SQLite `.soul`
@@ -117,8 +142,8 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(Math.round(clockData.virtual_offset_hours)).toBe(38);
 
     // 5. Real SQLite 5-Table Hard Forget + redaction_ledger.json tombstone
-    const forgetTarget = snap.lineageNodes.find((n) => n.id === "mem_seed_03_private_wrist")?.id;
-    expect(forgetTarget).toBe("mem_seed_03_private_wrist");
+    const forgetTarget = snap.lineageNodes.find((n) => n.id === "mem_test_03_private_wrist")?.id;
+    expect(forgetTarget).toBe("mem_test_03_private_wrist");
     const forgetRes = await fetch(`${baseUrl}/api/admin/v1/memory/hard-forget`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-ai0-owner-token": ownerToken },
@@ -130,7 +155,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       lineageNodes: Array<{ id: string }>;
     };
     expect(snapAfterForget.redactionLedgerCount).toBeGreaterThanOrEqual(1);
-    expect(snapAfterForget.lineageNodes.some((n) => n.id === "mem_seed_03_private_wrist")).toBe(false);
+    expect(snapAfterForget.lineageNodes.some((n) => n.id === "mem_test_03_private_wrist")).toBe(false);
 
     // 6. Real 5-Step Golden Regression Scenario over HTTP
     const scenarioRes = await fetch(`${baseUrl}/api/admin/v1/sandbox/scenarios/run`, {
@@ -280,6 +305,17 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     const finalSnapJson = JSON.stringify(await (await fetch(`${baseUrl}/api/admin/v1/snapshot`)).json());
     expect(finalSnapJson).not.toContain("qq:group:88420911");
     expect(finalSnapJson).not.toContain("bilibili:room:102477");
+
+    const rollback = await fetch(rollbackPath, {
+      method: "POST", headers: adminHeaders, body: JSON.stringify({ snapshot_id: "e2e-snapshot" })
+    });
+    expect(rollback.status).toBe(200);
+    expect(await rollback.json()).toMatchObject({ rolled_back_to: "e2e-snapshot" });
+    const restored = await runtime.buildConsoleLiveSnapshot();
+    expect(restored.lineageNodes.map(node => node.id).sort()).toEqual(
+      observations.map(([id]) => id).filter(id => id !== forgetTarget).sort()
+    );
+    expect(restored.redactionLedgerCount).toBeGreaterThanOrEqual(1);
   });
 
   it("enforces orthogonal Provider Pool -> Platform Pool -> Profile Binding -> UMO Routing end-to-end", async () => {
@@ -289,7 +325,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     const runtime = createDefaultDaemonRuntime({
       soulDir,
       ownerMasterToken: ownerToken,
-      seedIfEmpty: false
+      allowDeterministicSandbox: true
     });
     const server = createUnifiedDaemonHttpServer(runtime);
     await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
@@ -467,7 +503,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       soulDir,
       userPluginsDir,
       ownerMasterToken: ownerToken,
-      seedIfEmpty: false
+      allowDeterministicSandbox: true
     });
     const server = createUnifiedDaemonHttpServer(runtime);
     await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));

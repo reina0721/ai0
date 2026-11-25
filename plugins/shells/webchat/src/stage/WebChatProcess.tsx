@@ -61,7 +61,7 @@ export function UsageBar({ turn }: { turn?: ChatTurn }) {
   const input = usage?.inputTokens;
   const windowSize = usage?.contextWindow;
   const hits = usage?.cachedInputTokens;
-  const local = provider?.name === "local-persona-synthesizer" || provider?.name === "local";
+  const local = provider?.name === "deterministic-sandbox" || provider?.name === "local";
   const fallback = !turn || local ? "—"
     : !isFinishedChatRun(turn.status) && !provider ? "统计中"
     : !provider && !usage && !turn.process?.stages.some(stage => stage.elapsedMs !== undefined) ? "未记录" : "未提供";

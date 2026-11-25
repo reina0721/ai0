@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SensoryCoverageSchema } from "../perception/index.js";
 
 export const EXT_PERCEPTION_V1_KEY = "ext.perception.v1";
 export const EXT_AFFECT_V1_KEY = "ext.affect.v1";
@@ -9,12 +10,7 @@ export const EXT_MEDIA_SIDEBAND_V1_KEY = "ext.media.sideband.v1";
 /** Sensory coverage and predictive-coding hypotheses supplied by a shell. */
 export const ExtPerceptionV1Schema = z.object({
   source_key: z.string(),
-  coverage: z.enum([
-    "live_foveal",
-    "ambient_peripheral",
-    "stale",
-    "disconnected"
-  ]),
+  coverage: SensoryCoverageSchema,
   frame_span_ms: z.number(),
   freshness_ttl_ms: z.number(),
   competing_hypotheses: z
@@ -74,32 +70,11 @@ export type EmbodiedSyncAnchor = z.infer<typeof EmbodiedSyncAnchorSchema>;
 /** A single animation cue relative to the utterance's audio timeline. */
 export const EmbodiedKeyframeSchema = z.object({
   sync_anchor: EmbodiedSyncAnchorSchema,
-  gaze: z
-    .object({
-      target: z.enum([
-        "user_eyes",
-        "user_cursor",
-        "active_window",
-        "away_shy",
-        "down_sleepy"
-      ]),
-      behavior: z.enum(["locked", "glancing", "lazy_follow"])
-    })
-    .optional(),
-  facial: z
-    .object({
-      expression: z.string(),
-      intensity: z.number().min(0).max(1),
-      blush_level: z.number().min(0).max(1).optional()
-    })
-    .optional(),
-  gesture: z
-    .object({
-      category: z.enum(["head_motion", "hand_gesture", "posture_shift"]),
-      intent: z.string(),
-      fallback_intent: z.string()
-    })
-    .optional(),
+  attention: z.object({ target: z.string().min(1), behavior: z.enum(["locked", "glancing", "lazy_follow"]) }).optional(),
+  expression: z.object({ tag: z.string(), intensity: z.number().min(0).max(1),
+    parameters: z.record(z.union([z.number(), z.string(), z.boolean()])).optional() }).optional(),
+  gesture: z.object({ category: z.string(), intent: z.string(), fallback_intent: z.string().optional() }).optional(),
+  haptic: z.object({ cue_tag: z.string(), intensity: z.number().min(0).max(1).optional() }).optional(),
   linger_ms: z.number().optional()
 });
 

@@ -117,7 +117,7 @@ interface TraceRow extends JsonRecord {
 interface CheckpointRow extends JsonRecord {
   state_rev: number;
   working_memory_json: string;
-  mood_attribution: string | null;
+  state_attributions_json: string;
 }
 
 interface CommitmentRow extends JsonRecord {
@@ -628,11 +628,11 @@ function buildPlan(
   const sensitiveCheckpointValues = [...rootIds, ...originalSummaries];
   const checkpoints = sql.tableExists("cognitive_state_checkpoints")
     ? sql.all<CheckpointRow>(
-        "SELECT state_rev, working_memory_json, mood_attribution FROM cognitive_state_checkpoints",
+        "SELECT state_rev, working_memory_json, state_attributions_json FROM cognitive_state_checkpoints",
       )
     : [];
   const affectedCheckpoints = checkpoints.filter((row) => {
-    const material = `${row.working_memory_json}\n${row.mood_attribution ?? ""}`;
+    const material = `${row.working_memory_json}\n${row.state_attributions_json ?? ""}`;
     return sensitiveCheckpointValues.some((value) => Boolean(value) && material.includes(value));
   });
 
@@ -832,13 +832,11 @@ function mutateFromPlan(
     }
     sql.run(
       `UPDATE cognitive_state_checkpoints
-       SET working_memory_json = ?, mood_attribution = ?
+       SET working_memory_json = ?, state_attributions_json = ?
        WHERE state_rev = ?`,
       [
         replaceSensitiveOccurrences(working, checkpointSensitiveValues),
-        checkpoint.mood_attribution === null
-          ? null
-          : replaceSensitiveOccurrences(checkpoint.mood_attribution, checkpointSensitiveValues),
+        replaceSensitiveOccurrences(checkpoint.state_attributions_json, checkpointSensitiveValues),
         checkpoint.state_rev,
       ],
     );

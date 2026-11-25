@@ -72,7 +72,10 @@ export interface ConsoleContextValue {
 
 const ConsoleContext = createContext<ConsoleContextValue | null>(null);
 const RETIRED_PREFERENCE_PARAMS = ["theme", "soulTheme", "appearance", "rail", "navRailMode", "inspector", "inspectorMode"];
-const LIVE_STUDIO_WRITES = new Set(["config", "plugin-enabled", "co-work-task", "growth-proposal", "sleep-run", "rag-ingest", "instances", "onboarding"]);
+const LIVE_STUDIO_WRITES = new Set([
+  "config", "plugin-enabled", "co-work-task", "growth-proposal", "sleep-run", "rag-ingest", "instances",
+  "onboarding", "host-claim", "cards", "souls/awaken", "souls/select"
+]);
 
 export interface ConsoleProviderProps {
   children: ReactNode;
@@ -217,6 +220,7 @@ export function ConsoleProvider(props: ConsoleProviderProps) {
         if (controller.signal.aborted) return;
         acceptPreferences(result.snapshot);
         setOwnerToken(result.ownerToken);
+        if (mode === "live" && result.snapshot.hasAwakenedSoul === false) setOnboardingOpen(true);
         setCache(prev => ({ ...prev, [mode]: { snapshot: result.snapshot, ready: true, error: null } }));
       } catch (failure) {
         if (controller.signal.aborted) return;

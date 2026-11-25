@@ -1,90 +1,67 @@
 # 01. 系统总体架构与 Monorepo 目标工程拓扑规范
 
-> **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
->
-> 本文档是从“愿景研究（`docs/vision/`）”派生出的第一篇系统工程架构规范。它定义了微内核分层架构、数据面（Data/Cognitive Plane）与控制面（Control/Telemetry Plane）的物理隔离原则、TypeScript 全栈 Monorepo 目标包拓扑规格，以及防止“内置插件走内部后门”的编译期依赖反转约束。
+> **Clean-Slate V1** · 始终保持第一版，零历史沉积、零预设默认角色卡、三级渐进派生、四核正交分立。
 
----
+## 一、四核架构与三级渐进派生
 
-## 一、系统总体架构哲学：确定性微内核 + 八大扩展总线
-
-本系统采用 **微内核（Microkernel）架构**。微内核本身只固化那些**“错了不可逆、离线也要成立、涉及安全与隐私底线、以及负责并发事务裁决”**的确定性逻辑；而把一切与外在形态、多模态信号加工、认知脑区扩展、外部工具、知识源及控制台视图相关的能力，全部抽象为**八大标准化扩展总线（The 8 Extension Buses）**。
+三级派生依次验证通用话轮、感知与表达边界、完整认知与宿主运行。实验从纸面轨迹出发，经过通用执行验证、AIRI 解剖与感知表达验证，收敛到通用派生。图中实线从依赖方指向依赖项，虚线表示网络通道。
 
 ```mermaid
 flowchart TB
-    subgraph ExternalPlane["外部交互与媒体边缘层 (Edge & Embodiment Plane — plugins/shells/* & plugins/media-pipelines/*)"]
-        ShellExt["具身躯壳插件集 (ext.shell: plugins/shells/*)<br/>桌宠 / Live2D / VRM / IM / 游戏 / 默认预装的 webchat"]
-        MediaPipe["多模态媒体管线集 (ext.media_pipeline: plugins/media-pipelines/*)<br/>流式 ASR / 情感 TTS / 视觉语义提取"]
+    Shell["具身躯壳与媒体插件"]
+    Admin["Owner WebUI / CLI"]
+    Gateway["@ai0/gateway"]
+    Protocol["@ai0/protocol"]
+    Storage["@ai0/storage"]
+    SDK["@ai0/sdk"]
+    subgraph Cores["四个正交核心"]
+        Agent["@ai0/agent-core"]
+        Perception["@ai0/perception-core"]
+        Cognition["@ai0/cognition-core"]
+        Expression["@ai0/expression-core"]
     end
-
-    subgraph GatewayPlane["双向协议网关层 (@ai0/gateway)"]
-        WSGateway["Protocol v0 WebSocket JSON-RPC 网关"]
-        TokenAuth["Scoped Capability Token 验签与四元组注入器"]
-        TurnCtrl["话轮输入防抖聚合器 & 下行分块流控器"]
-    end
-
-    subgraph MicrokernelPlane["认知微内核层 (@ai0/kernel — Pure Headless Microkernel)"]
-        L0Guard["Tier 0 安全不变量 & SB 243 危机硬拦截器"]
-        Salience["L0 丘脑显著性门控 & 感官习惯化过滤器"]
-        Clock["可注入虚拟时钟 (VirtualClock) & 时间三分法调度器"]
-        Coord["权威状态事务协调器 (Authoritative State Coordinator / MVCC)"]
-        Blackboard["版本化认知黑板编译器 (Versioned Blackboard Compiler, <2500 Tokens)"]
-        
-        subgraph ConcurrentWorkers["四路异步并发工作者池 (Worker Pool)"]
-            W1["W1 实时对话快环 (Fast Dialogue Loop)"]
-            W2["W2 一等 8 步行动认知环 (8-Step Agency Runner)"]
-            W3["W3 潜意识睡眠与反思环 (Sleep & Reflection Worker)"]
-            W4["W4 多模态按需分析环 (Multimodal Analyzer)"]
-        end
-
-        ExtHost["微内核内部扩展宿主总线<br/>ext.cognitive_organ | ext.action_mcp_skill | ext.memory_knowledge | ext.model_provider | ext.soul_asset"]
-    end
-
-    subgraph StoragePlane["持久化灵魂存档底座 (@ai0/storage — Local-First .soul Directory)"]
-        SQLite["SQLite (WAL) + sqlite-vec + FTS5<br/>event_log | memories | lineage_edges | commitments | traces | knowledge_chunks"]
-        SoulFiles["结构化人设、策略与多态资产文件<br/>identity.yaml | narrative.md | blackboard_policy.yaml | milestones.yaml | lorebooks/ | skills/ | flows/"]
-        GitSnap["Git / COW 快照回档 (含永久遗忘墓碑重放) 与脱敏打包引擎"]
-    end
-
-    subgraph ControlPlane["宿主控制与可观测平面 (@ai0/console-webui — 常驻多态外壳 + <main> 一体式圆角卡片路由视口)"]
-        AdminAPI["Kernel Admin & Audit Telemetry Bus (特权管理与四轨遥测总线)"]
-        AppShell["常驻多态外壳 (混合顶栏 LIVE/SANDBOX 环境切换 + 左可折叠路由栏 + 右可折叠检视副栏)"]
-        RouterOutlet["<main> 一体式圆角卡片路由视口盒子 (MainRoundedCardOutlet = <RouterOutlet />)<br/>按需渲染 8 大一级域 × 30 条专职路由页面 | 内部承载五大 UI/UX 视图母版 & 4层45项第一方紧凑 MD3 组件"]
-        UISlots["插件页面和扩展点 (ext.console_ui)"]
-    end
-
-    ShellExt <--> MediaPipe <-->|"Protocol v0 (公开标准协议)"| WSGateway
-    WSGateway --> TokenAuth --> TurnCtrl --> L0Guard --> Salience --> Coord
-    Coord <--> Blackboard
-    Blackboard -->|"只读快照 v_N"| W1 & W2 & W3 & W4
-    W1 & W2 -->|"下行 ExpressionEnvelope"| TurnCtrl
-    W1 & W2 & W3 & W4 <--> ExtHost
-    W1 & W2 & W3 & W4 -->|"提交 Proposal (base_rev=v_N)"| Coord
-    Clock --> Coord & W3
-    Coord <-->|"原子事务读写 / WHERE 受众隔离"| SQLite & SoulFiles
-    GitSnap <--> SQLite & SoulFiles
-    ControlPlane <-->|"特权总线 (非 Shell 协议)"| AdminAPI <--> Coord & ExtHost & GitSnap
-    UISlots -.->|"挂载已启用插件的页面模块"| ShellExt
+    Shell -.->|"Channel A · Protocol v0 WebSocket"| Gateway
+    Admin -.->|"Channel B · Owner REST/SSE"| Gateway
+    Shell --> Protocol & SDK
+    SDK --> Protocol
+    Gateway --> Protocol & Perception & Cognition & Expression & Storage
+    Cognition --> Protocol & Agent & Perception & Expression & Storage
+    Agent & Perception & Expression & Storage --> Protocol
 ```
 
----
+## 二、八包职责
 
-## 二、数据面（Cognitive Data Plane）与控制面（Control & Telemetry Plane）的严格分离
+- **`@ai0/protocol`** 为 Zod 机器契约唯一真相源，零内部依赖。覆盖 `core-v0/`、`extensions/`、`plugin-manifests/`、`character-card-v3/` 和 `control-plane/`。控制面定义 L0～L5 Deploy-to-Live 就绪契约及 `VerifiableTurnTrace`。
+- **`@ai0/agent-core`** 是通用 LLM 与工具 `Turn / Round` 执行引擎。以 `system_invariant`、`developer_frame`、`untrusted_observation` 三层分离指令权威与数据。支持多步并发工具调度、`maxSteps` 到限结算和 `goalVerification` 缺少证据时的 `unverified` 守卫。HTTP 408、429 和 5xx 瞬态故障仅在副作用发生前重试。上游传输支持 `opencode_go` 的 `deepseek-v4.1-flash`、OpenAI-compatible、Anthropic、DeepSeek 与 Ollama。领域边界为零陪伴、情绪、记忆与 Avatar 知识。
+- **`@ai0/perception-core`** 拥有上行 `EmbodimentAffordanceRegistry` 与 `UniversalObservationFrame` 六元组元语法。`ScopedContextRegistry` 使用 `freshnessTtlMs` 和 `blind | disconnected | stale` 锁约束感知推断。`TurnLifecycleGate` 处理 `activity | interim | commit | retract`。时间梯度习惯化与 `ReflexGate` 以 `llmTokens: 0` 抑制例行信号并累计 `suppressedRoutineCount`。`ChronoceptiveSignalSynthesizer` 从经过时间扣除冬眠区间。
+- **`@ai0/cognition-core`** 的 `VirtualClock` 在 LIVE 锁定 1x，在 `SANDBOX:<fork_id>` 支持时间变速并记录冬眠区间。声明式 `ContinuousStateMetaEngine` 以描述符与潜状态驱动演化，SQL 心理标量列数为零。五域 `AuthoritativeStateCoordinator` 执行 MVCC 裁决。Tier 0 SB 243 安全守卫、四级 `EpistemicMemoryFirewall`（含玩笑语用防火墙与 `CommonGround` 双方共同确认状态机）及低于 2500 token 的声明式 `BlackboardCompiler`（含 70% `Social Mask Damper`）约束认知输入。包含 W1 对话、W2 行动、W3 睡眠整理、W4 多模态分析四路并发 Worker、五脑区模型路由、`PolymorphicExtensionHost` 与 `.scenario.yaml` 回放评估器。
+- **`@ai0/expression-core`** 的 `CommunicativeIntentEnvelope` 独立于人形，支持 `communicate | explicit_silence | actuate | request_observation`。`RealizerVocabularyNegotiator` 在缺少符合隐私约束的躯壳时置为 `held_pending_compliant_shell`。有界 `InteractionOpportunityPool` 管理表达机会。四态真值链为 `generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`。`GroundingReceiptTracker` 跟踪 `silenced` 与 `done` 两个中断边界，并恢复 `unsaid_remainder`。
+- **`@ai0/storage`** 负责 Local-First `.soul` 的 SQLite WAL、FTS5 与向量存储，以 `continuous_states_json` 保存检查点。持久化 `souls/host/` 基础设施与 Vault，负责 CCv3 导入、越权指令清理、未知 `extensions.<namespace>` 无损保留及 `.soul` 唤醒。Stage 1 用 SQL `WHERE visibility_scope …` 强制过滤。五表载荷执行拓扑级联 Hard Forget，通过 `redaction_ledger.json` 跨快照重放。V1 的兼容视图和预置灵魂数均为零。
+- **`@ai0/gateway`** 提供 Channel A Protocol v0 WebSocket、Channel B Owner Admin REST/SSE、`/healthz` 和 `/readyz`。
+- **`@ai0/sdk`** 是 `plugins/**` 的零后门多态扩展 SDK。官方与社区扩展共用运行时清单发现、装载与权限裁决路径。
 
-为了同时满足**“内置 WebChat 零内部后门”**与**“WebUI 控制台 100% 白盒可观测、全主权治理”**，系统在网络端口与认证令牌上物理划分为两个独立平面：
+## 三、双平面接口与部署就绪
 
-| 维度 | 1. 公开具身协议面 (Public Shell Protocol Plane) | 2. 宿主控制与遥测面 (Privileged Control & Telemetry Plane) |
+| 边界 | Channel A · 公开具身协议 | Channel B · Owner 管理与遥测 |
 | :--- | :--- | :--- |
-| **通信端点** | `ws://host:port/protocol/v0/shell` | `http(s)://host:port/api/admin/v1/*` & `ws://host:port/api/admin/v1/telemetry` |
-| **接入对象** | 所有具身躯壳插件（`plugins/shells/*`，含外部桌宠、Live2D、IM、游戏插件及默认预装的 `plugins/shells/webchat`） | 仅限 **`@ai0/console-webui`（WebUI 控制台宿主）** 与本地 CLI 管理工具 |
-| **认证凭据** | `Scoped Capability Token`（按躯壳绑定固定的 `venue_type`、允许的 `Audience` 范围与 `Actuators` 权限） | `Owner Master Session Token`（仅限数字生命所有者本机或强认证登录持有） |
-| **可见数据边界** | **零脑内隐私暴露**：只能发送上行感知事件、接收下行表达信封（`speak` / `explicit_silence` / `invoke_actuator`）、回传播放/执行回执。**绝对拿不到**脑内召回的记忆 ID、权限裁决明细、未说出口的思考或其它躯壳的私聊内容。 | **100% 全景白盒与主权控制**：实时订阅 8 步可验证决策轨迹（`VerifiableTurnTrace`）、读写三层人格与记忆血缘树、调整虚拟时钟、开关消融模块、审批权限与执行灵魂回档。 |
+| 传输 | `/protocol/v0/shell` · Protocol v0 WebSocket | `/api/admin/v1/*` · REST 与 SSE |
+| 凭据 | `Scoped Capability Token`，强制校验躯壳、场所、受众与执行器权限 | Owner 管理会话 |
+| 数据 | 注入可信来源四元组，端到端保留结构化 `UniversalObservationFrame`。普通字符串仅作为帧内内容字段。向合规躯壳发送表达意图并接收回执。 | 宿主认领、Provider 配置、角色卡管理与唤醒、躯壳绑定、`VerifiableTurnTrace` 与存档治理。 |
 
----
+`/healthz` 表示进程存活。`/readyz` 报告 Deploy-to-Live 阶段，仅 L5 表示 LIVE 就绪。
 
-## 三、TypeScript 全栈 Monorepo 目标目录与包拓扑规格
+```text
+L0_UNCLAIMED
+  → L1_CLAIMED_NO_PROVIDER
+  → L2_PROVIDER_READY_NO_SOUL
+  → L3_SOUL_AWAKENED_CONFIG_NEEDED
+  → L4_SOUL_AWAKENED_NO_SHELL
+  → L5_LIVE_READY
+```
 
-面向编码实现阶段，目标工程采用 `pnpm workspaces` + `Turborepo` 构建单仓多包（Monorepo）架构，确保协议 Schema、内核、存储引擎、内置参考插件与 WebUI 控制台之间的高内聚与强类型共享（当前仓库处于规格设计阶段，以下为目标实现拓扑规格）：
+## 四、Monorepo 目标目录
+
+采用 `pnpm workspaces` 与 `Turborepo`。
 
 ```text
 <repo-root>/
@@ -92,101 +69,51 @@ flowchart TB
 ├── pnpm-workspace.yaml
 ├── turbo.json
 ├── tsconfig.base.json
-│
 ├── docs/
-│   ├── vision/                          # 问题域：5 篇愿景研究与认知/伦理公理
-│   └── architecture/                    # 解法域：6 篇全量系统工程架构设计规范
-│
+│   ├── vision/                         # 5 篇愿景研究
+│   └── architecture/                   # 8 篇工程规格（01–08）
+├── labs/
+│   ├── README.md
+│   ├── stage0-paper-traces/
+│   ├── stage1-agent-core/
+│   ├── stage2-airi-dissection/
+│   ├── stage3-perception-expression/
+│   └── stage4-universal-derivation/
 ├── packages/
-│   ├── protocol/                        # [@ai0/protocol] 零依赖双平面协议与契约唯一真相源包 (Exclusive Machine SSOT)
-│   │   ├── src/
-│   │   │   ├── core-v0/                 # 通道 A (公开具身协议面)：冻结核心五原语 Zod Schema & TypeScript 类型 (含 expression_vocabulary)
-│   │   │   ├── extensions/              # 官方标准扩展命名空间 (ext.perception.v1, ext.affect.v1, ext.rhythm.v1, ext.embodied.v1, ext.media.sideband.v1)
-│   │   │   ├── plugin-manifests/        # 八大功能总线 × 五阶多态扩展载体 (ai0.extension.json / SKILL.md / .flow.yaml) Schema 定义
-│   │   │   └── control-plane/           # 通道 B (特权控制与遥测面)：VerifiableTurnTrace / BlackboardPolicy / Milestones / 四轨遥测帧与 Admin API Zod 契约
-│   │
-│   ├── storage/                         # [@ai0/storage] Local-First .soul 存储与血缘引擎
-│   │   ├── src/
-│   │   │   ├── sqlite/                  # SQLite (WAL) + sqlite-vec 迁移与 DAO 层
-│   │   │   ├── event-log/               # 不可变事件追加、墓碑写入与载荷物理擦除
-│   │   │   ├── lineage-dag/             # 记忆血缘有向无环图查询、级联擦除与局部失效重算
-│   │   │   ├── audience-guard/          # 数据库检索层强制 WHERE audience_scope 硬过滤器
-│   │   │   └── snapshot-git/            # .soul 目录快照、三种回档语义引擎与 tar.zst 整包导入导出
-│   │
-│   ├── kernel/                          # [@ai0/kernel] 纯无头数字生命认知微内核
-│   │   ├── src/
-│   │   │   ├── clock/                   # VirtualClock 虚拟时钟、冬眠识别与可求逆阈值唤醒定时器
-│   │   │   ├── coordinator/             # AuthoritativeStateCoordinator (MVCC 版本裁决 + 睡眠写入防火墙)
-│   │   │   ├── safety-l0/               # Tier 0 安全不变量、SB 243 危机硬拦截器、3小时提醒器
-│   │   │   ├── gate/                    # L0 丘脑显著性门控、感官习惯化衰减与输入防抖聚合
-│   │   │   ├── blackboard/              # <2500 Token 认知状态黑板编译器与社交面具阻尼器
-│   │   │   ├── organs/                  # 内置认知器官 (身份自我/多层次记忆/情绪内稳态/关系与用户模型/承诺)
-│   │   │   ├── workers/                 # 四路并发 Worker (W1 快对话环 / W2 8步行动环 / W3 睡眠环 / W4 多模态环)
-│   │   │   ├── extension-bus/           # 八大扩展总线宿主、生命周期 Hook 调度与三维权限矩阵引擎
-│   │   │   ├── router/                  # 五脑区异构模型路由器与双轨精力 Token 预算降级器
-│   │   │   └── replay-eval/             # .scenario.yaml 脚本化场景回放与声线漂移评估引擎
-│   │
-│   ├── gateway/                         # [@ai0/gateway] 双平面网络网关 (Fastify + ws)
-│   │   ├── src/
-│   │   │   ├── shell-ws-server.ts       # 公开 Protocol v0 WebSocket 服务端 (面向所有 Shell)
-│   │   │   └── admin-api-server.ts      # 宿主特权 REST + Telemetry WebSocket 服务端 (面向 WebUI 控制台)
-│   │
-│   └── sdk/                             # [@ai0/sdk] 面向社区开发者的五阶多态扩展开发套件
-│       └── src/                         # 快速编写 Shell / MediaPipeline / CognitiveOrgan / Skill / ConsoleUI 插件的基类与打包器
-│
-├── apps/                                # 【宿主与控制面应用层】
-│   ├── daemon/                          # [@ai0/daemon] 内核与网关启动守护进程 / CLI 入口
-│   └── console/                         # [@ai0/console-webui] 现代化多态 WebUI 控制台操作系统 (React / Next.js)
-│       └── src/
-│           ├── app-shell/               # 常驻多态外壳 (混合顶栏 LIVE/SANDBOX 环境切换 / 左三态可折叠路由轨 / 右三态检视副栏 / 主权围栏)
-│           ├── router/                  # 8 大一级导航域 × 30 条专职二级子路由嵌套路由树、懒加载与 DirtyRouteGuard 守卫
-│           ├── design-system/           # 四层 45 项第一方紧凑二次封装 MD3 组件库 (含 MainRoundedCardOutlet 一体式圆角卡片路由视口盒子)
-│           ├── archetypes/              # <main> 圆角卡片盒子内部的五大 UI/UX 视图结构母版 (插件页面 / 态势终端 / 主从配置 / 拓扑画布 / 多态工作坊)
-│           ├── domains/                 # 1:1 零阉割投射后端全量机制的 10 大业务域模块 (具身 Shells 中枢 / 五阶扩展工作坊 / 可食用角色蒸馏炉 / 黑板积木编排器等)
-│           └── extension-slots/         # 第三方插件动态 UI 扩展槽与 插件页面宿主 (ext.console_ui Schema & 无凭据沙盒 Iframe)
-│
-├── plugins/                             # 【统一多态扩展与插件生态总目录 — 严禁任何插件混入顶层 packages/ 搞单插件独占!】
-│   ├── shells/                          # 总线 1 (ext.shell)：具身运行环境插件集
-│   │   └── webchat/                     # 默认网页会话插件，提供 /webchat 页面
-│   ├── cognitive-organs/                # 总线 3 (ext.cognitive_organ)：大脑认知器官插件集
-│   │   └── dream-journal/               # [@ai0/plugin-organ-dream-journal / community.organ.dream-journal] 官方参考器官：睡眠期梦境与悄悄话日记
-│   ├── skills-and-mcp/                  # 总线 4 (ext.action_mcp_skill)：SKILL.md 自然语言技能手册与 MCP 连接器集
-│   │   └── daily-companion-review/      # [community.skill.daily-github-companion-review] 官方参考技能：SKILL.md 陪伴复盘技能包
-│   ├── media-pipelines/                 # 总线 2 (ext.media_pipeline)：流式 ASR / 情感 TTS / 视觉语义提取插件集
-│   │   └── emotion-tts-sideband/        # [@ai0/plugin-media-emotion-tts / builtin.media.emotion-tts-sideband] 情感 TTS 边带媒体管线
-│   └── flows-and-assets/                # 总线 8 (ext.flow_asset)：编排流与多态资产插件集
-│       └── late-night-coding-care/      # [builtin.flow.late-night-coding-care] 深夜编程关怀默认编排流
-│
-└── souls/                               # 默认本地灵魂存档挂载目录 (.soul 实例集)
-    └── default.soul/
+│   ├── protocol/
+│   ├── agent-core/
+│   ├── perception-core/
+│   ├── cognition-core/
+│   ├── expression-core/
+│   ├── storage/
+│   ├── gateway/
+│   └── sdk/
+├── apps/
+│   ├── daemon/
+│   └── console/
+├── plugins/
+├── scripts/
+│   └── verify-architecture-boundaries.mjs
+└── souls/
+    ├── host/                           # Vault、Provider Pool、初始为空的角色卡注册表
+    └── <soul_id>.soul/                  # 从 CCv3 卡在运行时唤醒
 ```
 
----
+**Zero-Preset** · 宿主角色卡注册表与灵魂存档列表均从空集合开始。磁盘契约见 [02. 灵魂存档规范](02-storage-and-soul-archive-schema.md)。
 
-## 四、编译期架构依赖铁律（Dependency Inversion & Anti-Backdoor Rules）
+## 五、编译期依赖边界
 
-为了在代码层 **100% 强制执行** 我们在愿景中立下的边界规矩，Monorepo 通过 ESLint `eslint-plugin-boundaries` 与 TypeScript Project References 施加以下编译期硬约束：
+`verify-architecture-boundaries.mjs` 对包声明及源码导入执行以下直接内部依赖允许清单。跨目录相对路径与别名同样受约束。
 
-1. **`@ai0/protocol` 零依赖铁律**：
-   * 仅依赖 `zod`，严禁引用任何 Node.js 专有原生模块或内核包，确保可在浏览器、移动端、边缘设备或任何外部脚本中无缝运行。
-2. **`plugins/**` 全目录通用零后门铁律（Universal Plugin Zero-Backdoor Enforcement）**：
-   * **物理目录隔离**：顶层 `packages/` 目录仅限五大微内核底座包（`protocol`, `storage`, `kernel`, `gateway`, `sdk`），所有官方参考插件（如 `plugins/shells/webchat`）一律归入 `plugins/**` 目录，严禁任何单一插件在 `packages/` 顶层享有独占特权席位；社区与用户自建插件一律归入官方源码树之外的独立目录（`<soulDir>/plugins/*`、`user-plugins/*` 或 `AI0_PLUGINS_DIR`），确保官方上游更新（`git pull` / 发行版升级）对用户插件零冲突、零覆盖。
-   * **双向依赖反转硬约束（Invariant 3 & Invariant 7）**：`plugins/**` 下的任何插件包可在自身 `package.json` 中独立管理第三方 npm 依赖（自包含依赖闭包与独立 `dist/` 产物），但在 `@ai0/*` 内部包中仅允许依赖 `@ai0/protocol` 与 `@ai0/sdk`，**编译期严禁**依赖或导入 `@ai0/kernel`、`@ai0/storage`、`@ai0/gateway`、`@ai0/console-webui` 或 `@ai0/daemon`；反向地，`packages/*` 与 `apps/*` 编译期**严禁**依赖任何 `@ai0/plugin-*` 包、导入 `plugins/**` 源码或把特定插件的 UI/业务依赖塞入宿主 `package.json`，插件网页一律通过运行时清单发现、静态资产托管（`/api/plugins/:id/assets/*`）与 `ConsolePageHost` 动态挂载。
-3. **`@ai0/kernel` 无头（Headless）纯洁性铁律**：
-   * `@ai0/kernel` 严禁依赖任何前端 UI 框架（React/DOM）或特定外部平台 SDK（如 Discord.js / Live2D Cubism SDK），确保认知微内核在任何服务器、桌面或嵌入式容器中均可独立无头运行。
-4. **`@ai0/storage` 唯一写入口铁律**：
-   * 在 `@ai0/kernel` 内部，除 `AuthoritativeStateCoordinator`（权威状态事务协调器）之外，任何并发 Worker（`W1`~`W4`）或认知器官插件均只持有 `ReadOnlyStorageView` 接口引用，在类型系统层面彻底封死绕过协调器直写数据库的可能性。
+| 依赖方 | 允许的直接内部依赖 |
+| :--- | :--- |
+| `@ai0/protocol` | 无。Zod 提供跨平台 Schema 校验。 |
+| `@ai0/agent-core` | `@ai0/protocol` |
+| `@ai0/perception-core`、`@ai0/expression-core`、`@ai0/storage`、`@ai0/sdk` | `@ai0/protocol` |
+| `@ai0/cognition-core` | `@ai0/protocol`、`@ai0/agent-core`、`@ai0/perception-core`、`@ai0/expression-core`、`@ai0/storage` |
+| `@ai0/gateway` | `@ai0/protocol`、`@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`、`@ai0/storage` |
+| `plugins/**` | `@ai0/protocol`、`@ai0/sdk` |
 
----
+`packages/*` 和 `apps/*` 禁止依赖或导入 `@ai0/plugin-*` 或 `plugins/**`。插件依靠运行时清单发现与权限裁决，插件页面由控制台动态挂载。Worker 与认知器官持有只读存储视图，权威写入由协调器通过提案提交。
 
-## 五、Vibecoding 与 AI Coding Agent 施工防跑偏铁律（Code-First SSOT & Anti-Drift Guardrails）
-
-为防止在代码实施阶段（或使用 AI Coding Agent 辅助开发时）陷入“双轨真相源分裂（Split-Brain SSOT）”或“形式主义静态检查内耗（Goodhart's Law Compliance Theater）”，本仓库强制确立以下三条工程施工铁律：
-
-1. **单一机器契约真相源铁律（`@ai0/protocol` Zod-in-Code as Exclusive Machine SSOT）**：
-   * 进入编码阶段后，`packages/protocol/src/**/*.ts` 中基于 `zod` 定义的 Schema 是全仓**唯一**的机器可读协议与契约真相源（既在编译期通过 `z.infer<typeof ...>` 导出 TypeScript 强类型，又在运行时提供网关校验，并在构建期通过 `zod-to-json-schema` 单向导出给非 TypeScript 社区插件）。
-   * **严禁**在仓库根目录或 `packages/protocol` 之外手工维护平行的静态 `.schema.json` 文件集、静态符号 CSV/JSON 登记表或脱离运行时的 PowerShell/Regex 文本检查脚本，从根源杜绝“改了代码却与静态 Schema 文件脱节”的双轨内耗。
-2. **反静态假原型污染铁律（Real Dual-Plane Component Architecture over Static DOM Prototypes）**：
-   * `@ai0/console-webui` 与 `plugins/shells/**` 下的 Web 躯壳插件开发必须直接基于双平面通信契约（公开 Shell WebSocket vs. 特权 Admin Telemetry Bus）构建模块化组件，严禁在仓库中堆砌命令式拼接 DOM 的巨型单文件静态 HTML 假原型，防止前端 Agent 照抄静态假状态而破坏数据面与控制面的物理隔离。
-3. **真实闭环优先与零阉割铁律（Real Runtime Loop & Zero Regression on Axioms）**：
-   * 推进 **Vertical Slice v0** 时，必须严格按 `P0 -> P6` 派生顺序在真实 SQLite (WAL) 与 `AuthoritativeStateCoordinator` 上跑通端到端数据流；严禁用 Prompt 叮嘱代替 SQL `WHERE audience_scope` 硬隔离，严禁用 `Clamp(v + Δ)` 硬截断代替 $\tanh$ 阿贝尔群可交换冲量合成，严禁为了省事阉割五原语回执或血缘 DAG 拓扑重算。
+`packages/protocol/src/**/*.ts` 的 Zod Schema 服务于 TypeScript 类型推导、运行时校验与单向 JSON Schema 生成。端到端验证使用真实 SQLite WAL、协调器事务及双平面接口，覆盖结构化观察、SQL 受众隔离、表达回执、血缘重算与场景回放。

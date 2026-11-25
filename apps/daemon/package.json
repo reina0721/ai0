@@ -12,7 +12,10 @@
   "dependencies": {
     "@ai0/console-webui": "workspace:*",
     "@ai0/gateway": "workspace:*",
-    "@ai0/kernel": "workspace:*",
+    "@ai0/agent-core": "workspace:*",
+    "@ai0/perception-core": "workspace:*",
+    "@ai0/cognition-core": "workspace:*",
+    "@ai0/expression-core": "workspace:*",
     "@ai0/protocol": "workspace:*",
     "@ai0/sdk": "workspace:*",
     "@ai0/storage": "workspace:*",

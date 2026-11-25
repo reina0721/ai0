@@ -343,20 +343,25 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         state_rev: 2,
         virtual_ts_ms: ts + 2000,
         caused_by_event_id: "evt_101",
-        instant_valence: 0.4,
-        instant_arousal: 0.2,
-        mood_baseline_val: 0.2,
-        mood_attribution: "Excited about My secret address is 742 Seattle Pine Street.",
-        mood_attr_scope: "only_owner",
-        circadian_energy: 0.8,
-        metabolic_energy: 0.9,
-        drive_social_longing: 0.1,
-        drive_curiosity: 0.5,
+        continuous_states_json: JSON.stringify({
+          instant_valence: 0.4,
+          instant_arousal: 0.2,
+          mood_baseline_val: 0.2,
+          circadian_energy: 0.8,
+          metabolic_energy: 0.9,
+          drive_social_longing: 0.1,
+          drive_curiosity: 0.5
+        }),
+        state_attributions_json: JSON.stringify({
+          mood_attribution: "Excited about My secret address is 742 Seattle Pine Street.",
+          mood_attr_scope: "only_owner"
+        }),
         relationship_json: "{}",
         user_model_json: "{}",
         working_memory_json: JSON.stringify({
           last_turn: "My secret address is 742 Seattle Pine Street."
-        })
+        }),
+        hibernation_intervals_json: "[]"
       });
       storage.saveTurnDecisionTrace({
         trace_id: "trc_101",
@@ -492,7 +497,7 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
       expect(storage.listCommitments()).toHaveLength(0);
       const checkpoint = storage.getLatestCheckpoint();
       expect(checkpoint?.working_memory_json).not.toContain("Seattle");
-      expect(checkpoint?.mood_attribution).not.toContain("Seattle");
+      expect(checkpoint?.state_attributions_json).not.toContain("Seattle");
 
       // Topic Seal
       const sealResult = await executeTopicSeal(storage, {

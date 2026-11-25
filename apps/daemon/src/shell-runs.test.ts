@@ -13,7 +13,7 @@ it("streams persisted generic shell turns via /protocol/v0/shell/* and enforces 
   const runtime = createDefaultDaemonRuntime({
     soulDir: join(root, "test.soul"),
     ownerMasterToken: ownerToken,
-    seedIfEmpty: true
+    allowDeterministicSandbox: true
   });
   const server = createUnifiedDaemonHttpServer(runtime);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -263,7 +263,7 @@ it("discovers out-of-tree community plugins and serves only compiled dist assets
   const runtime = createDefaultDaemonRuntime({
     soulDir: join(root, "test.soul"),
     ownerMasterToken: ownerToken,
-    seedIfEmpty: true,
+    allowDeterministicSandbox: true,
     extraPluginDirs: [externalPluginsRoot]
   });
   const server = createUnifiedDaemonHttpServer(runtime);

@@ -1,8 +1,8 @@
-# 04. Protocol v0 最小冻结核心与双向网关架构规范
+# 04. Clean-Slate V1：Protocol v0 原语与双向网关规范
 
 > **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
 >
-> 本文档定义 `@ai0/protocol` 与 `@ai0/gateway` 的工程契约。它给出了 **5 年不破兼容的 Protocol v0 五原语完整 TypeScript / Zod Schema 规范**、官方标准扩展命名空间契约、`Scoped Capability Token` 防伪验签机制，以及上行输入防抖聚合与下行流式打断回执状态机。
+> 本文档定义 `@ai0/protocol` 与 `@ai0/gateway` 的工程契约。它给出了 **Clean-Slate V1 的 Protocol v0 五原语 TypeScript 契约**、官方标准扩展命名空间契约、`Scoped Capability Token` 防伪验签机制，以及上行输入防抖聚合与下行流式打断回执状态机。
 
 ---
 
@@ -12,6 +12,7 @@
 
 ```typescript
 // packages/protocol/src/core-v0/primitives.ts
+import type { AttentionTarget } from "../extensions/standard-v1";
 
 export type ProtocolVersion = "0.1.0";
 export type VenueType = "private_1on1" | "group_chat" | "public_livestream" | "local_ambient";
@@ -29,14 +30,13 @@ export type WellKnownSensorModality =
   | "audio_transcript"
   | "vad_activity"
   | "typing_activity"
-  | "tactile"
-  | "window_focus"
-  | "game_state"
-  | "visual_semantic";
-export type SensorModality = WellKnownSensorModality | `custom.${string}`;
-
+  | "visual_cue"
+  | "contact_interaction"
+  | "state_telemetry"
+  | "ambient_presence";
+export type SensorModality = WellKnownSensorModality | `custom.${string}` | (string & {});
 /**
- * 原语 1：HandshakeManifest (连接建立后由 Shell 发送给 Kernel 的能力与场合声明)
+ * 原语 1：HandshakeManifest (连接建立后由 Shell 发送给 Gateway 的能力与场合声明)
  */
 export interface HandshakeManifest {
   protocol_version: ProtocolVersion;
@@ -54,6 +54,8 @@ export interface HandshakeManifest {
     /** 平面 1：端侧可采集并上报的感知模态 (支持 WellKnownSensorModality 及 custom.* 开放扩展) */
     sensors: SensorModality[];
     /** 平面 2：支持解析渲染的下行扩展命名空间与动态具身表现力词典 */
+    supports_card_assets?: boolean;
+    embodiment_anchors?: string[];
     supported_extensions: string[];          // 如 ["ext.affect.v1", "ext.rhythm.v1", "ext.embodied.v1"]
     /**
      * 可选：动态具身表现力词典协商 (Dynamic Embodied Expression Vocabulary)
@@ -61,8 +63,8 @@ export interface HandshakeManifest {
      * 由认知黑板按情境注入 System 1，既保持核心协议极简，又彻底释放高阶躯壳的演出可玩性。
      */
     expression_vocabulary?: {
-      facial_expressions?: string[];         // 如 ["soft_smile", "pout_blush", "half_closed_eyes", "starry_excited"]
-      gesture_intents?: string[];            // 如 ["tilt_head_curious", "rub_against_hand", "eat_strawberry", "play_guitar"]
+      expression_tags?: string[];
+      semantic_actions?: string[];
       voice_emotion_tags?: string[];         // 如 ["shy_whisper", "tsundere_retort", "sleepy_yawn", "warm_comfort"]
     };
     /** 平面 3：端侧暴露的具身执行器契约 (供大脑 8 步行动认知环调用，支持运行期通过 capabilities_updated 动态热增删) */
@@ -77,9 +79,19 @@ export interface HandshakeManifest {
 }
 
 /**
- * 原语 2：PerceptionEnvelope (Shell -> Kernel 上行标准化语义感知信封)
+ * 原语 2：PerceptionEnvelope (Shell -> Gateway 上行标准化语义感知信封)
  */
+export interface UniversalObservationFrame {
+  channel: { modality: SensorModality; source_key: string; lifecycle: PerceptionEnvelope["lifecycle"] };
+  attribution: { actor: PerceptionEnvelope["actor"]; principal_id?: string };
+  contextFrame: { shell_id: string; venue_type: VenueType; audience_scope: AudienceScope };
+  provenance: { event_id: string; persistence_hint: PerceptionEnvelope["persistence_hint"]; extensions: Record<string, unknown> };
+  interpretation: { summary_text: string; confidence: number };
+  chronology: { timestamp: string; sustained_ms?: number };
+}
+
 export interface PerceptionEnvelope {
+  frame: UniversalObservationFrame;
   event_id: string;                          // ULID
   timestamp: string;                         // ISO-8601 UTC
   actor: {
@@ -90,7 +102,7 @@ export interface PerceptionEnvelope {
   lifecycle: "activity" | "interim" | "commit" | "retract";
   /** 开放感知模态：统一复用 SensorModality (支持 WellKnownSensorModality 及 custom.* 社区自定义模态) */
   modality: SensorModality;
-  summary_text: string;                      // 任何极简核心均能理解的标准化语义文本描述
+  summary_text: string;                      // 与 frame.interpretation 一致的语义摘要
   confidence: number;                        // [0.0, 1.0] 边缘模型识别置信度 (文本输入恒为 1.0)
   sustained_ms?: number;                     // 持续时长 (用于过滤瞬时视觉抖动误报)
   persistence_hint: "permanent" | "ephemeral_blackboard"; // 连续生物特征默认仅进短期黑板，不落永久日志
@@ -98,34 +110,45 @@ export interface PerceptionEnvelope {
 }
 
 /**
- * 原语 3：ExpressionEnvelope (Kernel -> Shell 下行表达意图与具身动作调用信封)
+ * 原语 3：ExpressionEnvelope (Gateway -> Shell 下行表达意图与具身动作调用信封)
  */
-export interface ExpressionEnvelope {
-  intent_id: string;                         // ULID
-  correlation_event_id: string;              // 触发本次表达的源感知事件 ID (主动搭话则为唤醒事件 ID)
-  chunk_seq: number;                         // 流式分段帧序号 (0, 1, 2...)
-  is_final: boolean;                         // 是否为本话轮最后一帧
-  /** 一等动作类型：开口说话 | 显式决定保持沉默 | 调用端侧具身执行器 */
-  action_type: "speak" | "explicit_silence" | "invoke_actuator";
-  /** 必选回退文本：任何极简纯文本 Shell 只需渲染该字段即可工作 */
+export interface CommunicativeIntentEnvelope {
+  intent_id: string;
+  correlation_event_id: string;
+  action_type: "speak" | "explicit_silence" | "invoke_actuator" | "request_observation";
+  attention_target?: AttentionTarget;
+  expressive_stance?: string;
+  delivery_constraints: {
+    audience_scope: AudienceScope;
+    require_non_verbal_quiet?: boolean;
+    max_latency_ms?: number;
+  };
   fallback_text: string;
+  observation_request?: { modality: SensorModality; source_key?: string };
   silence_reason?: "listening_wait_for_more" | "not_addressed_in_group" | "respecting_user_focus" | "emotional_pause";
   actuator_invocation?: {
     actuator_id: string;
     arguments: Record<string, unknown>;
   };
-  extensions: Record<string, unknown>;       // 如 ext.affect.v1, ext.rhythm.v1, ext.embodied.v1
+}
+
+export interface ExpressionEnvelope extends CommunicativeIntentEnvelope {
+  chunk_seq: number;
+  is_final: boolean;
+  extensions: Record<string, unknown>;
 }
 
 /**
- * 原语 4：DeliveryReceipt (Shell -> Kernel 上行播放、打断与具身动作执行回执)
+ * 原语 4：DeliveryReceipt (Shell -> Gateway 上行播放、打断与具身动作执行回执)
  */
 export interface DeliveryReceipt {
   intent_id: string;
   chunk_seq: number;
   status: "rendered" | "playing" | "completed" | "interrupted" | "degraded" | "failed";
-  /** 被打断时精确到已实际播出的字符偏移量 (未播出的后半句将转入大脑 unsaid_remainder 腹稿!) */
+  /** 被打断时以字符起音为界的播放偏移（Unicode 码点） */
   spoken_char_offset?: number;
+  played_audio_ms?: number;
+  interruption_boundary?: "silenced" | "done";
   interrupted_by_event_id?: string;
   degraded_extensions?: string[];            // 躯壳因能力限制优雅降级忽略的扩展名列表
   actuator_outcome?: {
@@ -144,14 +167,28 @@ export interface ControlSignal {
     | "barge_in_cancel"                      // 通知对方立即中止当前流式输出或音频播放
     | "audience_changed"                     // Shell 动态上报在场受众变更 (如有人加入房间)
     | "capabilities_updated"                 // Shell 运行期随场景变化动态热注册/注销 actuators 或 sensors
-    | "focus_shifted"                        // Kernel 通知各 Shell 当前前台注意力焦点已切换至哪个 Shell
-    | "sb243_break_reminder"                 // Kernel 下发连续交互满 3 小时休息提醒
-    | "crisis_intervention_card";            // Kernel L0 危机拦截器下发的强制危机援助热线卡片
+    | "focus_shifted"                        // Gateway 通知各 Shell 当前前台注意力焦点已切换至哪个 Shell
+    | "sb243_break_reminder"                 // Gateway 下发连续交互满 3 小时休息提醒
+    | "crisis_intervention_card";            // Gateway L0 危机拦截器下发的强制危机援助热线卡片
   target_intent_id?: string;
   active_focus_shell_id?: string;
   payload?: Record<string, unknown>;
 }
 ```
+
+---
+
+### 1.1 观测元语言与结构保真
+
+每个 `PerceptionEnvelope` 携带一个 `UniversalObservationFrame`。六维一一映射：`channel` 对应模态、来源键与生命周期，`attribution` 对应说话者与经验证的主体，`contextFrame` 对应会话的 Shell、场合与有效受众，`provenance` 对应事件 ID、持久化提示与扩展，`interpretation` 对应摘要与置信度，`chronology` 对应时间戳与持续时长。顶层同名字段是镜像，校验时拒绝冲突。会话来源、有效受众及主体由网关依连接和令牌验证，端侧自报身份不能授予权限。
+
+`@ai0/gateway` 在验签、路由、防抖与交付 `@ai0/perception-core` 的全链路保留结构化帧。`PendingTurnBatch` 保存有序帧集合，禁止将观测扁平化为纯字符串。`custom.*` 与插件声明的开放模态字符串可保留原始扩展字段。
+
+### 1.2 表达与私密交付协商
+
+`@ai0/expression-core` 的 `RealizerVocabularyNegotiator` 校验有效受众、非语言静默约束、延迟预算及词典。无在线合规私密 Shell 时，将私密意图置为 `held_pending_compliant_shell`，内容及回退文本不得外发。受众或能力变化时重新校验，过期意图不下发。`explicit_silence` 不启动语音播放，`require_non_verbal_quiet` 约束非语言输出，`request_observation` 仍须经过感知授权。
+
+`embodiment_anchors` 支持握手声明与 `capabilities_updated` 热更新。`supports_card_assets` 为真时与卡片资产锚点合并去重。`anchor:<id>` 与 `target_anchor` 指向协商后的锚点。
 
 ---
 
@@ -166,8 +203,8 @@ export interface ControlSignal {
 export interface ExtPerceptionV1 {
   /** 按 (shell_id, modality, source_key) 原地刷新的环境上下文桶标识 */
   source_key: string;                        // 如 "camera.main" | "desktop.active_window" | "game.combat_hud"
-  /** 感官覆盖状态：中央凹聚焦 | 边缘背景感知 | 已过期陈旧 | 传感器已断开 */
-  coverage: "live_foveal" | "ambient_peripheral" | "stale" | "disconnected";
+  /** 感官覆盖与授权状态 */
+  coverage: "live_foveal" | "ambient_peripheral" | "on_demand" | "blind" | "stale" | "disconnected";
   /** 观测时间跨度毫秒数 (静态单张图片恒为 0，物理禁止推断连续动作次数!) */
   frame_span_ms: number;
   /** 新鲜度 TTL：超过该毫秒数未收到新帧，黑板自动将该桶降级为 stale */
@@ -201,34 +238,33 @@ export interface ExtRhythmV1 {
   };
 }
 
-/** 3. 具身微表情、眼神与动画演出关键帧序列扩展 (ext.embodied.v1 — 含相对语音同步锚点与视线先行/余韵法则!) */
+/** 3. 领域中立的具身关键帧 (ext.embodied.v1) */
+export type AttentionTarget =
+  | "interlocutor" | "referenced_subject" | "ambient_environment"
+  | "inward_withdrawn" | `anchor:${string}`;
+
 export interface EmbodiedKeyframe {
-  /** 解决 TTS 合成延迟导致声画失步的相对同步锚点 */
   sync_anchor: "pre_speech" | "on_utterance_start" | `on_substring:${string}` | "on_utterance_end";
-  gaze?: {
-    target: "user_eyes" | "user_cursor" | "active_window" | "away_shy" | "down_sleepy";
-    behavior: "locked" | "glancing" | "lazy_follow";
+  attention?: {
+    target: AttentionTarget;
+    behavior: "locked" | "glancing" | "ambient_scan";
   };
-  facial?: {
-    expression: string;                      // 语义表情名，如 "soft_smile", "pout_blush", "half_closed_eyes"
-    intensity: number;                       // [0.0, 1.0]
-    blush_level?: number;                    // [0.0, 1.0]
+  expression?: {
+    tag: string;
+    intensity: number; // [0.0, 1.0]
+    fallback_tag?: string;
   };
-  gesture?: {
-    category: "head_motion" | "hand_gesture" | "posture_shift";
-    intent: string;                          // 语义动作意图，如 "tilt_head_curious", "rub_against_hand"
-    fallback_intent: string;                 // 通用保底动作，如 "nod_gentle", "idle_sway"
+  actuation_cue?: {
+    semantic_action: string;
+    target_anchor?: string;
+    intensity?: "subtle" | "moderate" | "strong";
+    fallback_action?: string;
   };
-  /** 句末或动作结束后的微表情余韵保持毫秒数 (避免说完话瞬间立正归零的木偶恐怖谷) */
   linger_ms?: number;
 }
 
 export interface ExtEmbodiedV1 extends EmbodiedKeyframe {
-  /**
-   * 动画演出多锚点关键帧序列（可选，最多 3 帧）：
-   * 遵循动画运动规律：pre_speech (开口前视线先行/吸气) -> on_substring (核心词微表情达峰) -> on_utterance_end (话音落下余韵残留)
-   */
-  keyframes?: EmbodiedKeyframe[];
+  keyframes?: EmbodiedKeyframe[]; // 最多 3 帧，按相对同步锚点调度
 }
 
 /**
@@ -256,19 +292,29 @@ export interface ExtMediaSidebandV1 {
 
 ---
 
+### 2.1 感官覆盖与 `blind` 锁
+
+`live_foveal` 表示当前焦点实时覆盖，`ambient_peripheral` 表示外围背景覆盖，`on_demand` 表示仅按授权请求采集，`stale` 表示帧超出 TTL，`disconnected` 表示连接中断。Shell 已连接但未授权传感器（如摄像头权限拒绝或撤销）时，`@ai0/perception-core` 的 `EmbodimentAffordanceRegistry` 与 `ScopedContextRegistry` 按 `(shell_id, modality, source_key)` 锁定为 `blind`，遮蔽旧载荷并向认知发出 `sensor_unavailable`。只有重新获准且收到新鲜授权帧才解除锁定。缓存及推断不得冒充该来源的当前感知。
+
+### 2.2 具身词典
+
+`RealizerVocabularyNegotiator` 动态匹配 `HandshakeManifest.capabilities.expression_vocabulary`。`expression.tag` 和 `fallback_tag` 匹配 `expression_tags`，`actuation_cue.semantic_action` 和 `fallback_action` 匹配 `semantic_actions`。候选与回退均不可用时省略该提示并回报降级。同步锚点与 `linger_ms` 描述呈现时序，动作提示本身不构成执行证据。
+
+---
+
 ## 三、连接发起方向与未知能力降级规范（Connection Topology & Unknown Capability Degradation）
 
 为了确保社区插件作者只看本规范（及导出的 `@ai0/protocol` JSON Schema）就能在任何网络拓扑下接入，协议明确将**“底层传输连接发起方向（Connection Initiation Direction）”**与**“应用层五原语消息流向（Message Flow Direction）”**解耦：
 
 1. **双向对等连接发起拓扑（Inbound & Outbound Connection Initiation）**：
-   * **拓扑 A：Shell 主动连入 Kernel（Inbound WebSocket — 默认模式）**
-     Shell 作为 WebSocket Client 连接 `ws://kernel-host:port/protocol/v0/shell`。连接建立后，Shell 立即发送第一帧 `HandshakeManifest`，Kernel 校验 `auth_token` 后返回 `HandshakeAck`，会话正式建立。
-   * **拓扑 B：Kernel 主动拨号连出至远端 Shell（Outbound WebSocket — 反向桥接/云端 Webhook 躯壳模式）**
-     当 Shell 运行在公网/远端守护进程且不便向本地内网 Kernel 发起入站连接时，使用者在控制台登记远端 Shell 的 `endpoint_url` 与 `Scoped Capability Token`。由 `@ai0/gateway` 作为 WebSocket Client 主动拨号连接远端 Shell 并出示令牌挑战帧，远端 Shell 响应 `HandshakeManifest` 后，双工会话建立。
-   * **消息流向恒等性**：无论底层连接是由哪一方发起建立的，一旦握手完成，**五原语的消息流向 100% 恒定**（`PerceptionEnvelope` 与 `DeliveryReceipt` 永远由 Shell 发往 Kernel；`ExpressionEnvelope` 永远由 Kernel 发往 Shell；`ControlSignal` 双向对等发送）。
+   * **拓扑 A：Shell 主动连入 Gateway（Inbound WebSocket — 默认模式）**
+     Shell 作为 WebSocket Client 连接 `ws://gateway-host:port/protocol/v0/shell`。连接建立后，Shell 立即发送第一帧 `HandshakeManifest`，Gateway 校验 `auth_token` 后返回 `HandshakeAck`，会话正式建立。
+   * **拓扑 B：Gateway 主动拨号连出至远端 Shell（Outbound WebSocket — 反向桥接/云端 Webhook 躯壳模式）**
+     当 Shell 运行在公网/远端守护进程且不便向本地内网 Gateway 发起入站连接时，使用者在控制台登记远端 Shell 的 `endpoint_url` 与 `Scoped Capability Token`。由 `@ai0/gateway` 作为 WebSocket Client 主动拨号连接远端 Shell 并出示令牌挑战帧，远端 Shell 响应 `HandshakeManifest` 后，双工会话建立。
+   * **消息流向恒等性**：无论底层连接是由哪一方发起建立的，一旦握手完成，**五原语的消息流向 100% 恒定**（`PerceptionEnvelope` 与 `DeliveryReceipt` 永远由 Shell 发往 Gateway；`ExpressionEnvelope` 永远由 Gateway 发往 Shell；`ControlSignal` 双向对等发送）。
 
 2. **未知能力与未知扩展的优雅降级规则（Graceful Degradation Contract）**：
-   * **Kernel 遇到未知的 `shell_kind` 或 `custom.*` 传感器模态**：网关绝不报错或断开连接，而是将该未知模态依赖事件原样记录于 `PerceptionEnvelope.extensions` 中并读取其必选的 `summary_text` 作为语义保底，同时透传给订阅了该命名空间的自定义认知器官（`ext.cognitive_organ`）。
+   * **Gateway 遇到未知的 `shell_kind` 或 `custom.*` 传感器模态**：网关绝不报错或断开连接，而是保留完整的 `UniversalObservationFrame` 与命名空间扩展。订阅该模态的认知器官可消费结构化帧，通用展示可读取帧内摘要。
    * **Shell 遇到不认识的 `ExpressionEnvelope.extensions` 键**：Shell 直接忽略不认识的扩展命名空间，仅渲染自己声明支持的扩展层及核心 `fallback_text`，并在 `DeliveryReceipt.degraded_extensions` 中如实上报被忽略的扩展名列表。
 
 ---
@@ -290,30 +336,46 @@ export interface ExtMediaSidebandV1 {
 ```
 * **网关强制降级铁律**：若上述直播间令牌连接的插件企图在 `HandshakeManifest` 中声称 `venue_type: "private_1on1"` 或将某条弹幕标为主人私密指令，网关层直接按令牌的 `max_audience_privacy_ceiling` **强制覆写为 `public_all`**，从物理入口封死插件伪造特权通道的可能。
 
-### 4.2 上行输入防抖聚合与下行打断回执状态机
+### 4.2 输入防抖与双边界打断
+
+`PendingTurnBatch` 在 1200 ms 防抖窗口聚合有序观测帧。活动或连续短句重置计时，`interim` 保留为草稿，`retract` 撤回相应草稿，到期后将已提交帧交给 `W1`。插话时，`barge_in_cancel` 停止旧生成并立即请求端侧停止播放。
+
+`DeliveryReceipt.interruption_boundary` 区分两项确认。`silenced` 确认播放已立即停止并锁存游标，允许新话轮继续。`done` 确认旧流及控制账务已收口，完成取消、清理和回执结算。`GroundingReceiptTracker` 按意图、分段和边界幂等对账，迟到或重复回执不得改变已确认的播放截点。
 
 ```mermaid
 stateDiagram-v2
     state "Idle (静默等待)" as Idle
-    state "Debouncing (输入聚合防抖窗口)" as Debouncing
-    state "StreamingExpression (下行流式表达与播报中)" as Streaming
-    state "InterruptedRollback (打断截断与腹稿转存)" as Interrupted
+    state "Debouncing (结构化帧聚合)" as Debouncing
+    state "Streaming (表达播放中)" as Streaming
+    state "Stopping (等待播放停止)" as Stopping
+    state "Settling (旧流账务结算)" as Settling
 
-    Idle --> Debouncing: 收到 Perception(lifecycle="activity" | "commit")
-    Debouncing --> Debouncing: 窗口期内再次收到 typing / 连续短句<br/>(合并进 PendingTurnBatch，重置 1200ms 计时器)
-    Debouncing --> Idle: 收到 Perception(lifecycle="retract")<br/>(清空草稿，向黑板记入“对方欲言又止”)
-    Debouncing --> Streaming: 防抖计时器到期 → 合并提交给 W1 快环 → 开始流式下发 Chunk_0, Chunk_1...
-
-    Streaming --> Idle: 收到全部 Chunk 的 DeliveryReceipt(status="completed")
-    Streaming --> Interrupted: 收到用户新语音/新打字 (Barge-in)<br/>或收到 DeliveryReceipt(status="interrupted", spoken_char_offset=K)
-    
-    Interrupted --> Debouncing: 1. 立即发出 ControlSignal(barge_in_cancel) 停止后续生成与播放<br/>2. 将已发生对话精确截断至前 K 个字符<br/>3. 将第 K+1 之后的文本存入黑板 unsaid_remainder<br/>4. 转入新话轮处理
+    Idle --> Debouncing: 输入活动或提交帧
+    Debouncing --> Streaming: 防抖到期并提交帧
+    Debouncing --> Idle: 无已提交帧
+    Streaming --> Idle: 正常完成
+    Streaming --> Stopping: 插话触发取消
+    Stopping --> Settling: silenced 确认并锁存游标
+    Settling --> [*]: done 完成旧流结算
 ```
 
-### 4.3 语音流式播放中途打断时“音频播放毫秒数 $\rightarrow$ 单字级 `spoken_char_offset`”确定性反算规范
+### 4.3 四态真值链与未说出文本恢复
 
-当 `Shell` 播放由网关侧 `ext.media_pipeline` 合成的 TTS 语音流并遭遇用户中途插话打断（Barge-in）时，端侧音频播放器仅持有实际已播放的音频毫秒时长 `played_audio_ms`（如 `1420ms`）。为确保内核 `unsaid_remainder`（被打断未说完的腹稿）在语音模式下与纯文本模式下达到完全相同的单字级截断精度，规定如下确定性反算公式：
-1. 读取该分段 `ExpressionEnvelope.extensions["ext.media.sideband.v1"].char_offset_timestamps_ms` 单调递增数组 $T = [t_0, t_1, \dots, t_{N-1}]$；
-2. 通过二分查找计算已实际发声完毕的字符偏移量 $K = \texttt{spoken\_char\_offset}$：
-   $$K = \max \big\{ k \in \{0, 1, \dots, N\} \;\big|\; k = 0 \lor T[k-1] \le \texttt{played\_audio\_ms} \big\}$$
-3. `Shell` 在 `DeliveryReceipt(status="interrupted", spoken_char_offset=K)` 中上报该精确值 $K$（或上报 `played_audio_ms` 由 `@ai0/gateway` 查表自动填入 $K$），内核即可零误差将前 $K$ 个字归档为已说出话轮，将第 $K+1 \sim N$ 个字转存进 `D1_WORKING_TURN.unsaid_remainder` 腹稿槽位。
+`GroundingReceiptTracker` 按证据推进 `generated_unpresented -> physically_presented -> actuation_verified -> interlocutor_grounded`。生成仅记录候选内容。实际显示或播放的 `DeliveryReceipt` 确认 `physically_presented` 及其范围。`actuation_verified` 需要对应执行结果和验证证据，无需执行器时该阶段不适用。`interlocutor_grounded` 需要可关联的后续用户采纳或确认事件。发送、播放或执行成功均不能充当用户采纳证据。
+
+`silenced` 锁存当前分段实际播放的 `played_audio_ms`。对该段单调的 `char_offset_timestamps_ms` 执行二分上界查询，`spoken_char_offset` 等于起音时间小于或等于游标的 Unicode 码点数，零播放为 0。Shell 可上报该偏移，或由网关换算。跟踪器将确认的前缀记为已呈现，将当前分段从偏移开始的后缀和后续未播放分段存入 `D1_WORKING_TURN.unsaid_remainder`。缺少可靠游标时仅确认已有呈现证据的前缀，`done` 不扩大该范围。
+
+### 4.4 部署至上线状态机与探针
+
+`GET /healthz` 表示进程存活，进程可服务探针时返回 `200 OK`。`GET /readyz` 仅在 `L5_LIVE_READY` 返回 `200 OK`，其他阶段返回 `503 Service Unavailable`。JSON 响应包含 `stage` 与 `missing_prerequisites` 字符串数组。
+
+| 阶段 | 进入下一阶段所需条件 |
+| :--- | :--- |
+| `L0_UNCLAIMED` | 认领宿主 |
+| `L1_CLAIMED_NO_PROVIDER` | 配置并验证可用 Provider |
+| `L2_PROVIDER_READY_NO_SOUL` | 唤醒角色 |
+| `L3_SOUL_AWAKENED_CONFIG_NEEDED` | 完成角色运行配置 |
+| `L4_SOUL_AWAKENED_NO_SHELL` | 至少一个合规 Shell 在线且通过握手验签 |
+| `L5_LIVE_READY` | 全部前置条件满足，`missing_prerequisites` 为空 |
+
+阶段由最早未满足条件决定，条件失效时重新计算。`@ai0/gateway` 每次接纳 Channel A 陪伴话轮时执行同一就绪门控，`L5_LIVE_READY` 之前拒绝话轮，并返回阶段与缺项。配置与握手控制流可继续完成上线条件。

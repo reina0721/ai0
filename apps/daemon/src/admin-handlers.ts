@@ -16,7 +16,7 @@ import {
   type PolymorphicExtensionHost, type SensoryCoverageBucketManager,
   type SensoryCoverageUpdate, type VerifiableTurnTrace as CoordinatorTrace,
   type VirtualClock, type W1FastDialogueWorker
-} from "@ai0/kernel";
+} from "@ai0/cognition-core";
 import {
   AgentConfigProfileSchema, AudienceScopeSchema, DaemonSystemSettingsSchema, getSupportedReasoningEfforts,
   KnowledgeCapabilityConfigSchema, McpServerConfigSchema, ModelInstanceSchema,
@@ -40,16 +40,20 @@ import {
   type CoordinatorStorageMutator, type HardForgetEngine, type SoulArchiveManager
 } from "@ai0/storage";
 import { knowledgeAdmin } from "./knowledge-admin.js";
+import type { Ai0DaemonRuntime } from "./index.js";
+import { createLifecycleAdminHandlers } from "./soul-lifecycle.js";
 import { probeMcpServer } from "./mcp-probe.js";
 import type { DiscoveredPlugin, InstallExternalPluginInput, RuntimePluginLoader } from "./plugin-loader.js";
 
 type Json = Record<string, unknown>;
 export interface CircadianAnchor { hour: number; energy: number }
 export interface DaemonMutableState {
+  rollbackInProgress?: boolean;
   virtualOffsetHours: number; debounceWindowMs: number; circadianAnchors: CircadianAnchor[];
   telemetryFrames: AdminTelemetryFrame[]; sandboxForks: Map<string, CoordinatorStorageMutator>;
 }
 export interface DaemonHandlerContext {
+  readonly runtime: Ai0DaemonRuntime;
   reloadExtension(id: string, mode: "live" | "sandbox", config: Json, expected?: number): Promise<number>;
   reloadSingleExtension(id: string, mode: "live" | "sandbox"): Promise<{ rev: number; generation?: string }>;
   reloadAllExtensions(): Promise<{ count: number; revision: number }>;
@@ -186,8 +190,8 @@ async function listRollbackSnapshots(manager: SoulArchiveManager): Promise<strin
 export function createRealAdminHandlers(
   runtime: DaemonHandlerContext
 ): Partial<Record<AdminOperation, AdminRouteHandler>> {
-  let rollbackInProgress = false;
   return {
+    ...createLifecycleAdminHandlers(() => runtime.runtime),
     "blackboard.compilePreview": async (request, context) => {
       const body = bodyOf(request.body), backend = selected(runtime, context.target_instance);
       const source = isRecord(body.policy) ? body.policy : body;
@@ -648,23 +652,19 @@ export function createRealAdminHandlers(
       const venue = (perception.venue_type ?? "private_1on1") as VenueType;
       const audience = (perception.audience_scope ?? "only_owner") as AudienceScope;
       const modality = (perception.modality ?? "text") as SensorModality;
-      runtime.sandboxStorage.appendEvent({ event_id: eventId, wall_ts_ms: Date.now(), virtual_ts_ms: now,
-        source_shell_id: String(perception.shell_id ?? "sandbox.shell.default"), principal_id: "sandbox:operator",
-        principal_trust: audience === "only_owner" ? "owner_verified" : "stranger", venue_type: venue,
-        audience_scope: audience, event_category: "perception_committed", modality, summary_text: text,
-        payload_json: JSON.stringify(perception), state_rev_after: runtime.sandboxCoordinator.getSnapshot().state_rev,
-        active_modules_mask: 31 });
-      runtime.emitTelemetry("[EVENT]", { event_id: eventId, summary_text: text }, context.target_instance, now);
-      return runtime.sandboxW1.runTurnAsync({ event_id: eventId,
-        principal: audience === "only_owner" ? "owner_verified" : "stranger",
-        venue_type: venue, audience_scope: audience, modality, summary_text: text });
+      return runtime.runtime.handleShellTurn({
+        mode: "sandbox", text, principalId: audience === "only_owner" ? "owner:local" : "sandbox:operator",
+        shell_id: String(perception.shell_id ?? "sandbox.shell.default"), venue_type: venue, audience_scope: audience, modality
+      }, { eventId });
     },
     "sandbox.scenarios.run": () => runScenarioPlaybook(GOLDEN_REGRESSION_SCENARIO_V1),
     "system.snapshots.rollback": async (request, context) => {
       if (context.target_instance !== "live") {
         return { status: 403, body: { error: "LIVE_SOVEREIGNTY_FENCE_VIOLATION" } };
       }
-      const snapshots = await listRollbackSnapshots(runtime.soulArchiveManager);
+      const manager = runtime.soulArchiveManager;
+      const storage = runtime.storage;
+      const snapshots = await listRollbackSnapshots(manager);
       if (request.method === "GET") return { snapshot_ids: snapshots };
       const body = bodyOf(request.body);
       if (body.snapshot_id !== undefined && typeof body.snapshot_id !== "string") {
@@ -674,25 +674,26 @@ export function createRealAdminHandlers(
       if (requested !== undefined && !snapshots.includes(requested)) {
         return { status: 404, body: { error: "SNAPSHOT_NOT_FOUND" } };
       }
-      if (rollbackInProgress) return { status: 409, body: { error: "SNAPSHOT_ROLLBACK_IN_PROGRESS" } };
-      rollbackInProgress = true;
+      if (runtime.state.rollbackInProgress || manager !== runtime.soulArchiveManager || storage !== runtime.storage)
+        return { status: 409, body: { error: "SNAPSHOT_ROLLBACK_CONFLICT" } };
+      runtime.state.rollbackInProgress = true;
       try {
-        const safety = runtime.soulArchiveManager.createSnapshot(`pre-rollback-${Date.now()}`);
+        const safety = manager.createSnapshot(`pre-rollback-${Date.now()}`);
         const snapshotId = requested ?? safety.id;
-        runtime.storage.close();
+        storage.close();
         const now = runtime.virtualClock.nowMs();
         try {
-          const restored = await runtime.soulArchiveManager.rollbackToSnapshot(snapshotId,
+          const restored = await manager.rollbackToSnapshot(snapshotId,
             body.mode === "dream_bridge" || body.mode === "meta_reconciled" ? body.mode : "silent_hard", now);
           runtime.replaceLiveStorage?.(restored);
           return { rolled_back_to: snapshotId, safety_snapshot: safety, pragma_status: restored.getTablePragmaStatus() };
         } catch (error) {
-          const restored = await runtime.soulArchiveManager.rollbackToSnapshot(safety.id, "silent_hard", now);
+          const restored = await manager.rollbackToSnapshot(safety.id, "silent_hard", now);
           runtime.replaceLiveStorage?.(restored);
           throw error;
         }
       } finally {
-        rollbackInProgress = false;
+        runtime.state.rollbackInProgress = false;
       }
     },
     "system.safetySb243": (request, context) => {

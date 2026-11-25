@@ -16,7 +16,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@ai0/kernel": "workspace:*",
+    "@ai0/perception-core": "workspace:*",
+    "@ai0/cognition-core": "workspace:*",
+    "@ai0/expression-core": "workspace:*",
     "@ai0/protocol": "workspace:*",
     "@ai0/storage": "workspace:*"
   }

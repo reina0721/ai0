@@ -12,3 +12,4 @@ export * from "./snapshot-git/extension-state-store.js";
 export * from "./lineage-dag/hard-forget-engine.js";
 export * from "./snapshot-git/soul-archive-manager.js";
 export * from "./sqlite/knowledge-library.js";
+export * from "./snapshot-git/character-card-store.js";

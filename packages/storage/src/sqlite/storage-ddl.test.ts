@@ -30,6 +30,7 @@ import {
   SoulArchiveConfigSchema,
   SoulArchiveManifestSchema,
   VoiceExemplarSchema,
+  createDefaultSoulArchiveConfig,
   initializeSoulDirectory,
   readSoulArchiveConfig,
   writeSoulArchiveConfig
@@ -66,7 +67,6 @@ describe(".soul directory", () => {
       layout.blackboardPolicyPath,
       layout.milestonesAndRitualsPath,
       layout.defaultWorldLorebookPath,
-      layout.dailyCompanionReviewSkillPath,
       layout.defaultOrchestrationFlowPath,
       layout.extensionsStatePath,
       layout.soulCoreDatabasePath,
@@ -77,6 +77,8 @@ describe(".soul directory", () => {
     expect(statSync(layout.attachmentsPath).isDirectory()).toBe(true);
 
     const initial = readSoulArchiveConfig(layout.rootPath);
+    expect(initial.identity.display_name).toBe("test");
+    expect(initial.defaultWorldLorebook.entries).toEqual([]);
     expect(initial.manifest.created_at).toBe("2026-01-01T00:00:00.000Z");
 
     writeSoulArchiveConfig(layout.rootPath, {
@@ -90,8 +92,9 @@ describe(".soul directory", () => {
     );
   });
 
-  it("Zod-validates every checked-in seed configuration", () => {
-    const config = readSoulArchiveConfig(DEFAULT_SOUL_PATH);
+  it("enforces zero-preset soul policy and Zod-validates fresh soul archive configuration", () => {
+    expect(existsSync(DEFAULT_SOUL_PATH)).toBe(false);
+    const config = createDefaultSoulArchiveConfig("2026-11-25T00:00:00.000Z", "Nagi");
 
     expect(() => SoulArchiveConfigSchema.parse(config)).not.toThrow();
     expect(() => SoulArchiveManifestSchema.parse(config.manifest)).not.toThrow();
@@ -108,11 +111,6 @@ describe(".soul directory", () => {
     ).not.toThrow();
     expect(() =>
       LorebookYamlSchema.parse(config.defaultWorldLorebook)
-    ).not.toThrow();
-    expect(() =>
-      SkillMarkdownFrontmatterSchema.parse(
-        config.dailyCompanionReviewSkill.frontmatter
-      )
     ).not.toThrow();
     expect(() =>
       OrchestrationRulesSchema.parse(config.defaultOrchestrationFlow)
@@ -214,17 +212,20 @@ describe("SQLite storage DDL", () => {
         state_rev: 1,
         virtual_ts_ms: event.virtual_ts_ms,
         caused_by_event_id: event.event_id,
-        instant_valence: 0.2,
-        instant_arousal: 0.1,
-        mood_baseline_val: 0.1,
-        mood_attr_scope: "only_owner",
-        circadian_energy: 0.8,
-        metabolic_energy: 0.9,
-        drive_social_longing: 0.2,
-        drive_curiosity: 0.7,
+        continuous_states_json: JSON.stringify({
+          instant_valence: 0.2,
+          instant_arousal: 0.1,
+          mood_baseline_val: 0.1,
+          circadian_energy: 0.8,
+          metabolic_energy: 0.9,
+          drive_social_longing: 0.2,
+          drive_curiosity: 0.7
+        }),
+        state_attributions_json: JSON.stringify({ mood_attr_scope: "only_owner" }),
         relationship_json: "{}",
         user_model_json: "{}",
-        working_memory_json: "{}"
+        working_memory_json: "{}",
+        hibernation_intervals_json: "[]"
       });
       storage.insertKnowledgeChunk({
         chunk_id: "chunk.roundtrip.1",

@@ -140,7 +140,7 @@ it("discovers, imports, probes and uses hosted models through real admin and Web
       response.end(JSON.stringify(usesMessages ? { content: [{ type: "text", text: content }] } : { choices: [{ message: { content } }] }));
     }
   });
-  const runtime = createDefaultDaemonRuntime({ soulDir: join(tempRoot, "test.soul"), ownerMasterToken: ownerToken, seedIfEmpty: false });
+  const runtime = createDefaultDaemonRuntime({ soulDir: join(tempRoot, "test.soul"), ownerMasterToken: ownerToken });
   const server = createUnifiedDaemonHttpServer(runtime);
 
   try {
@@ -434,7 +434,7 @@ it("applies a model context override to real conversation prompts and rejects in
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.end(makeReplyStream(modelId, false, undelivered ? "assistant-undelivered-marker" : "正常送达的模型回复。"));
   });
-  const runtime = createDefaultDaemonRuntime({ soulDir: join(tempRoot, "test.soul"), ownerMasterToken: ownerToken, seedIfEmpty: false });
+  const runtime = createDefaultDaemonRuntime({ soulDir: join(tempRoot, "test.soul"), ownerMasterToken: ownerToken });
   const server = createUnifiedDaemonHttpServer(runtime);
 
   try {

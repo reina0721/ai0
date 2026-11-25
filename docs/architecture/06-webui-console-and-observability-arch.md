@@ -4,9 +4,9 @@
 >
 > 本文档定义 `@ai0/console-webui` 的前端系统架构、五大正交平面路由树与四层配置解耦契约。借鉴 AstrBot v4 的清晰分层心智，同时保留 `ai0` 独有的无头认知微内核与 `.soul` 本地独立存档，严格遵循以下四大架构铁律：
 > 1. **四层正交解耦铁律（接入是接入、通用能力是通用能力、配置是配置）**：
->    - **外部接入层（Host Infrastructure Pool — `host/infrastructure.json` + `vault/`）**：跨 `.soul` 实例共享的纯连接池。上游「服务提供商（`/integrations/providers`）」只管厂商模板、Base URL、API Key、可用 Model IDs 与连通性，严禁写死“主力对话/知识库精排”等业务角色；下游「消息平台与躯壳（`/integrations/platforms`）」只管 WebChat / QQ / Telegram / Discord / 飞书 / 外部 Protocol v0 客户端的连接状态与 Scoped Token，严禁混入防抖、注意力仲裁与语音编排。
+>    - **外部接入层（Host Infrastructure Pool — `souls/host/infrastructure.json` + Secrets Vault）**：跨 `.soul` 实例共享的纯连接池。上游「服务提供商（`/integrations/providers`）」只管厂商模板、Base URL、API Key、可用 Model IDs 与连通性，严禁写死“主力对话/知识库精排”等业务角色；下游「消息平台与躯壳（`/integrations/platforms`）」只管 WebChat / QQ / Telegram / Discord / 飞书 / 外部 Protocol v0 客户端的连接状态与 Scoped Token，严禁混入防抖、注意力仲裁与语音编排。
 >    - **横向通用能力层（General Capabilities — `/capabilities/*`）**：长期记忆、知识库 RAG（按 ID 引用 `embedding` / `rerank` 服务商）、语音与多模态（按 ID 引用 `tts` / `stt` 服务商）、插件/MCP/技能/子代理各自独立维护。
->    - **核心配置与路由层（Configuration Profiles & UMO Router — `.soul/config/profiles.json`）**：在「配置文件与路由（`/config/profiles`、`/config/routing`）」中通过 ID 引用接入池模型、组装对话防抖/注意力门控、社交面具与挂载能力，默认极简展示主力对话模型，将 `W2/W3/W4/L0` 五脑区异构路由与算力代谢预算收于可折叠高级区，并通过 `UMO（平台:场合:会话）` 规则在运行期真实驱动 `@ai0/kernel` 话轮执行。
+>    - **核心配置与路由层（Configuration Profiles & UMO Router — `.soul/config/profiles.json`）**：在「配置文件与路由（`/config/profiles`、`/config/routing`）」中通过 ID 引用接入池模型、组装对话防抖/注意力门控、社交面具与挂载能力，默认极简展示主力对话模型，将 `W2/W3/W4/L0` 五脑区异构路由与算力代谢预算收于可折叠高级区，并通过 `UMO（平台:场合:会话）` 规则在运行期真实驱动 四个正交核心协作执行话轮（`@ai0/agent-core` 编排、`@ai0/perception-core` 感知、`@ai0/cognition-core` 认知、`@ai0/expression-core` 表达）。
 >    - **灵魂存档底座（`.soul`）**：角色人格、世界书、记忆图谱与审计轨迹严格落盘本地。
 > 2. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet`）+ 五大正交平面导航**：外围由混合顶栏 + 左侧可折叠路由导航栏 + 右侧上下文检视副栏构成常驻壳层；左侧导航收敛为 **5 大分组 × 11 项核心模块**（`概览与对话` / `核心配置` / `通用能力` / `外部接入` / `调试与系统`），携带 `shell_id` 的交互插件页（如 `WebChat`）由 Cordis 宿主按启用状态动态挂载至 `概览与对话` 分组，其余扩展页动态挂载至 `通用能力` 分组。
 > 3. **后端能力确定性投射与安全主权围栏（`LIVE` vs. `SANDBOX`）**：正式实例硬锁物理时钟与核心脑区消融，实验性时间拨快、感官注入与消融回放仅在隔离沙盒副本解锁。
@@ -21,7 +21,7 @@
 > **`WebUI 控制台（@ai0/console-webui）` 是官方随项目提供的浏览器管理、配置、创作、观测与实验操作系统界面（独立于后台 `@ai0/daemon` 内核守护进程运行；关闭浏览器后，数字生命及其已启用的后台扩展依然持续运转）。**
 
 1. **剥离 `plugins/shells/webchat` 的架构越位，全面凸显 `Shell（具身运行环境层）`**：
-   * **`@ai0/console-webui`（特权控制平面）**：通过仅供所有者访问的 `Kernel Admin & Audit Telemetry Bus`（`/api/admin/v1/*` & `ws://.../telemetry`）管理内核全量状态；控制台拥有统一、自洽的 **第一方紧凑二次封装 MD3 多态视觉体系**，默认根路由首屏为 **`/dashboard`（数字生命全景态势与具身 `Shells` 总览大盘）**。
+   * **`@ai0/console-webui`（特权控制平面）**：通过仅供所有者访问的 `Admin & Audit Telemetry Bus`（`/api/admin/v1/*` & `ws://.../telemetry`）管理内核全量状态；控制台拥有统一、自洽的 **第一方紧凑二次封装 MD3 多态视觉体系**，默认根路由首屏为 **`/dashboard`（数字生命全景态势与具身 `Shells` 总览大盘）**。
    * **躯壳接入**由网关管理。控制台从握手、租约及能力更新读取载体的连接、感知、表达和动作状态。
    * **WebChat** 在自己的清单中声明 `/webchat`、导航标题和模块入口。宿主确认资源可用且插件启用后才显示入口。
 2. **混合顶栏中央的全局实例环境状态机（`🟢 LIVE` vs. `🧪 SANDBOX:<fork_id>` 二元主权隔离）**：
@@ -46,8 +46,14 @@
      1. **顶部固定子路由与态势带（`InternalStickySubNav & TelemetryMetricStrip`，`height: 40px~44px, flex-shrink: 0`）**：承载当前一级域下的二级子路由胶囊页签与页面级快捷操作；
      2. **中部独立滚动/无限画布主工作区（`MainScrollableBody`，`flex: 1, overflow-y: auto`）**：承载五大 UI/UX 视图结构母版，高内聚平铺分栏，严禁碎卡片套娃；
      3. **底部按需升起的内嵌粘性事务条（`FloatingDirtyDiffBar / SandboxTimeWarpLabBar`，`flex-shrink: 0`）**：当存在未保存修改或处于沙盒环境时在盒子底部平滑锁定。
-3. **首次启动 3 步开箱向导（`FirstBootOnboardingModal`）与全局非阻塞待审批快捷抽屉（`GlobalPendingApprovalDrawer`）**：
-   * 当新用户首次启动且尚无 `.soul` 实例或模型配置时（Zero-State），自动弹出轻量 3 步开箱向导：**① 接入首个大模型 Provider 并一键 Ping 测速 $\rightarrow$ ② 拖拽导入 SillyTavern 角色卡四步蒸馏（或选择内置纯净模板）创建首个 `.soul` $\rightarrow$ ③ 一键测试已挂载的 `Shell`**；
+3. **Zero-Preset 首次启动与上线向导（`FirstBootOnboardingModal`）与全局非阻塞待审批快捷抽屉（`GlobalPendingApprovalDrawer`）**：
+   * `FirstBootOnboardingModal` 与 `@ai0/daemon` 权威无头就绪状态机逐级一一对应。启动、刷新、重连及每次提交后读取 `GET /readyz`，`localStorage` 不得持久化生命周期状态。`GET /healthz` 独立报告进程存活。
+     1. **`L0_UNCLAIMED`**：强制 Owner 认领主权、确认 `deployment_mode` 并初始化加密 Secrets Vault，通过 `POST /api/admin/v1/host/claim` 提交。
+     2. **`L1_CLAIMED_NO_PROVIDER`**：在 Host Provider Pool 配置并在线实测至少一个真实 LLM 提供商（OpenCode Go `opencode_go`，如 `deepseek-v4.1-flash`，或 OpenAI-compatible、Anthropic、DeepSeek、Ollama）。设置 Global Module Defaults 的 `consciousness`（必需）、`vision` / `speech`（可选）。探测失败仍停留在本级，禁止伪造离线回复兜底。
+     3. **`L2_PROVIDER_READY_NO_SOUL`**：角色卡和 Soul 列表初始为空。Owner 可新建空白卡，或导入 CCv2/CCv3，经四步蒸馏（人格、示例、词书、确定性越狱与 PUA 清洗）并无损保留未知 `extensions.<namespace>` 嵌套结构。按模块配置 `Inherit`（空值默认，沿用宿主默认）或 `Override`（角色显式绑定），每轮解析且不改写全局存储。Owner 显式唤醒独立的 `<soul_id>.soul` 实例，记录 `origin_card_id`。
+     4. **`L3_SOUL_AWAKENED_CONFIG_NEEDED`**：补齐必需扩展、Vault 密钥与覆盖模型配置。未授权的可选设备传感器（如摄像头）锁定为 `"blind"`，不得推断其未观测的数据。
+     5. **`L4_SOUL_AWAKENED_NO_SHELL`**：签发 `Scoped Capability Token`，绑定跨平台 `Principal` 身份，并完成首个 Shell 的 `HandshakeManifest`（如 `builtin.webchat` 或外部桌面 / IM Shell）。
+     6. **`L5_LIVE_READY`**：全部 Go-Live 就绪门槛通过，`GET /readyz` 返回 `200 OK` 及 `L5_LIVE_READY`。`VirtualClock`（`1x LIVE`）与认知循环开始服务话轮。
    * 当后台异步发生高优待审批事项（如 `W2` 行动环触发 `REQUIRE_OWNER_CONFIRM` 工具授权、或 `W3` 睡眠环提交了 Tier 1/2 人格演进提案）时，顶栏 `[🔔 待审批]` 角标脉冲闪烁，点击即在当前页直接滑出 **`GlobalPendingApprovalDrawer` 非阻塞快捷审批抽屉**，无需打断当前工作流跳转页面即可一键审查 Diff 并点击 `Approve / Reject`！
 
 ```mermaid
@@ -57,7 +63,7 @@ flowchart TB
 
         subgraph TopBar["1. 混合顶栏 (HybridTopBar — h: 48px, 常驻外围顶栏)"]
             direction LR
-            T_Left["[🧬 灵魂实例切换: default.soul ▾]<br/>[当前路由面包屑: /shells/topology]"]
+            T_Left["[🧬 灵魂实例切换: &lt;soul_id&gt;.soul（如 luna.soul） ▾]<br/>[当前路由面包屑: /shells/topology]"]
             T_Center["[全局实例环境切换胶囊 (SegmentedPill)]<br/>🟢 LIVE 正式运行实例 (1x 物理时钟)   ⇄   🧪 SANDBOX:<fork_id> 隔离实验副本"]
             T_Right["[💓 脉搏微环: 心境 +0.42 · 生理精力 82% · 代谢预算 91%]<br/>[🔔 待审批: 2]  [⌘K 全局命令面板]  [🛑 全局急停 Kill Switch]"]
         end
@@ -71,11 +77,11 @@ flowchart TB
                 L_StateC["• 态 C (混合双轨 56px + 190px):<br/>一级域图标轨 + 当前域二级子路由/Profile 锚点轨"]
             end
 
-            subgraph MainCardOutlet["3. <main> 一体式圆角卡片路由视口容器盒子 (MainRoundedCardOutlet = <RouterOutlet /> — radius: 16px)"]
+            subgraph MainCardOutlet["3. &lt;main&gt; 一体式圆角卡片路由视口容器盒子 (MainRoundedCardOutlet = &lt;RouterOutlet /&gt; — radius: 16px)"]
                 direction TB
-                M_Rule1["✨ 视觉核心：整个 <main> 主内容区本身用一整张完整、统一的圆角悬浮卡片盒子视觉包裹 (Elevated Surface-L1, 1px 细腻描边, overflow: hidden)"]
-                M_Rule2["🔀 单路由单页面铁律：作为 <RouterOutlet />，每次仅渲染当前激活 URL 路由对应的那 1 个专职页面 (默认根首屏为 /dashboard，绝不搞首屏大杂烩!)"]
-                M_Rule3["📐 内部高内聚反碎片化：在 <main> 圆角卡片大盒子内部，按当前路由绑定的【五大 UI/UX 视图结构母版】做平铺主从分栏与【Tier-V1 直觉图形 → Tier-V2 紧凑表单 → Tier-V3 权威源码】三层渐进式披露，严禁把 <main> 拆碎成满屏零散小卡片!"]
+                M_Rule1["✨ 视觉核心：整个 &lt;main&gt; 主内容区本身用一整张完整、统一的圆角悬浮卡片盒子视觉包裹 (Elevated Surface-L1, 1px 细腻描边, overflow: hidden)"]
+                M_Rule2["🔀 单路由单页面铁律：作为 &lt;RouterOutlet /&gt;，每次仅渲染当前激活 URL 路由对应的那 1 个专职页面 (默认根首屏为 /dashboard，绝不搞首屏大杂烩!)"]
+                M_Rule3["📐 内部高内聚反碎片化：在 &lt;main&gt; 圆角卡片大盒子内部，按当前路由绑定的【五大 UI/UX 视图结构母版】做平铺主从分栏与【Tier-V1 直觉图形 → Tier-V2 紧凑表单 → Tier-V3 权威源码】三层渐进式披露，严禁把 &lt;main&gt; 拆碎成满屏零散小卡片!"]
                 M_Rule4["插件自己的页面与路由，例如 WebChat /webchat"]
             end
 
@@ -86,10 +92,10 @@ flowchart TB
             end
         end
 
-        BottomOverlay["5. <main> 盒子底部内嵌粘性状态条 (Internal Sticky Action Bars)<br/>• 配置编辑脏状态栏 (FloatingDirtyDiffBar: 展示与当前 state_rev 的字段级 Diff / 一键撤销 / 原子提交 + 路由切换拦截守卫)<br/>• 沙盒时间拨快与消融控制条 (SandboxTimeWarpLabBar: 仅当顶栏处于 🧪 SANDBOX:<fork_id> 环境时激活)"]
+        BottomOverlay["5. &lt;main&gt; 盒子底部内嵌粘性状态条 (Internal Sticky Action Bars)<br/>• 配置编辑脏状态栏 (FloatingDirtyDiffBar: 展示与当前 state_rev 的字段级 Diff / 一键撤销 / 原子提交 + 路由切换拦截守卫)<br/>• 沙盒时间拨快与消融控制条 (SandboxTimeWarpLabBar: 仅当顶栏处于 🧪 SANDBOX:<fork_id> 环境时激活)"]
     end
 
-    subgraph Backend["@ai0/gateway & @ai0/kernel (后台无头守护进程 — 关掉浏览器依然持续运转)"]
+    subgraph Backend["@ai0/daemon + @ai0/gateway (无头守护进程与四个正交核心)"]
         PublicWS["公开标准具身协议端点 (面向所有外部与已挂载 Web Shell)<br/>ws://host:port/protocol/v0/shell"]
         AdminBus["Owner 特权管理与审计遥测端点 (面向控制台与本地 CLI)<br/>/api/admin/v1/* & ws://host:port/api/admin/v1/telemetry"]
     end
@@ -135,14 +141,14 @@ flowchart TB
 | :--- | :--- | :--- | :--- | :--- |
 | **1. 全景态势与认知黑板**<br/>*(Overview & Blackboard)* | **`/dashboard`**<br/>*(控制台默认根首屏)* | **数字生命全景态势、活跃 `Shells` 星图摘要与系统健康总览首页**：展示当前 `.soul` 核心生命体征（心境波形/双轨精力水位/下次阈值唤醒倒计时）、当前在线具身 `Shells` 连接摘要与焦点所在躯壳、MVCC `state_rev` 与运行中 `W2` 行动任务、近期解锁里程碑、待审批人格/权限提醒快捷路由跳转入口 | **母版 II** | 全系统聚合遥测快照 |
 | | **`/dashboard/blackboard`** | **认知状态黑板（`<2500 Tokens`）槽位积木编排器、语境预设与 70% 社交面具模拟器页**：可视化拖拽编排黑板各认知槽位（Tier 0[锁死]/1/2、感官覆盖桶、情绪体感、Top-K 记忆、前瞻承诺、Lorebook、自定义认知器官槽）的 Token 预算上限与显著性门槛，切换场景语境预设；实时检视当前 `state_rev` 编译出的黑板全文，并一键对比 `only_owner` 私聊态 vs `public_all` 公开场合态（直观验证 `Social Mask Damper` 剥离私密叙事并衰减 70% 情绪） | **母版 III & II** | `01/02/03` 声明式黑板槽位编译器 (`blackboard_policy.yaml`) |
-| **2. 具身躯壳 (`Shells`) 与感官媒体中枢**<br/>*(Embodied Shells & Media)*<br/>`[正本清源的一等架构域]` | **`/shells/topology`** | **双向具身协议网关（`Protocol v0`）与在线 `Shell` 三平面能力星图页**：统一管理所有外部与内置具身运行环境（桌宠、Live2D/3D 客户端、QQ/TG/Discord IM 躯壳、游戏 Mod、Web 躯壳）的 Inbound 入站与 Outbound 反向拨号 WebSocket 连接、RTT 心跳延迟与 `Scoped Capability Token` 签发；点开任意 `Shell` 透视其 **`Sensors`（视神经感官覆盖桶 `live_foveal / ambient_peripheral / stale / disconnected` 四态与防幻觉 TTL 倒计时、单帧 `frame_span_ms=0` 锁、预测编码竞争假设）**、**`Realizers`（支持的扩展与动态注册的 `expression_vocabulary` 表现力词典）** 与 **`Actuators`（运行期 `capabilities_updated` 动态动作热增删流）** | **母版 II** | `01` 公理一、`03`、`04-protocol` 1~4 |
+| **2. 具身躯壳 (`Shells`) 与感官媒体中枢**<br/>*(Embodied Shells & Media)*<br/>`[正本清源的一等架构域]` | **`/shells/topology`** | **双向具身协议网关（`Protocol v0`）与在线 `Shell` 三平面能力星图页**：统一管理所有外部与内置具身运行环境（桌宠、Live2D/3D 客户端、QQ/TG/Discord IM 躯壳、游戏 Mod、Web 躯壳）的 Inbound 入站与 Outbound 反向拨号 WebSocket 连接、RTT 心跳延迟与 `Scoped Capability Token` 签发；点开任意 `Shell` 透视其 **`Sensors`（`ext.embodied.v1` 感官覆盖 `live_foveal / ambient_peripheral / on_demand / blind / stale / disconnected` 六态与防幻觉 TTL 倒计时、单帧 `frame_span_ms=0` 锁、预测编码竞争假设）**、**`Realizers`（支持的扩展、`attention.target` 与从 `expression_vocabulary` 协商的 `expression.tag` 和 `intensity`）** 与 **`Actuators`（运行期 `capabilities_updated` 动态动作热增删流与 `actuation_cue`）** | **母版 II** | `01` 公理一、`03`、`04-protocol` 1~4 |
 | | **`/shells/attention-arbitration`** | **多 `Shell` 注意力焦点仲裁与主动搭话出口躯壳路由策略页**：专门配置当用户同时挂载多个 `Shell`（如桌面萌宠 + 手机 IM + 直播间）时的前台注意力焦点保持惯性窗口（`focus_hysteresis_window_ms: 4000` 防焦点高频横跳）、多端紧急度与场合优先级权重排序，以及主动搭话出口躯壳选择降级链（锁死 `never_broadcast_to_all_shells: true` 严禁全端同时弹窗广播铁律） | **母版 III** | `05-extension` 4 多端注意力仲裁引擎 |
 | | **`/shells/thalamic-gate`** | **L0 丘脑显著性门控、视神经感官习惯化（$\gamma_{\text{hab}}$）与话轮防抖聚合调校页**：可视化配置上行输入聚合防抖窗口（`1200ms` 连续短句合并、`lifecycle: "retract"` 欲言又止草稿感知）、视神经时空梯度习惯化衰减率 $\gamma_{\text{hab}}$（防静态 IDE 窗口焦点刷屏）、边缘视觉/表情最低置信度 `confidence` 与持续时长 `sustained_ms` 门控、瞬态生物特征 `ephemeral_blackboard` 15 分钟滑动窗口策略 | **母版 III** | `02-cognitive` 1.2/1.3 & `04-protocol` 4.2 |
-| | **`/shells/media-pipeline`** | **多模态音视频媒体管线编排与三锚点具身演出调音台页（`ext.media_pipeline`）**：DAW 式可视化串联上行流式 ASR/视觉语义提取中间件与下行情感 TTS（GPT-SoVITS / FishAudio 等）+ 口型同步 `Visemes`；管理动态表情/动作/声线情绪词典映射表；内置 **`EmbodiedKeyframeTimeline`（`pre_speech` 视线先行 $\rightarrow$ `on_substring` 词中高潮 $\rightarrow$ `on_utterance_end` 余韵 `linger_ms`）三锚点关键帧预览** 与音频回路试听器 | **母版 III** | `05` 总线 2 & `04-protocol` 2 |
+| | **`/shells/media-pipeline`** | **多模态音视频媒体管线编排与三锚点具身演出调音台页（`ext.media_pipeline`）**：DAW 式可视化串联上行流式 ASR/视觉语义提取中间件与下行情感 TTS（GPT-SoVITS / FishAudio 等）+ 口型同步 `Visemes`；管理 `expression_vocabulary` 与已协商的 `actuation_cue`；内置 **`EmbodiedKeyframeTimeline`（`pre_speech` 的 `attention.target` $\rightarrow$ `on_substring` 的 `expression.tag` 与 `intensity` $\rightarrow$ `on_utterance_end` 的 `actuation_cue` 与 `linger_ms`，同步显示 `coverage`（含 `blind`））三锚点关键帧预览** 与音频回路试听器 | **母版 III** | `05` 总线 2 & `04-protocol` 2 |
 | | **`/shells/simulator`** | **内置虚拟躯壳与多模态感官调试模拟器页（Mock Shell & Sensor Simulator）**：供创作者在无需启动外部 Unity/Live2D/IM 客户端的情况下，直接在控制台模拟任意 `venue_type / audience_scope / principal` 的虚拟躯壳握手，一键注入模拟触觉（戳头）、视觉语义（皱眉/竞争假设）、流式打断（指定 `spoken_char_offset`）或动态增删 `Actuators`，并联动右侧 8 步决策轨迹副栏验证内核响应 | **母版 I & II** | `05` 第五章创作者调试沙盒 |
 | | **插件声明的本地路径** | WebChat 提供 `/webchat`。可用路由随插件启用、禁用、卸载及资源校验结果更新。 | **母版 I** | 总线 1/8 |
 | **3. 灵魂、人格与内稳态**<br/>*(Soul, Persona & Homeostasis)* | **`/soul/persona`** | **三层人格设定与双轨演化 Diff 审批页**：Tier 0 安全底线徽章、Tier 1 核心 DNA（存在论契约三选一视觉卡、口癖与反客服腔 Chip 池、Tier 1 变更提案双栏 Diff 审批）、Tier 2 自我叙事（`narrative.md` 受众隐私染色段落块、`routine_append` 一键回退与 `high_impact_shift` 高冲突审批） | **母版 III** | `02-cognitive` 2.1 & `03` `D5` 域 |
-| | **`/soul/distiller`** | **载体形态 I：可食用的蒸馏角色四步料理工坊与一键脱敏分享打包页**：拖拽导入 SillyTavern V2/V3 角色卡（`.png / .json`）或 `.soul-template` $\rightarrow$ 四路可视化分馏（性格 DNA / `<START>` 黄金声线可试听胶囊 / Lorebook 词条卡 / 越狱与 PUA 清洗红绿对比）$\rightarrow$ 一键装瓶；支持**一键物理剥离私人记忆导出纯净社区分享包（`.soul-template`）** | **母版 V** | `05` 载体 I & 总线 7 角色蒸馏清洗 |
+| | **`/soul/distiller`** | **载体形态 I：可食用的蒸馏角色四步料理工坊与一键脱敏分享打包页**：拖拽导入 SillyTavern V2/V3 角色卡（`.png / .json`）或 `.soul-template` $\rightarrow$ 四路可视化分馏（性格 DNA / `<START>` 黄金声线可试听胶囊 / Lorebook 词条卡 / 越狱与 PUA 清洗红绿对比）$\rightarrow$ 保存静态 CCv3 角色卡，保留未知 `extensions.<namespace>`，由 Owner 另行显式唤醒；支持**一键物理剥离私人记忆导出纯净社区分享包（`.soul-template`）** | **母版 V** | `05` 载体 I & 总线 7 角色蒸馏清洗 |
 | | **`/soul/lorebooks`** | **载体形态 I：动态世界观词库（`Lorebook / WorldInfo`）编排与激活模拟器页**：管理多本世界观设定集、主/副触发词 Chip、递归激活深度、黑板槽位优先级与单轮 Token 预算；内置**输入测试句子实时高亮命中词条与递归链的激活模拟器** | **母版 III** | `02-storage` `lorebooks/` & `05` 载体 I |
 | | **`/soul/homeostasis`** | **内稳态二阶耦合动力学、24h 作息生物钟与主动搭话策略页**：可拖拽 24h 生理精力与免打扰曲线 + 快慢情绪 ODE 冲击/回归实时仿真画布（含李群 $\tanh$ 软饱和与气质预设胶囊）+ 主动搭话配额/退避拨盘 + `Next-Wakeup` 反解唤醒倒计时与关机冬眠（`Hibernation`）扣除透视 | **母版 III** | `02-cognitive` 2.3 & `03` 2.1/3.2 |
 | **4. 记忆血缘、知识库与羁绊**<br/>*(Memory, RAG & Relationship)* | **`/memory/lineage`** | **四级溯源记忆血缘 DAG 拓扑、双时态演进与真遗忘手术台页**：全幅可缩放血缘 DAG 画布（亲历/传闻/揣测48h沙漏/白日梦四级染色、双时态 `supersedes` 新旧偏好折叠链、共同默契 `CommonGround` 三态流转）+ `Hard Forget`（五表擦除 + 拓扑序局部微重算影响半径高亮 + `redaction_ledger.json` 跨回档墓碑预览）与 `Topic Seal` 痛点避雷封印抽屉 | **母版 IV** | `02-storage` 2.2/3.2 & `02-cognitive` 2.2 |
@@ -150,7 +156,7 @@ flowchart TB
 | | **`/memory/knowledge-rag`** | **内建混合 RAG 知识库与外部活体知识连接器（`ext.memory_knowledge`）中心页**：开箱即用上传解析 PDF/MD/代码文档（可视化分块 Chunking、`sqlite-vec` 稠密向量 + FTS5 BM25 稀疏混合检索 + Reranker 配置）或热插拔挂载 Obsidian/Notion/Wiki 插件（强制 `taint_level='untrusted_external'` 防投毒隔离）；卸载时自动弹出 **`extractGistCardsBeforeUnmount` 百字常识卡（`CrystallizedGistCard`）提炼向导** | **母版 V & III** | `02-storage` 2.6 & `05` 总线 5 内建混合 RAG |
 | | **`/memory/relationship`** | **关系羁绊、心结一键释怀、里程碑/纪念日仪式与跨平台身份绑定页**：关系雷达 vs 用户可打扰度仪表、未解心结 48h 半衰期与 **`[🕊️ 一键温柔释怀]`** 主权卡、前瞻承诺五态看板、**共同经历里程碑画廊与纪念日/正向剧情事件触发器（`milestones_and_rituals.yaml`）**、跨平台账号一次性配对码显式绑定图谱 | **母版 IV** | `02-cognitive` 2.4 & `03` 关系里程碑引擎 |
 | | **`/memory/events-media`** | **原始事件日志（`event_log`）审计、共同经历多媒体库（`attachments/`）与微调语料精炼页**：多维过滤检索不可变事件日志（含 `active_modules_mask` 位图）、浏览共同经历多媒体快照画廊，以及提炼导出黄金声线样本与角色专属 SFT/LoRA 微调数据集 | **母版 II & V** | `02-storage` 1/2.1 |
-| **5. 大模型与五脑区算力代谢**<br/>*(Models & Compute)* | **`/models/providers`** | **大模型提供商（`ext.model_provider`）、本地推理引擎与角色 LoRA 中心页**：管理 OpenAI / Anthropic / Gemini / DeepSeek / 本地 Ollama / vLLM / llama.cpp / Embedding / Reranker / L0 本地分类器提供商；内置一键 Ping & 流式 TTFT 测速、角色 LoRA 适配器热绑定 | **母版 III** | `05` 总线 6 |
+| **5. 大模型与五脑区算力代谢**<br/>*(Models & Compute)* | **`/models/providers`** | **大模型提供商（`ext.model_provider`）、本地推理引擎与角色 LoRA 中心页**：管理 Host Provider Pool（含 OpenCode Go `opencode_go`、OpenAI-compatible、Anthropic、DeepSeek、Ollama、Embedding / Reranker 与 LoRA 适配器），配置 Global Module Defaults，在线探测与流式 TTFT 测速 | **母版 III** | `05` 总线 6 |
 | | **`/models/routing`** | **五脑区异构算力路由矩阵、双轨精力“犯困降级”与声线漂移校准页**：五脑区（`W1` 快对话 / `W2` 8步行动 / `W3` 睡眠与好奇心 / `W4` 多模态 / `L0` 危机分类器）独立连线路由矩阵 + 算力代谢活力环 $E_{\text{metabolic}}$（`<25%` 自动降级至 Flash/本地模型 + `5%` L0 危机豁免备用金锁）+ 换模型 5 场景声线漂移五维雷达图 | **母版 III** | `02-cognitive` 2.1.2/2.3.2 & `01` 路由器 |
 | **6. 五阶多态扩展生态与编排**<br/>*(Polymorphic Ecosystem)* | **`/extensions/marketplace`** | **五阶多态扩展生态市场、多源安装器与创作者打包发布中心页**：支持按 **“五阶扩展载体形态（零代码资产包 / `SKILL.md` 技能 / MCP·协议连接器 / `.flow.yaml` 认知蓝图 / 原生代码插件）”** 与 **“八大功能总线”** 双维度交叉浏览与安装（Registry / Git / NPM / 本地拖拽）；管理三段式生命周期与 `faulted_isolated` 报错一键热重载；内置 **Creator Asset Bundler 一键脱敏打包器** | **母版 V** | `05` 五阶多态扩展载体 × 八大总线 |
 | | **`/extensions/configurator`** | **已安装扩展动态 Schema 配置中心与双层权限围栏矩阵页**：自动解析任何已安装扩展的 `config_schema` 渲染 `Tier-V1/V2/V3` 专属配置表单（支持多 Profile、绑定 Vault 密钥、保存即触发单插件热重载）；提供 **双层权限围栏矩阵**（外部 `Shell` 的 `Scoped Capability Token` + 内部扩展对 `D1~D5` 五大黑板状态域的读写提案权限与网络开关） | **母版 III** | `05` `ai0.extension.json` & `04` 4.1 |
@@ -187,16 +193,16 @@ flowchart TB
 1. **双向具身协议网关与在线 `Shell` 三平面能力星图（`/shells/topology` — `EmbodimentStarMapCard`）**：
    * 统一管理 **Inbound（入站连接）** 与 **Outbound（反向拨号远端躯壳）** 两类 WebSocket 会话、RTT 延迟与话轮防抖状态机（`Idle / Debouncing 1200ms / Streaming / Interrupted`）；
    * 点击任意在线 `Shell`（无论是外部桌面萌宠、Unity 3D 客户端、QQ 桥接器还是内置 `builtin.webchat`），展开其 **`Sensors / Realizers / Actuators` 三平面实时透视台**：
-     * **平面 1：`Sensors` 与视神经感官覆盖桶（`ext.perception.v1`）**：以四色状态胶囊展示各 `source_key`（如 `camera.main`, `desktop.active_window`, `game.combat_hud`）当前处于 `🎯 live_foveal（中央凹聚焦）`、`👁️ ambient_peripheral（边缘背景感知）`、`⏳ stale（TTL 到期代码锁死防全知幻觉）` 还是 `🔌 disconnected`，实时渲染 `freshness_ttl_ms` 倒计时条、单帧 `frame_span_ms == 0` 防连续动作推断锁，以及边缘模型上报的**预测编码竞争假设（`competing_hypotheses`）**；
-     * **平面 2：`Realizers` 与动态具身表现力词典（`expression_vocabulary`）**：展示该躯壳声明支持的扩展命名空间、最近一次 `degraded_extensions` 优雅降级记录，以及其动态注册的可用表情（`facial_expressions`）、动作意图（`gesture_intents`）与语音情绪标签词表；
-     * **平面 3：`Actuators` 运行期动态动作热更新流**：实时反映躯壳通过 `ControlSignal(capabilities_updated)` 随场景切换动态增删的端侧动作集合与 `requires_local_user_consent` 端侧确认锁。
+     * **平面 1：`Sensors` 与感官覆盖**：按 `source_key` 投射 `ext.embodied.v1` 的 `coverage` 状态：`live_foveal`、`ambient_peripheral`、`on_demand`、`blind`、`stale`、`disconnected`。未授权传感器锁定为 `blind`。保留 `ext.perception.v1` 的 `freshness_ttl_ms` 倒计时、`frame_span_ms == 0` 防连续动作推断锁与 `competing_hypotheses`。
+     * **平面 2：`Realizers` 与动态具身表现力词典（`expression_vocabulary`）**：展示支持的扩展命名空间、最近的 `degraded_extensions`、当前 `attention.target` 及从词典协商的 `expression.tag` 与 `intensity`。
+     * **平面 3：`Actuators` 运行期动态动作热更新流**：实时反映躯壳通过 `ControlSignal(capabilities_updated)` 随场景切换动态增删的端侧动作集合与 `requires_local_user_consent` 端侧确认锁，并显示发往已协商动作能力的 `actuation_cue`。
 2. **多 `Shell` 注意力焦点仲裁与主动搭话防广播路由（`/shells/attention-arbitration`）**：
    * 可视化调节 `focus_hysteresis_window_ms: 4000`（话轮保持惯性窗口，防止多端同时发消息时注意力高频横跳）、拖拽排序多场合抢占权重，并配置主动搭话首选躯壳降级链（顶部常驻 **`never_broadcast_to_all_shells: true` 严禁全端同时弹窗广播** 代码硬锁徽章）。
 3. **L0 丘脑显著性门控、感官习惯化（$\gamma_{\text{hab}}$）与防抖聚合调校台（`/shells/thalamic-gate` — `ThalamicGateDebounceTuner`）**：
-   * 提供视神经时空变化率习惯化衰减曲线 $S_{\text{eff}}(t) = S_{\text{raw}} \cdot e^{-\gamma_{\text{hab}} \Delta t_{\text{unchanged}}}$ 的交互式滑块、上行 `1200ms` 话轮防抖合并窗口、`lifecycle: "retract"` 欲言又止草稿捕获开关、视觉微表情最低置信度 `confidence` 与持续时长 `sustained_ms` 门控滑块，以及瞬态生物特征 `ephemeral_blackboard` 15 分钟滑动窗口（不落永久日志防情绪监控档案）状态监控。
+   * 提供视神经时空变化率习惯化衰减曲线 $S_{\text{eff}}(t) = S_{\text{raw}} \cdot e^{-\gamma_{\text{hab}} \Delta t_{\text{unchanged}}}$ 的交互式滑块、上行 `1200ms` 话轮防抖合并窗口、`lifecycle: "retract"` 欲言又止草稿捕获开关、视觉语义事件最低置信度 `confidence` 与持续时长 `sustained_ms` 门控滑块，以及瞬态生物特征 `ephemeral_blackboard` 15 分钟滑动窗口（不落永久日志防情绪监控档案）状态监控。
 4. **多模态音视频媒体管线与三锚点具身演出调音台（`/shells/media-pipeline` — `EmbodiedKeyframeTimeline`）**：
    * DAW 式可视化串联 `onUpstreamMediaFrame`（流式 ASR / 语气识别 / 视觉提取）与 `onDownstreamExpression`（GPT-SoVITS / FishAudio 情感 TTS + 口型同步 `Visemes`）；
-   * 内置**三锚点微表情与视线关键帧排练时间轴**：在一条话语波形轴上直观调试遵循动画规律的三个锚点——**① `pre_speech`（开口前视线先行 `gaze` 与吸气） $\rightarrow$ ② `on_substring:<核心词>`（语音播到关键词时的微表情达峰与脸红值 `blush_level`） $\rightarrow$ ③ `on_utterance_end`（话音落下后的余韵保持时长 `linger_ms`，彻底告别说完话瞬间立正归零的木偶恐怖谷）**。
+   * **`ext.embodied.v1` 三锚点关键帧**：`pre_speech` 调试 `attention.target`（`interlocutor`、`referenced_subject`、`ambient_environment`、`inward_withdrawn` 或 `anchor:<id>`），`on_substring:<核心词>` 调试从 `expression_vocabulary` 协商的 `expression.tag` 与 `intensity`，`on_utterance_end` 调试 `actuation_cue` 与保持时长 `linger_ms`。时间轴同步显示 `coverage`，包括未授权传感器的 `blind`。
 5. **躯壳协议模拟器与网页交互**
    * `/shells/simulator` 提供免外部客户端的全功能虚拟 `Shell` 发生器；
    * 通过插件导航打开已注册的交互页面；只有绑定了 `shell_id` 的页面才可申请该载体的令牌。
@@ -214,13 +220,13 @@ flowchart LR
     subgraph DistillPipes["2. 四路可视化分馏与安全提纯流水线 (EdibleSoulDistillerWizard)"]
         direction TB
         Pipe1["🧬 管线 ①：Tier 1 核心 DNA & 存在论契约卡 (identity.yaml)<br/>• 存在论契约三选一视觉卡片 (赛博具身[推荐] / 严格RP / 透明AI)<br/>• 核心价值观与角色内拒绝姿态标签<br/>• 声线签名 Chip 池 (口癖词 / 代词 / 句长滑块 / 禁用客服词黑名单)"]
-        Pipe2["🎙️ 管线 ②：黄金声线锚点胶囊池 (voice_exemplars.jsonl)<br/>• 自动按 <START> 切分原卡 mes_example & first_mes 为独立对话胶囊<br/>• 自动标注情绪场景标签 (傲娇反驳 / 温柔安抚 / 困倦 / 闲聊)<br/>• 支持单条勾选、微调与点击 [🔊 在线 TTS 声线试听]"]
+        Pipe2["🎙️ 管线 ②：黄金声线锚点胶囊池 (voice_exemplars.jsonl)<br/>• 自动按 &lt;START&gt; 切分原卡 mes_example & first_mes 为独立对话胶囊<br/>• 自动标注情绪场景标签 (傲娇反驳 / 温柔安抚 / 困倦 / 闲聊)<br/>• 支持单条勾选、微调与点击 [🔊 在线 TTS 声线试听]"]
         Pipe3["📚 管线 ③：动态世界观词条集 (lorebooks/*.yaml)<br/>• 无损转换 character_book 为结构化词条<br/>• 可视化编辑主/副触发关键词 Chip、递归深度与单轮 Token 预算条"]
         Pipe4["🛡️ 管线 ④：安全清洗防火墙红绿对比卡 (Jailbreak & PUA Sanitizer)<br/>• 高亮标红原卡 system_prompt / post_history 中被代码剥离的越狱指令、<br/>  伪造 System 标签与情感操控留存脚本，右侧展示提纯后的健康设定"]
     end
 
-    subgraph BottleOut["3. 一键装瓶食用 & 脱敏分享"]
-        ConfirmBtn["[✨ 装瓶生成/注入 .soul 实例]<br/>或 [📦 物理剥离私密记忆导出社区分享包]"]
+    subgraph BottleOut["3. 保存角色卡与脱敏分享"]
+        ConfirmBtn["保存静态 CCv3 角色卡 / 脱敏导出<br/>Owner 可另行唤醒独立的 .soul 实例"]
     end
 
     InputDrop --> DistillPipes --> BottleOut
@@ -328,6 +334,8 @@ flowchart LR
 ## 四、8 步可验证系统决策轨迹（`VerifiableTurnTrace`）统一 Schema 规范
 
 **单一结构真相源约定**：`turn_decision_traces` 数据库表、WebUI 右侧多态检视副栏中的只读轨迹手风琴组件（`VerifiableTraceAccordion`）、以及 `.scenario.yaml` 剧本断言引擎**严格共用同一份 `VerifiableTurnTrace` JSON Schema**（键名统一为 `steps.step1_perception` 至 `steps.step8_delivery_receipt`）：
+
+在 `step4_homeostasis` 中，`pre_state` 与 `code_clamped_post_state` 分别记录裁决前和代码约束后的状态。字段键来自当前角色卡及已启用器官通过 `continuous_states_json` 向声明式 `ContinuousStateMetaEngine` 注册的维度，示例键仅用于展示。
 
 ```json
 {
@@ -520,6 +528,12 @@ steps:
 
 | API 路由 | 类型 | 允许的目标环境 (`target_instance`) | 绑定的控制台路由页面与核心职责 |
 | :--- | :--- | :--- | :--- |
+| `GET /healthz` | REST 探针 | 宿主 | 仅报告 `@ai0/daemon` 进程存活。 |
+| `GET /readyz` | REST 探针 | 宿主 | 返回守护进程权威就绪级别 `L0_UNCLAIMED` 至 `L5_LIVE_READY`，仅 `L5_LIVE_READY` 返回 `200 OK`。 |
+| `POST /api/admin/v1/host/claim` | REST | 宿主 | 首次启动 Owner 主权认领，确认 `deployment_mode` 并初始化加密 Secrets Vault。 |
+| `GET/POST /api/admin/v1/host/providers` | REST | 宿主 | 列出或配置 Host Provider Pool，执行真实连通性探测并设置 Global Module Defaults。凭据写入 Vault，读取仅返回引用及配置状态。 |
+| `GET/POST /api/admin/v1/cards` | REST | 宿主 | 列出静态角色卡、新建空白卡或导入 CCv2/CCv3，保留未知 `extensions.<namespace>`。 |
+| `POST /api/admin/v1/souls/awaken` | REST | 宿主 | Owner 显式从静态卡创建独立实例，记录 `origin_card_id`。 |
 | `WS /api/admin/v1/telemetry` | WebSocket | `live` \| `sandbox:*` | `/dashboard`、`/runtime/terminal`、右侧检视副栏：实时推送 `VerifiableTurnTrace`（8步轨迹）、四轨遥测终端流、视神经感官覆盖桶 TTL、发言机会池 `InteractionOpportunity` 与 `W2` 行动进度 |
 | `GET/PATCH /api/admin/v1/blackboard/policy` | REST | `live` \| `sandbox:*` | `/dashboard/blackboard`：读写 `blackboard_policy.yaml` 槽位预算配比与语境预设，并请求指定 `Audience`（`only_owner` vs `public_all` 70% 社交面具阻尼）下的实时黑板编译预览 |
 | `GET/POST /api/admin/v1/shells` | REST | `live` \| `sandbox:*` | `/shells/topology`、`/shells/attention-arbitration`、`/shells/thalamic-gate`、`/shells/media-pipeline`：管理 Inbound/Outbound `Shells` 连接与三平面能力（含 `expression_vocabulary` 表现力词典）、签发 `Scoped Capability Token`、配置多端注意力仲裁、丘脑门控与媒体管线 |
@@ -530,7 +544,7 @@ steps:
 | `POST /api/admin/v1/memories/forget` | REST | `live` \| `sandbox:*` | `/memory/lineage`：预览或执行 `Hard Forget`（五表全受管副本擦除 + 拓扑序局部微重算 + 写入 `redaction_ledger.json` 永久墓碑账本）或 `Topic Seal`（痛点避雷封印） |
 | `GET/POST /api/admin/v1/knowledge-rag` | REST | `live` \| `sandbox:*` | `/memory/knowledge-rag`、`/memory/retrieval-sleep`：上传管理内建混合 RAG 文档切片（`sqlite-vec` + FTS5 BM25 + Reranker）、挂载外部知识连接器、触发卸载前 `CrystallizedGistCard` 百字常识卡提炼、调优检索公式 $R(m_i,t)$ 与 `W3` 好奇心外部冲浪源 |
 | `GET/PATCH /api/admin/v1/relationship-milestones` | REST | `live` \| `sandbox:*` | `/memory/relationship`：读取关系向量与用户可打扰度模型、执行活跃心结（`Tension`）**一键温柔释怀**、管理前瞻承诺与 `milestones_and_rituals.yaml` 关系里程碑/纪念日触发器、签发跨平台身份绑定配对码 |
-| `GET/PATCH /api/admin/v1/models/routing` | REST | `live` \| `sandbox:*` | `/models/providers`、`/models/routing`：管理模型提供商、LoRA 绑定、五脑区（`W1~W4` + `L0`）异构路由表、双轨精力 Token 预算犯困降级阈值及一键触发 5 场景声线漂移雷达图评测 |
+| `GET/PATCH /api/admin/v1/models/routing` | REST | `live` \| `sandbox:*` | `/models/providers`、`/models/routing`：引用宿主模型与 LoRA 绑定，配置五脑区（`W1~W4` + `L0`）异构路由表、双轨精力 Token 预算犯困降级阈值及一键触发 5 场景声线漂移雷达图评测 |
 | `GET/POST /api/admin/v1/extensions` | REST | `live` (后台内核宿主运行) | `/extensions/marketplace`、`/extensions/configurator`、`/extensions/skills-mcp`、`/extensions/cognitive-organs`、`/extensions/flows-eca`：管理五阶多态扩展安装、解析 `config_schema` 并触发单插件热重载、配置 `D1~D5` 黑板域权限矩阵、在线编辑调试 `SKILL.md` 与 MCP 工具、配置大脑认知器官三钩子与 `.flow.yaml` ECA 规则 |
 | `POST /api/admin/v1/agency/tasks/:id/control` | REST | `live` \| `sandbox:*` | `/runtime/coordinator-agency`：对后台运行中的 `W2` 8 步行动任务执行三维权限批准、暂停、恢复或紧急中止（及全局 `Kill Switch`） |
 | `GET/POST /api/admin/v1/system/admin` | REST | `live` | `/system/instances-storage`、`/system/safety-sb243`、`/system/settings-security`：多 `.soul` 实例切换/克隆、Git 快照回档（强制重放 `redaction_ledger.json`）、SQLite WAL/vec/FTS5 健康维护、Secrets Vault 密钥保险箱、网络代理与 SB 243 年度匿名报告导出 |
@@ -586,15 +600,15 @@ steps:
 | | **13. `PolymorphicNavRail`** | 左侧三态可折叠路由导航栏容器（`56px` 迷你图标栏 $\leftrightarrow$ `220px` 精炼 8 大一级域零滚动条导航栏 $\leftrightarrow$ `56px+190px` 一二级双轨），支持 `Ctrl+B` 切换 |
 | | **14. `MainRoundedCardOutlet` & `InternalStickySubNav`** | **包裹整个 `<main>` `<RouterOutlet />` 路由视口的一体式大圆角悬浮卡片容器盒子（`border-radius: 16px`，`overflow: hidden`）** + 盒子内部顶端 `40px` 粘性水平二级子路由胶囊栏与高内聚平铺主从分节组件（**严禁把 `<main>` 拆成满屏零碎小悬浮卡片**） |
 | | **15. `PolymorphicContextInspector`** | 右侧三态可折叠上下文检视副栏（`48px` 迷你工具栏 $\leftrightarrow$ `400px` 单栏白盒检视抽屉 $\leftrightarrow$ `540px` 沙盒 A/B 双栏并列对比抽屉） |
-| | **16. `TelemetryMetricStrip` & `FirstBootOnboardingModal`** | 位于 `<main>` 圆角卡片盒子内部顶端的紧凑水平态势指标带 + 首次启动空状态（Zero-State）3 步开箱引导弹窗（配模型 $\rightarrow$ 蒸馏角色 $\rightarrow$ 连躯壳） |
+| | **16. `TelemetryMetricStrip` & `FirstBootOnboardingModal`** | 位于 `<main>` 圆角卡片盒子内部顶端的紧凑水平态势指标带 + Zero-Preset 上线引导弹窗，通过 `GET /readyz` 一一呈现 §1.2 的 `L0_UNCLAIMED` 至 `L5_LIVE_READY`，每次提交后从 `@ai0/daemon` 重新读取。`GET /healthz` 独立表示进程存活，`localStorage` 不保存生命周期状态 |
 | | **17. `CommandPaletteModal`** | `Ctrl+K / ⌘K` 全局命令面板，支持秒级路由跳转全部 30 条页面、检索记忆血缘节点、切换 `.soul` 实例或一键派生沙盒副本 |
 | **Layer 3**<br/>**复杂参数降维可视化与数字生命领域组件**<br/>*(16 项)* | **18. `BlackboardSlotComposer`** | `<2500 Token` 认知状态黑板槽位积木拖拽编排器、场景语境预设切换器与 `only_owner` vs `public_all` 70% 社交面具阻尼实时对比模拟器 |
 | | **19. `EmbodimentStarMapCard`** | 双向 WebSocket 具身 `Shell` 连接星图 + `Sensors`（视神经感官覆盖桶 `live_foveal/stale` 与 TTL 倒计时）/ `Realizers`（含动态表现力词典） / `Actuators`（动态动作热更新）三平面透视器 |
 | | **20. `ThalamicGateDebounceTuner`** | L0 丘脑显著性门控、感官习惯化 $\gamma_{\text{hab}}$ 衰减曲线、`1200ms` 话轮防抖聚合状态机与 `ephemeral_blackboard` 15 分钟滑动窗口调校器 |
-| | **21. `EmbodiedKeyframeTimeline`** | `ext.embodied.v1` 三锚点关键帧（`pre_speech -> on_substring -> on_utterance_end`）+ `ext.media.sideband.v1`（`char_offset_timestamps_ms` 音频毫秒时间戳到单字偏移 `spoken_char_offset` 二分反算标尺与口型 `viseme_frames`）排练调音条 |
+| | **21. `EmbodiedKeyframeTimeline`** | `ext.embodied.v1` 三锚点关键帧（`pre_speech -> on_substring -> on_utterance_end`），含 `attention.target`、协商后的 `expression.tag` 与 `intensity`、`actuation_cue` 和 `coverage`（含 `blind`）+ `ext.media.sideband.v1`（`char_offset_timestamps_ms` 音频毫秒时间戳到单字偏移 `spoken_char_offset` 二分反算标尺与口型 `viseme_frames`）排练调音条 |
 | | **22. `MockShellSensorSimulator`** | 内置免外部客户端的虚拟躯壳与多模态感官发生器（伪造任意四元组握手、注入触觉/视觉竞争假设、模拟指定音频毫秒或字数偏移打断） |
 | | **23. `PluginPageHost`** | 从已启用插件的页面描述加载指定模块，并在页面退出时释放其资源。 |
-| | **24. `EdibleSoulDistillerWizard`** | **可食用蒸馏角色四步可视化料理流水线组件**：拖拽投料 $\rightarrow$ 四路分馏（性格 DNA / `<START>` 黄金声线试听胶囊 / Lorebook / 越狱与 PUA 清洗红绿对比） $\rightarrow$ 一键装瓶食用 |
+| | **24. `EdibleSoulDistillerWizard`** | **可食用蒸馏角色四步可视化料理流水线组件**：拖拽投料 $\rightarrow$ 四路分馏（性格 DNA / `<START>` 黄金声线试听胶囊 / Lorebook / 越狱与 PUA 清洗红绿对比） $\rightarrow$ 保存静态 CCv3 卡，再由 Owner 显式唤醒 |
 | | **25. `LorebookActivationSimulator`** | 动态世界观词库编排与激活模拟器：输入测试话语实时高亮命中 `keys / secondary_keys`、递归激活链与滑入黑板 Token 占用 |
 | | **26. `BioRhythmAffectCurveCanvas`** | 可拖拽 24h 作息生物钟与免打扰曲线 + 快慢情绪二阶耦合 ODE 冲击/衰减实时仿真画布 + 性格气质预设胶囊与 `Next-Wakeup` 倒计时器 |
 | | **27. `LineageDagGraphCanvas`** | 主观记忆血缘 DAG 拓扑画布：支持四级溯源染色、双时态 `supersedes` 折叠链、**内建 RAG 知识切片沉淀常识卡（`knowledge_chunk -> crystallized_from`）血缘边追踪**、`CommonGround` 默契三态流转及 `Hard Forget` 级联擦除半径高亮 |

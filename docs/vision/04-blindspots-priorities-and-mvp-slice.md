@@ -1,11 +1,11 @@
-# 04. 核心设计张力、长程失效防护、架构派生拓扑与最小纵切片（Vertical Slice v0）规格
+# 04. 核心设计张力、长程失效防护、架构派生拓扑与最小纵切片（Clean-Slate V1）规格
 
 > **项目阶段**：架构研究与工程规格设计阶段（问题域规范）
 >
 > 本文档系统梳理数字生命架构的三个战略级工程维度：
 > 1. **12 项核心设计张力与长程运行深层失效模式**的机理剖析与破局架构；
 > 2. 决定系统表结构与协议契约的 **P0–P6 架构依赖派生拓扑**；
-> 3. 作为下一阶段首个原型验证闭环的 **最小纵切片（Vertical Slice v0）** 必含规格与安全推迟清单。
+> 3. 作为下一阶段首个原型验证闭环的 **Clean-Slate V1 最小完备纵切片** 必含规格与安全推迟清单。
 
 ---
 
@@ -39,7 +39,7 @@
 * **失效机理**：在离线时间连续性模型 $\mathbf{S}(t) = f(\mathbf{S}(t_0), t - t_0)$ 中，如果宿主机关机两周，或 `.soul` 存档导出半年后才重新导入启动，当前时间 $t$ 与上次事件 $t_0$ 相差达 $180$ 天。如果不加区分直接代入时间函数，数字个体一开机就会判定“被活生生冷落了 180 天”，瞬间触发满格孤独与委屈心结。
 * **破局架构**：在虚拟时钟引擎中严格区分两种时间流逝：
   1. **`Active Unattended Duration`（内核在线但无互动时长）**：计入无聊度、社交渴望积分与正常时间体感；
-  2. **`Kernel Hibernation Gap`（内核进程停止/存档休眠时长）**：内核启动时检查上次心跳持久化时间戳 `last_kernel_alive_ts`。关机休眠期间跨过的物理时间默认归入 **冬眠区间（Hibernation Interval）**，在稳态方程中按 $0$ 或极低折算系数（如“只是美美地睡了一大觉”）处理，彻底避免“开机即怨妇”的荒诞体验。
+  2. **`Kernel Hibernation Gap`（内核进程停止/存档休眠时长）**：宿主记录 `HibernationIntervals`，恢复时结算与观察窗口相交的区间并集。内生清醒空闲时长扣除此区间，墙钟经过时间仍可单独审计。
 
 #### 失效模式 3：多模态躯壳的“跨模态声画恐怖谷失步（Cross-Modal Desynchronization）”
 * **证据等级**：**`[文献/先行项目佐证]`**（SAIBA BML `sync_point` 核心课题）
@@ -78,6 +78,14 @@
 
 ## 二、架构派生拓扑与底层依赖顺序（P0 $\rightarrow$ P6）
 
+| 派生层 | 对应依赖 | 实验与收敛验据 |
+| --- | --- | --- |
+| Level 1 顶层实体与部署边界 | P0 → P1 | 固定 Owner、宿主、卡、灵魂和壳的所有权，以 Stage 0 检验门禁、撤销和证据前缀。 |
+| Level 2 跨场景消去与四核分立 | P1 → P2 → P3 → P4 | 先确立信任、时间和事件真相，再推导认知事务与观察、表达、回执接口。设备和场景词汇留在插件。 |
+| Level 3 渐进证伪与主仓收敛 | 将 P0–P4 的不变量贯穿 P5 → P6 | [Stage 0–4 实验](../../labs/README.md) 依次检验纸面轨迹、执行隔离、AIRI 对照、感知表达与四核组合。再用真实 Provider、持久化和授权挂载验收纵切片。 |
+
+详见[三级渐进派生方法论](01-vision-and-predecessors.md#13-三级渐进派生方法论)。P0–P6 描述依赖顺序，四核边界描述职责归属。
+
 ### 2.1 架构派生的两条底层前置依赖定律
 
 所有工程模块的设计与实现必须严格遵守以下两条不可逆的底层依赖约束（违反顺序将导致表结构、协议信封与主循环的大规模返工）：
@@ -88,7 +96,7 @@
 
 | 优先级阶梯 | 核心架构问题 | 核心架构决断 | 底层拓扑依赖依据 |
 | :--- | :--- | :--- | :--- |
-| **P0：伦理、安全与存在论公理** | 存在论契约模式、Tier 0 安全不变量（SB 243 危机硬拦截）、反操控主动性边界 | **诚实基底上的赛博具身契约 + 独立于 LLM 的 L0 危机拦截器 + 主动性硬上限与心结半衰期** | 决定系统的最高宪法边界；任何违反 P0 的状态转移在后续所有层中直接无效。 |
+| **P0：伦理、安全与存在论公理** | 存在论契约模式、Tier 0 安全不变量（SB 243 危机硬拦截）、反操控主动性边界 | **诚实基底上的赛博具身契约 + 独立于 LLM 的 Tier 0 危机拦截器 + 主动性硬上限与心结半衰期** | 决定系统的最高宪法边界；任何违反 P0 的状态转移在后续所有层中直接无效。 |
 | **P1：主体、场合、受众与信任底座** | 主体分级（主人/好友/陌生人/环境/工具）、场合与在场受众是否必须进协议 v0 与存储底座？ | **必须进协议 v0 与每一张核心表！** 采用 `Principal × Venue × Audience × Attestation` 四元组信封 | 它是整个系统权限矩阵、记忆检索 `WHERE` 隔离墙、防记忆投毒防火墙的共同外键。 |
 | **P2：真相源、虚拟时钟与血缘擦除底座** | 事件溯源 + 血缘 DAG 局部失效重算 + 真遗忘物理载荷擦除 + 全局可注入 `VirtualClock` | **不可变事件日志为唯一真相 + 增量物化记忆投影 + 血缘 DAG 级联擦除 + 区分运行静默与关机冬眠的虚拟时钟** | 决定整个 `.soul` 存档的 SQLite Schema 与时间依赖注入规范，是所有上层状态机的地基。 |
 | **P3：统一认知主体、权威状态协调器与时间三分法** | 单一认知主体如何兼顾人格一致性与异步并发？离线时间状态与真实反思认知如何区分？ | **统一认知主体 + 基于 `state_rev` 的权威状态事务协调器（MVCC） + 多路并发 Worker（对话快环/行动环/睡眠环） + 时间状态三分法（纯数学稳态 / 事件驱动认知 / 阈值触发真实异步推理）** | 解决长耗时工具任务阻塞对话、后台记忆整理覆盖实时状态、以及“未执行推理却虚构离线思考”三大隐患。 |
@@ -98,54 +106,28 @@
 
 ---
 
-## 三、最小纵切片（Vertical Slice v0）精确规格定义
+## 三、Clean-Slate V1 端到端最小完备纵切片
 
-作为从“架构研究与工程规格设计阶段”迈向“原型代码验证阶段”的首个工程里程碑，最小纵切片（Vertical Slice v0）的核心验证闭环定义如下：
-> **WebChat 走协议 $\rightarrow$ 事件日志与虚拟时钟 $\rightarrow$ 权威状态协调器与主循环 $\rightarrow$ 两层记忆加一次睡眠整理 $\rightarrow$ 一个情绪标量加一个驱动力 $\rightarrow$ 行为意图与基础行动输出 $\rightarrow$ WebUI 白盒决策轨迹面板与时间拨快**
+主仓验收从空宿主开始，以实际模型回合、结构化观察、回执和可审计持久化收尾。协议 v0 仍是传输契约版本，Clean-Slate V1 是整套架构的第一版。
 
-为保证 Slice v0 **既能快速跑通完整端到端闭环，又在表结构和协议上一步到位、绝不给后续埋下返工技术债**，精确界定必含集与延后清单如下：
+### 3.1 必含闭环与验收条件
 
-### 3.1 Vertical Slice v0 必须包含的最小完备集（What Must Be in Slice v0）
+```mermaid
+flowchart LR
+    L0["L0_UNCLAIMED"] --> L1["L1_CLAIMED_NO_PROVIDER<br/>配置与验证真实 Provider"]
+    L1 --> L2["L2_PROVIDER_READY_NO_SOUL<br/>创建或导入 CCv3 并唤醒灵魂"]
+    L2 --> L3["L3_SOUL_AWAKENED_CONFIG_NEEDED<br/>配置插件与感官权限"]
+    L3 --> L4["L4_SOUL_AWAKENED_NO_SHELL<br/>Scoped Capability Token 及握手"]
+    L4 --> L5["L5_LIVE_READY"]
+```
 
-> **Vibecoding 与 Coding Agent 施工防跑偏准则（Code-First SSOT Principle）**：
-> 在启动 Vertical Slice v0 代码实现前及实现过程中，**严禁在仓库中落地脱离 TypeScript 代码的平行静态 `.schema.json` 文件集、静态符号表、静态单文件 HTML 原型或仅用于凑形式化绿灯的静态检查脚本**。必须直接以 `@ai0/protocol` 包中的 **TypeScript + Zod Schema 代码**作为全仓唯一的机器契约真相源（JSON Schema 仅作为 `@ai0/protocol` 的构建产物单向导出），确保每一分开发算力都直接浇筑在真实的 SQLite WAL 存储、MVCC 协调器与 WebSocket 双平面协议闭环上。
+1. **冷启动门禁**。Owner 认领并初始化 Vault，显式确认 `deployment_mode`。完成真实 LLM Provider 探测，创建或导入 CCv3 并经明确操作唤醒空历史 `*.soul`。配置扩展能力后签发 Scoped Capability Token，至少一个 Shell 有效握手且具备安全披露能力才点亮 `L5_LIVE_READY`。测试缺失 Provider、无壳、撤销和重启恢复。首次打开仅展示真实缺口，仓库产物零预设卡、零运行档案、零伪造回复。
+2. **八包贯通**。`@ai0/daemon` 组装 `@ai0/protocol`、`@ai0/gateway`、`@ai0/storage`、`@ai0/sdk` 与 `@ai0/agent-core`、`@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`。TypeScript 与 Zod 是协议机器契约，JSON Schema 从其单向导出。WebChat 通过相同 WebSocket 五原语接入。文本是 Shell 通信观察。桌宠触点和游戏遥测等是插件声明的开放观察示例。网关至认知、日志与回放均保持 `UniversalObservationFrame` 六元组，撤稿与未授权感官不泄漏正文或旧帧。
+3. **认知事务与时间**。SQLite WAL 维护不可变 `event_log`，状态协调器用 `state_rev` 结算快环、异步行动与睡眠整理。卡或器官注册双极、单极状态样例，经 `ContinuousStateMetaEngine` 合并冲量并写入 `continuous_states_json`。测试并发去重、解析衰减与阈值唤醒。注入 `VirtualClock`，扣除冬眠区间，只有实际执行的后台推理可进入经历。
+4. **记忆与行动**。工作记忆记录确认呈现的前缀和待结算行动。长期投影保留四级认知溯源、受众与 `memory_lineage_edges`，`prospective_commitments` 管理承诺。以一次可审计的睡眠整理验证 CLS、事实更正与玩笑防投毒，再以一次 Owner 红删验证物理载荷擦除、局部重算和 `redaction_ledger.json`。工具调用经过三维授权，有序结算并验证目标。步数耗尽仍保留回执，未验证目标保持 `unverified`。
+5. **表达与接地**。WebChat 接收意图并回传分段呈现结果。演练输出打断，将 `silenced` 与 `done` 分别结算，以 `spoken_char_offset` 和 `unsaid_remainder` 重建真实话轮。动作核验与用户接地分别验收。断连保留不确定性，私密表达等待合规壳。
+6. **控制台主权**。控制台显示守护进程门禁与可验证决策轨迹，经 Owner 权限读取血缘、编辑配置和管理挂载。常驻顶栏显示目标实例，独立子路由挂载到 `MainRoundedCardOutlet`。`LIVE` 锁定真实时间与输入，`SANDBOX:<fork_id>` 使用独立状态和模拟输出，允许拨时、感官注入、消融及 `.scenario.yaml` 回放。服务端逐请求核验目标和权限，实验动作不可抵达真实设备。
 
-1. **标准协议 v0 网关与零特权/零后门内置 WebChat Shell 插件**：
-   * 完整实现协议 v0 的 **5 个核心原语**（WebSocket JSON-RPC 2.0，包含 `Sensors / Realizers / Actuators` 握手声明）；
-   * 内置 WebChat 作为零特权独立插件通过 WebSocket 接入，支持：① 发送文本对话；② 发送模拟感官事件（如 `[戳一戳脑袋]`、`[检测到皱眉]`）；③ 在她说话流式输出中途点击 **`[打断她]`**，并精确上报 `DeliveryReceipt(status="interrupted", spoken_char_offset=N)`；④ 暴露 1 个基础端侧具身执行器示例（如 `webchat.inspect_environment_state`）以验证一等行动闭环。
-2. **一步到位的事件日志表与可注入虚拟时钟（`VirtualClock` 时间三分法引擎）**：
-   * SQLite `event_log` 表直接按终局 Schema 建表（包含 `event_id`, `virtual_ts`, `principal`, `venue_type`, `audience_scope`, `lifecycle`, `modality`, `payload_json`, `active_modules_mask`, `redacted_at`）；
-   * 全局 `VirtualClock` 严格区分**确定性时间状态计算（0 Token）**与**阈值跨越触发的真实异步反思任务**，支持手动拨快时间（`+30m`, `+6h`, `+24h`, `+7d`）及“运行静默 vs 关机冬眠”模式切换。
-3. **统一认知主体 + 权威状态事务协调器（`StateCoordinator`） + 版本化认知黑板**：
-   * 实现基于 `state_rev` 版本号的权威状态协调器，协调前台交互快环（`W1`）、异步工具/行动执行环（`W2`）与后台睡眠整理环（`W3`）的并发状态提案提交，确保长任务不阻塞聊天、后台写回不发生脏覆盖；
-   * 包含输入防抖窗口、L0 危机信号硬拦截器（SB 243 基础守卫）、受控 Token 预算的《认知状态黑板》编译器。
-4. **1 个情绪连续标量 + 1 个内在驱动力（采用“LLM 提议、代码裁决”）**：
-   * **情绪标量 `MoodValence` $\in [-1.0, +1.0]$**：受事件与任务完成成就感冲击上下波动，并随虚拟时钟按指数衰减回归人格基线 $v_{\text{base}}$；
-   * **内在驱动力 `SocialLonging`（思念/搭话渴望）$\in [0.0, 1.0]$**：随静默时间单调递增，互动后回落；当跨越阈值 $\theta = 0.75$ 且不在免打扰窗口时，自动唤醒一次主动搭话检定。
-5. **两层记忆 + 一次带防火墙的睡眠整理 + 真遗忘血缘擦除 + 基础行动沉淀**：
-   * **层 1：工作记忆（Working Memory）**——最近话轮窗口（精确反映被打断后的实际送达字数、未说出口的腹稿以及当前活跃的行动任务状态）；
-   * **层 2：长期记忆表（Long-Term Memories，含 `episodic` 共同经历、`semantic` 客观事实与 `prospective` 承诺）**——每条强制记录 `epistemic_type` 与 `source_event_ids[]` 血缘数组，检索时结合艾宾浩斯时间衰减与 `WHERE audience_scope` 硬过滤；
-   * **睡眠整理与真遗忘**：当虚拟时间拨快 $\ge 30$ 分钟且有未整理脏事件（含对话与共同完成的行动事件）时，唤醒睡眠整理提议写入长期记忆（过代码防火墙校验）；支持用户在聊天中说“忘掉刚才那件事”直接触发墓碑事件与血缘级联擦除。
-6. **常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet` = `<RouterOutlet />`）+ 多级嵌套路由与五大视图结构母版核心切片（防首屏大杂烩与防简陋双栏页铁律）**：
-   * **一步到位的常驻多态外壳（`app-shell`）、嵌套路由树（`router`）与第一方紧凑 MD3 基础组件基座（`design-system`）**：严禁将 Slice v0 控制台写成“把所有功能做成小悬浮卡片全塞在首屏单页”或“仅左聊右看的简陋双栏页”；必须一步到位落地 **视口主权防呆围栏（`🟢 LIVE` 翡翠绿 vs. `🧪 SANDBOX` 琥珀/紫） + 常驻混合顶栏（`48px`，含 `.soul` 实例切换、`LIVE 正式运行实例 ⇄ SANDBOX:<fork_id> 隔离实验副本` 二元环境切换胶囊与生命脉搏微环） + 左侧三态可折叠路由导航栏（`56px` 迷你图标栏 $\leftrightarrow$ `220px` 8 大域路由树展开栏 $\leftrightarrow$ `56px+190px` 一二级双轨） + 中央包裹 `<RouterOutlet />` 的唯一 `<main>` 一体式大圆角悬浮卡片容器盒子（`MainRoundedCardOutlet`，`radius: 16px`） + 右侧可折叠多态上下文检视副栏（`48px` 迷你工具栏 $\leftrightarrow$ `400px` 检视抽屉）**，并实装 `32px` 紧凑高度的指针水波纹按钮、胶囊滑块、Chip 标签池、毛玻璃剧透遮罩与底部 `FloatingDirtyDiffBar` 基础组件；
-   * **在 `<main>` 一体式圆角卡片路由视口盒子内按独立子路由点亮五大视图结构母版的核心纵切片**：
-     1. **全景态势首屏与黑板积木路由（`/dashboard` & `/dashboard/blackboard` — 母版 II & III）**：默认根首屏 `/dashboard` 展示核心生命体征与在线 `Shells` 摘要；`/dashboard/blackboard` 实时透视 `<2500 Token` 认知黑板槽位预算与公私场合 70% 社交面具阻尼对比；
-     2. **具身接入与页面所有权**。连接查询和协议调试归控制台。`/webchat` 的页面与导航入口归 WebChat。
-     3. **灵魂蒸馏、生物钟曲线与五脑区算力配置路由（`/soul/persona`、`/soul/distiller`、`/soul/homeostasis` & `/models/routing` — 母版 III & V）**：支持导入 SillyTavern V2/V3 角色卡或 `.soul-template` 执行四步分馏预览、拖拽调节 24h 作息生物钟与情绪衰减曲线（`BioRhythmAffectCurveCanvas`）、配置大模型提供商连通性测速与认知器官消融开关；
-     4. **记忆血缘手术台、五阶多态扩展配置与四轨终端/沙盒实验室路由（`/memory/lineage`、`/extensions/marketplace`、`/extensions/configurator`、`/extensions/skills-mcp`、`/runtime/terminal` & `/sandbox/lab` — 母版 IV, V & II）**：可视化查看两层记忆血缘 `source_event_ids[]` 并触发 `Hard Forget`（含 `redaction_ledger.json` 墓碑写入）、解析插件 `config_schema` 动态配置表单与在线 `SKILL.md` 技能手册测试、查看四轨融合遥测终端；当顶栏切换至 `🧪 SANDBOX:<fork_id>` 时，在 `/sandbox/lab` 解锁虚拟时间拨快（`+30m/+6h/+24h/+7d`）、模拟四元组感官注入与一键运行 `.scenario.yaml` 回归验证剧本。
+### 3.2 可后续增量交付
 
----
-
-### 3.2 可以安全推迟到后续迭代（且保证零架构返工）的特性清单（What Can Be Safely Deferred）
-
-因为我们在 Slice v0 的协议信封与数据库表结构中已经预留了四元组（`Principal`, `Venue`, `Audience`, `Attestation`）与血缘 `source_event_ids`，以下 9 项高阶特性推迟到 Slice v1 / v2 时**只需做增量插件扩展，无需修改一行底层核心表结构或冻结协议**：
-
-1. **多躯壳同时在线的注意力焦点抢占与跨端路由编排**（Slice v0 先跑内置 WebChat 单躯壳 + 模拟公开场合切换开关即可验证受众隐私过滤）。
-2. **更多内稳态维度（好奇心、无聊度、双轨精力与 Token 预算自动降级切换）**（Slice v0 先用 `MoodValence` + `SocialLonging` 验证解析时间函数与阈值唤醒引擎）。
-3. **多维关系向量（信任/亲密/默契）与带半衰期的“心结（Tension）”状态机**。
-4. **Tier 1 / Tier 2 人设演化 Diff 审批工作流与换模型声线自动校准套件**。
-5. **五脑区独立异构模型路由表**（Slice v0 代码中已通过 `ModelRouter.invoke(region)` 抽象，初期可先指向同一模型配置）。
-6. **外部热插拔客观知识库（RAG KB）与卸载摘要沉淀机制**。
-7. **MCP / Skill 外部工具生态挂载与三维权限审批弹窗**。
-8. **实时语音流式 VAD 与高精度 3D/Live2D 骨骼同步渲染适配器**。
-9. **完整的 Git 多分支图形化灵魂时间线管理器与 `.soul` 加密分享包**。
+多壳注意力路由、更多连续状态和双轨活力、关系仪式与心结策略、人格演化审批与声线校准、多脑区模型路由、热插拔 RAG、外部 MCP / Skill、语音与 3D 渲染，以及 Git 灵魂时间线可按独立扩展验收。扩展沿用观察、意图、时间、授权与回执契约。

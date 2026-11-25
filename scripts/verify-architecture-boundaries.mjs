@@ -4,15 +4,20 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const CORE_PACKAGES = ["gateway", "kernel", "protocol", "sdk", "storage"];
+const CORE_PACKAGES = ["agent-core", "cognition-core", "expression-core", "gateway", "perception-core", "protocol", "sdk", "storage"];
+const HEADLESS_CORES = ["agent-core", "perception-core", "expression-core", "cognition-core"];
+const INTERNAL_ALLOWLIST = {
+  protocol: [],
+  "agent-core": ["protocol"],
+  "perception-core": ["protocol"],
+  "expression-core": ["protocol"],
+  storage: ["protocol"],
+  sdk: ["protocol"],
+  "cognition-core": ["protocol", "agent-core", "perception-core", "expression-core", "storage"],
+  gateway: ["protocol", "perception-core", "cognition-core", "expression-core", "storage"]
+};
 const PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES = new Set(["@ai0/protocol", "@ai0/sdk"]);
-const PLUGIN_FORBIDDEN_PACKAGES = [
-  "@ai0/kernel",
-  "@ai0/storage",
-  "@ai0/gateway",
-  "@ai0/console-webui",
-  "@ai0/daemon",
-];
+const AGENT_DOMAIN_TERMS = /D2_HOMEOSTASIS_AFFECT|SoulArchive|Lorebook|blush_level|user_eyes|local-persona-synthesizer/u;
 const HOST_CONSOLE_FORBIDDEN_PLUGIN_DEPS = [
   "@assistant-ui/react",
   "streamdown",
@@ -29,6 +34,7 @@ const DEPENDENCY_SECTIONS = [
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs"]);
 const WALK_IGNORED_DIRECTORIES = new Set([
   ".git",
+  ".pnpm-store",
   ".turbo",
   ".vite",
   "build",
@@ -45,10 +51,10 @@ const DESIGN_SYSTEM_DIRECTORIES = [
   "composites",
 ];
 
-// Kernel code must stay independent of UI runtimes, browser/desktop renderers,
+// Headless core code must stay independent of UI runtimes, browser/desktop renderers,
 // chat-platform SDKs, and Live2D/rendering SDKs. Prefix entries ending in "/"
 // intentionally cover their entire package namespace.
-const KERNEL_FORBIDDEN_DEPENDENCIES = [
+const HEADLESS_FORBIDDEN_DEPENDENCIES = [
   "react",
   "react-dom",
   "next",
@@ -156,8 +162,8 @@ function matchesPackage(specifier, packageName) {
   return specifier === packageName || specifier.startsWith(`${packageName}/`);
 }
 
-function isForbiddenKernelDependency(name) {
-  return KERNEL_FORBIDDEN_DEPENDENCIES.some((forbidden) => {
+function isForbiddenHeadlessDependency(name) {
+  return HEADLESS_FORBIDDEN_DEPENDENCIES.some((forbidden) => {
     if (forbidden.endsWith("/")) return name.startsWith(forbidden);
     if (forbidden === "live2d") return name.toLowerCase().includes("live2d");
     return matchesPackage(name, forbidden);
@@ -353,7 +359,7 @@ function moduleSpecifiers(source) {
 }
 
 async function verifyCorePackageLock() {
-  const rule = "Invariant 1: packages/ five-core lock";
+  const rule = "Invariant 1: packages/ eight-package lock";
   const packagesDirectory = path.join(repoRoot, "packages");
   const info = await pathInfo(packagesDirectory);
   if (!info?.isDirectory()) {
@@ -374,7 +380,7 @@ async function verifyCorePackageLock() {
     report(rule, `Missing core package directories: ${missingDirectories.join(", ")}.`);
   }
   if (unexpectedFiles.length > 0) {
-    report(rule, `packages/ may contain only the five core package directories; unexpected entries: ${unexpectedFiles.join(", ")}.`);
+    report(rule, `packages/ may contain only the eight core package directories; unexpected entries: ${unexpectedFiles.join(", ")}.`);
   }
 }
 
@@ -456,9 +462,8 @@ async function verifyPluginBoundaries() {
     include: (filePath) => SOURCE_EXTENSIONS.has(path.extname(filePath)),
   });
   const forbiddenHostDirectories = [
-    { packageName: "@ai0/kernel", directory: path.resolve(repoRoot, "packages", "kernel") },
-    { packageName: "@ai0/storage", directory: path.resolve(repoRoot, "packages", "storage") },
-    { packageName: "@ai0/gateway", directory: path.resolve(repoRoot, "packages", "gateway") },
+    ...CORE_PACKAGES.filter(name => !PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES.has("@ai0/" + name))
+      .map(name => ({ packageName: "@ai0/" + name, directory: path.resolve(repoRoot, "packages", name) })),
     { packageName: "@ai0/console-webui", directory: path.resolve(repoRoot, "apps", "console") },
     { packageName: "@ai0/daemon", directory: path.resolve(repoRoot, "apps", "daemon") },
   ];
@@ -466,8 +471,8 @@ async function verifyPluginBoundaries() {
   for (const filePath of sourceFiles) {
     const source = await readFile(filePath, "utf8");
     for (const specifier of moduleSpecifiers(source)) {
-      const forbiddenPackage = PLUGIN_FORBIDDEN_PACKAGES.find((name) => matchesPackage(specifier, name));
-      if (forbiddenPackage) {
+      if (specifier.startsWith("@ai0/") &&
+          ![...PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES].some(name => matchesPackage(specifier, name))) {
         report(rule, `${relativePath(filePath)} imports forbidden package "${specifier}".`);
         continue;
       }
@@ -489,38 +494,45 @@ async function verifyPluginBoundaries() {
   }
 }
 
-async function verifyKernelPurity() {
-  const rule = "Invariant 4: kernel headless purity";
-  const kernelDirectory = path.join(repoRoot, "packages", "kernel");
-  const packageJsonPath = path.join(kernelDirectory, "package.json");
-  const packageJson = await readJson(packageJsonPath, rule);
-
-  if (packageJson) {
-    for (const dependency of dependencyEntries(packageJson)) {
-      if (dependency.invalid) {
-        report(rule, `${relativePath(packageJsonPath)} ${dependency.section} must be an object.`);
-      } else if (isForbiddenKernelDependency(dependency.name)) {
-        report(rule, `${relativePath(packageJsonPath)} ${dependency.section} contains non-headless dependency "${dependency.name}".`);
+async function verifyCoreDependencies() {
+  const rule = "Invariant 4: core dependency direction and headless purity";
+  const packagesRoot = path.join(repoRoot, "packages");
+  for (const name of CORE_PACKAGES) {
+    const packageRoot = path.join(packagesRoot, name);
+    const packageJsonPath = path.join(packageRoot, "package.json");
+    const allowed = INTERNAL_ALLOWLIST[name];
+    const headless = HEADLESS_CORES.includes(name);
+    const check = (specifier, file) => {
+      if (specifier.startsWith("@ai0/") && !allowed.some(dep => matchesPackage(specifier, "@ai0/" + dep))) {
+        report(rule, relativePath(file) + ' uses forbidden internal dependency "' + specifier + '".');
       }
+      if (headless && isForbiddenHeadlessDependency(specifier)) {
+        report(rule, relativePath(file) + ' uses non-headless dependency "' + specifier + '".');
+      }
+    };
+    for (const dependency of dependencyEntries(await readJson(packageJsonPath, rule))) {
+      if (dependency.invalid) report(rule, relativePath(packageJsonPath) + " has an invalid " + dependency.section + " section.");
+      else check(dependency.name, packageJsonPath);
     }
-  }
-
-  const sourceDirectory = path.join(kernelDirectory, "src");
-  if (!(await pathInfo(sourceDirectory))?.isDirectory()) {
-    report(rule, `Required source directory ${relativePath(sourceDirectory)} is missing.`);
-    return;
-  }
-
-  const allowedAdapter = path.resolve(sourceDirectory, "clock", "virtual-clock.ts");
-  const sourceFiles = await walkFiles(sourceDirectory, {
-    include: (filePath) => SOURCE_EXTENSIONS.has(path.extname(filePath)),
-  });
-
-  for (const filePath of sourceFiles) {
-    if (path.resolve(filePath) === allowedAdapter) continue;
-    const source = executableCodeOnly(await readFile(filePath, "utf8"));
-    if (/\bDate\s*\.\s*now\s*\(/.test(source)) {
-      report(rule, `${relativePath(filePath)} calls raw Date.now(); inject VirtualClock instead.`);
+    const files = await walkFiles(packageRoot, {
+      include: file => SOURCE_EXTENSIONS.has(path.extname(file))
+    });
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      for (const specifier of moduleSpecifiers(source)) {
+        check(specifier, file);
+        if (!specifier.startsWith(".")) continue;
+        const target = path.resolve(path.dirname(file), specifier.replace(/[?#].*$/, "").replaceAll("\\", path.sep));
+        const [other] = path.relative(packagesRoot, target).split(path.sep);
+        if (CORE_PACKAGES.includes(other) && other !== name) check("@ai0/" + other, file);
+      }
+      if (name === "agent-core" && AGENT_DOMAIN_TERMS.test(stripComments(source))) {
+        report(rule, relativePath(file) + " contains a cognition or persona domain term.");
+      }
+      if (headless && relativePath(file) !== "packages/cognition-core/src/clock/virtual-clock.ts" &&
+          /\bDate\s*\.\s*now\s*\(/.test(executableCodeOnly(source))) {
+        report(rule, relativePath(file) + " calls raw Date.now(); inject VirtualClock instead.");
+      }
     }
   }
 }
@@ -639,12 +651,12 @@ async function verifyHostZeroPluginPollution() {
         }
       }
 
-      if (relFile.startsWith("packages/storage/src/") || relFile.startsWith("packages/kernel/src/")) {
+      if ([...HEADLESS_CORES, "storage"].some(name => relFile.startsWith("packages/" + name + "/src/"))) {
         const code = executableCodeOnly(source);
         if (/\b(?:listWebChat|markWebChat|handleWebChat)[A-Za-z0-9_]*\b/.test(code)) {
           report(
             rule,
-            `${relFile} defines or calls a WebChat-specific method; core storage/kernel APIs must be parameterized by generic shell_id.`,
+            `${relFile} defines or calls a WebChat-specific method; core package APIs must be parameterized by generic shell_id.`,
           );
         }
       }
@@ -655,7 +667,7 @@ async function verifyHostZeroPluginPollution() {
 await verifyCorePackageLock();
 await verifyProtocolBoundaries();
 await verifyPluginBoundaries();
-await verifyKernelPurity();
+await verifyCoreDependencies();
 await verifyDesignSystemModularity();
 await verifyNoStaticSchemas();
 await verifyHostZeroPluginPollution();

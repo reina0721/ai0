@@ -141,18 +141,12 @@ export interface CognitiveStateCheckpoint {
   state_rev: number;
   virtual_ts_ms: number;
   caused_by_event_id: string;
-  instant_valence: number;
-  instant_arousal: number;
-  mood_baseline_val: number;
-  mood_attribution?: string | null;
-  mood_attr_scope: AudienceScope;
-  circadian_energy: number;
-  metabolic_energy: number;
-  drive_social_longing: number;
-  drive_curiosity: number;
+  continuous_states_json: string;
+  state_attributions_json: string;
   relationship_json: string;
   user_model_json: string;
   working_memory_json: string;
+  hibernation_intervals_json: string;
   next_wakeup_ts_ms?: number | null;
 }
 
@@ -398,7 +392,6 @@ function assertFiniteTimestamp(value: number, label: string): void {
  * AuthoritativeStateCoordinator should retain this class.
  */
 export class CoordinatorStorageMutator implements ReadOnlyStorageView {
-  includeDemoData = true;
   get sqlite(): DatabaseSync {
     return this.#database;
   }
@@ -658,45 +651,38 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     this.#database
       .prepare(
         `INSERT INTO cognitive_state_checkpoints (
-          state_rev, virtual_ts_ms, caused_by_event_id, instant_valence,
-          instant_arousal, mood_baseline_val, mood_attribution,
-          mood_attr_scope, circadian_energy, metabolic_energy,
-          drive_social_longing, drive_curiosity, relationship_json,
-          user_model_json, working_memory_json, next_wakeup_ts_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          state_rev,
+          virtual_ts_ms,
+          caused_by_event_id,
+          continuous_states_json,
+          state_attributions_json,
+          relationship_json,
+          user_model_json,
+          working_memory_json,
+          hibernation_intervals_json,
+          next_wakeup_ts_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(state_rev) DO UPDATE SET
           virtual_ts_ms = excluded.virtual_ts_ms,
           caused_by_event_id = excluded.caused_by_event_id,
-          instant_valence = excluded.instant_valence,
-          instant_arousal = excluded.instant_arousal,
-          mood_baseline_val = excluded.mood_baseline_val,
-          mood_attribution = excluded.mood_attribution,
-          mood_attr_scope = excluded.mood_attr_scope,
-          circadian_energy = excluded.circadian_energy,
-          metabolic_energy = excluded.metabolic_energy,
-          drive_social_longing = excluded.drive_social_longing,
-          drive_curiosity = excluded.drive_curiosity,
+          continuous_states_json = excluded.continuous_states_json,
+          state_attributions_json = excluded.state_attributions_json,
           relationship_json = excluded.relationship_json,
           user_model_json = excluded.user_model_json,
           working_memory_json = excluded.working_memory_json,
+          hibernation_intervals_json = excluded.hibernation_intervals_json,
           next_wakeup_ts_ms = excluded.next_wakeup_ts_ms`
       )
       .run(
         checkpoint.state_rev,
         checkpoint.virtual_ts_ms,
         checkpoint.caused_by_event_id,
-        checkpoint.instant_valence,
-        checkpoint.instant_arousal,
-        checkpoint.mood_baseline_val,
-        checkpoint.mood_attribution ?? null,
-        checkpoint.mood_attr_scope,
-        checkpoint.circadian_energy,
-        checkpoint.metabolic_energy,
-        checkpoint.drive_social_longing,
-        checkpoint.drive_curiosity,
+        checkpoint.continuous_states_json,
+        checkpoint.state_attributions_json,
         checkpoint.relationship_json,
         checkpoint.user_model_json,
         checkpoint.working_memory_json,
+        checkpoint.hibernation_intervals_json,
         checkpoint.next_wakeup_ts_ms ?? null
       );
     return this.getCheckpointByRevision(checkpoint.state_rev) ?? checkpoint;
@@ -944,7 +930,6 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
       ? "INNER JOIN memories_vec v ON v.memory_id = m.memory_id"
       : "";
     const conditions = ["m.invalidated_at_ts IS NULL"];
-    if (!this.includeDemoData) conditions.push("m.memory_id NOT IN (SELECT memory_id FROM demo_derived_memories)");
     if (
       query.audience_scope === "only_owner" &&
       query.principal_trust === "owner_verified"

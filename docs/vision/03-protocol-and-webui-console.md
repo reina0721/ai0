@@ -2,39 +2,25 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（问题域规范）
 >
-> 本文档定义系统的第三层（下行表达意图与上行回执闭环）、**协议 v0 最小稳定核心的裁剪准则**、**微内核“八大功能扩展总线 × 五阶多态异构扩展载体”生态架构**，以及 **`WebUI 控制台`** 的系统定位、`Shell` 一等架构层正本清源（剥离 `plugins/shells/webchat` 越位层级）、顶栏 `LIVE / SANDBOX` 二元实例环境隔离、常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`<RouterOutlet />`）与 8 大域 30 条专职路由全景。
+> 本文档定义 Clean-Slate V1 的表达元语言、交付与回执闭环、**协议 v0 最小稳定核心的裁剪准则**、**微内核“八大功能扩展总线 × 五阶多态异构扩展载体”生态架构**，以及 **`WebUI 控制台`** 的系统定位、`Shell` 一等架构层正本清源（剥离 `plugins/shells/webchat` 越位层级）、顶栏 `LIVE / SANDBOX` 二元实例环境隔离、常驻多态外壳 + `<main>` 一体式圆角卡片路由视口盒子（`<RouterOutlet />`）与 8 大域 30 条专职路由全景。
 
 ---
 
-## 一、内在表现层（下行表达意图与具身动作）的三大核心机制
+## 一、表达元语言与交付接地
 
-认知内核绝不直接操作像素、Live2D 参数、3D 骨骼权重或音频波形，而是输出一套**与具体躯壳渲染器无关的语义化行为表达指令与端侧具身动作委托**。
+### 1.1 零人形预设的 `CommunicativeIntentEnvelope`
 
-### 1.1 下行意图必须配对上行执行回执（Proprioception & Delivery Receipt） **`[文献/先行项目佐证]`**
+`@ai0/expression-core` 接收 `communicate`、`explicit_silence`、`actuate`、`request_observation` 四类意图。抽象字段 `attentionTarget` 标记注意目标，`expressiveStance` 描述表达姿态，`actuationHint` 给出动作语义。 `deliveryConstraints` 以 `audienceScope`、`requireNonVerbalQuiet`、`maxLatencyMs` 限制合法呈现。核心语法适用于纯文本终端、桌宠、机器人与手环，人体器官和动画参数由壳扩展解释。显式沉默可携带原因，在倾听、群聊无指向或尊重专注时直接结算为合法动作。
 
-* **认知与工程原理**：在 SAIBA 虚拟人框架与人类神经科学的**传出副本理论（Efference Copy & Proprioception）**中，大脑发出运动或语言指令只是第一步，感官回传“动作实际执行到了哪里”才是形成真实记忆的前提。
-* **断层场景**：她一次性生成了 12 个字的台词（或连发 3 条短消息），躯壳用 TTS 刚播到第 7 个字（或刚发出第 1 条），用户就开口打断或切走了窗口。如果内核不知道，内核的对话历史里会记录“我把 12 个字全说完了”，导致后续对话出现严重的上下文幻觉。
-* **回执闭环规范** **`[架构推断]`**：
-  1. 下行表达按自然语义切分为带序号的分段帧（`chunk_seq: 0, 1, 2...`）；
-  2. 躯壳必须针对每个分段帧回传 `DeliveryReceipt`，状态包括：
-     * `completed`：该帧已完整播放/展示给用户；
-     * `interrupted`：播放中途被打断，必须附带 **`spoken_char_offset`（精确到已实际播出的字符偏移量，如 `7`）** 与 `interrupted_by_event_id`；
-     * `degraded`：躯壳因能力限制丢弃了某些扩展层（如纯文本端丢弃了 `ext.embodied.v1` 动作，仅渲染了文字）；
-     * `failed`：因网络或平台限流导致发送失败。
-  3. **内核记忆修正**：一旦收到 `interrupted (spoken_char_offset=7)`，内核立即在事件日志与短期记忆中将已发生话轮截断至前 7 个字，并将第 8~12 个字转存进认知黑板的 **`unsaid_remainder`（被打断而未说出口的腹稿）** 槽位。下一轮她就可以极其自然地决定是“先把刚才没说完的半句话补上”还是“算了先顺着你的话说”。
+### 1.2 `RealizerVocabularyNegotiator` 动态协商
 
-### 1.2 “沉默（Explicit Silence）”是一等公民动作 **`[架构推断]`**
+`HandshakeManifest` 声明 `Sensors / Realizers / Actuators`、受众、延迟与权限要求，`capabilities_updated` 随场景热增删。协商器只在已连接且授权有效的壳声明中匹配动作语义与 token，派发前复核受众、静默和时延。私密非语言意图在静音手环断连时保持 `held_pending_compliant_shell`，公开灯或扬声器无法接收；过期收回，有合规壳恢复时重新协商。可选动画时序 `pre_speech`、`on_substring`、`on_utterance_end` 由 Realizer 的命名空间扩展声明。降级同样遵守交付约束，并回传实际省略的层。
 
-* 在群聊、直播间、桌面陪伴甚至一对一私聊（如对方只是发了一句感叹或正在连续倾诉）中，**“经过思考后决定不说话（只安静倾听或只做一个微表情）”** 是生命感与社交分寸感的最高体现。
-* 因此，下行表达协议的 `action_type` 枚举中，**`explicit_silence` 与 `speak`、`invoke_actuator` 平起平坐**，并附带结构化的沉默原因 `silence_reason`（`listening_wait_for_more` / `not_addressed_in_group` / `respecting_user_focus` / `emotional_pause`）。
+### 1.3 四态真相链与双边界打断
 
-### 1.3 握手能力协商、运行期动态执行器声明、动画关键帧序列与优雅降级 **`[文献/先行项目佐证]`** + **`[架构推断]`**
+**`generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`** 区分生成、真实呈现、动作核验和交互者接地。四态标记证据而非无条件晋级。纯文本无动作时动作核验不适用，有动作时须用对应执行结果核验，用户接地须有对应确认。借鉴 SAIBA 的实现层分工和传出副本反馈，分段 ID、连续呈现前缀和动作 ID 都须能回指原始意图。
 
-作为具有能力边界的**具身运行环境（Embodied Runtime Environment）**，躯壳插件在建立 WebSocket 连接的第一步必须发送 `HandshakeManifest`，向内核暴露三大具身平面：
-* **`Sensors`（上行感知模态与端侧环境探针）**：声明自己能感知什么信号（如桌面窗口焦点、键鼠状态、手机通知与传感器、游戏状态、网页 DOM）；
-* **`Realizers`（下行表达渲染扩展）**：声明自己能理解并渲染的下行扩展命名空间（`supported_extensions`，如 `["ext.affect.v1", "ext.rhythm.v1", "ext.embodied.v1"]`），其中 `ext.embodied.v1` 原生支持遵循动画演出规律的**“开口前视线先行（`pre_speech`）$\rightarrow$ 词中微表情高潮（`on_substring`）$\rightarrow$ 句末余韵残留（`on_utterance_end`）”轻量关键帧序列**；
-* **`Actuators`（端侧具身执行器列表与运行期动态热增删）**：声明自己能替内核在宿主环境中执行的动作 Schema 及端侧权限要求（如 `desktop.capture_window_snapshot`、`game.perform_action`、`browser.interact_element`）。同时吸收 `neuro-sdk` 的动态动作可供性设计，允许躯壳在运行中途通过 `ControlSignal(signal_type="capabilities_updated")` 随场景切换（如游戏从主菜单进入战斗、或桌面切换焦点应用）动态注册或注销当前可用的具身执行器；
-* **社交场合、在场受众与流控参数**：`venue_type`, `current_audience`, `latency_budget_ms`。
+`GroundingReceiptTracker` 以事件 ID 幂等追踪两个完成边界。 `silenced` 立即停止播放并给出播放回执，`done` 等待控制事件确认和记账。按一致的字符计量，以 `spoken_char_offset` 重建实际播出前缀，将确认未播的部分存为 `unsaid_remainder`。缺失回执或断连时保留已知前缀，未知部分等待证据，避免重复播报。事件日志追加回执，工作记忆只将确认已呈现的前缀投影为用户会话事实。
 
 ---
 
@@ -50,8 +36,8 @@
 ### 2.2 协议 v0 冻结核心的“五原语”概览（详细类型规范见 `docs/architecture/04-protocol-v0-and-gateway-spec.md`）
 
 1. **`HandshakeManifest`**：具身运行环境握手，声明 `Sensors / Realizers / Actuators`、`venue_type`、`current_audience`、`latency_budget_ms` 与 `auth_token`；
-2. **`PerceptionEnvelope`**：上行标准化感知信封，携带 `actor`、`lifecycle (activity | interim | commit | retract)`、`modality`、`summary_text`、`confidence` 与 `extensions`；
-3. **`ExpressionEnvelope`**：下行表达与具身动作意图信封，携带 `action_type (speak | explicit_silence | invoke_actuator)`、`fallback_text` 与 `extensions (ext.affect.v1 / ext.rhythm.v1 / ext.embodied.v1)`；
+2. **`PerceptionEnvelope`**：上行标准化感知信封，携带完整 `UniversalObservationFrame`、`lifecycle`（`activity`、`interim`、`commit`、`retract`）与命名空间扩展。网关保留观察六元组；
+3. **`ExpressionEnvelope`**：下行表达与具身动作意图信封，承载 `CommunicativeIntentEnvelope`、可选降级文案及协商后的扩展绑定；
 4. **`DeliveryReceipt`**：上行播放、打断与动作执行回执，携带 `status (completed | interrupted | degraded | failed)`、`spoken_char_offset` 与 `actuator_outcome`；
 5. **`ControlSignal`**：双向流控与注意力焦点信号（`barge_in_cancel` / `focus_shifted` / `sb243_break_reminder` / `crisis_intervention_card`）。
 
@@ -84,6 +70,21 @@
 
 ## 四、`WebUI 控制台` 的系统定位、`Shell` 架构正本清源、`<main>` 一体式圆角卡片路由视口与五大视图母版
 
+### 4.0 八个工作区包与无头上线治理
+
+| 主仓包 | 职责 |
+| --- | --- |
+| `@ai0/agent-core` | 通用模型与工具执行。 |
+| `@ai0/perception-core` | 结构化观察、感官覆盖与话轮准入。 |
+| `@ai0/cognition-core` | 状态、记忆、安全策略与行为提案裁决。 |
+| `@ai0/expression-core` | 意图协商、交付与接地。 |
+| `@ai0/protocol` | 五原语和扩展信封的类型及校验契约。 |
+| `@ai0/gateway` | 双平面接入、授权、观察与回执保真。 |
+| `@ai0/storage` | 宿主配置与灵魂持久化、投影与血缘。 |
+| `@ai0/sdk` | Shell 与扩展作者使用的接入契约。 |
+
+应用 `@ai0/daemon` 组装八包，持有[零预设 L0–L5 门禁](01-vision-and-predecessors.md#15-零预设-l0l5-deploy-to-live)。控制台通过管理 API 展示 `/healthz` 存活和 `/readyz` 就绪缺口，按 Owner 权限发起认领、模型实测、角色卡创建或导入、灵魂唤醒、能力授权与挂载。关闭或更换浏览器不改变权威阶段。 `L5_LIVE_READY` 才允许伴侣交互，参考 WebChat 使用与第三方 Shell 相同的受限令牌及握手。
+
 ### 4.1 系统定位、正本清源 `Shell` 一等架构层与“后端 100% 零阉割 + 前端渐进式降维视觉”铁律
 
 1. **架构定位：无头认知微内核的唯一官方实体控制平面（Control Plane）**：
@@ -99,7 +100,7 @@
 > **`WebUI 控制台（WebUI Console）` 是官方随项目提供的浏览器管理、配置、创作、观测与实验操作系统界面。使用者通过它监控与编排所有具身 `Shells`、通过可食用角色蒸馏工坊与可视化曲线调教灵魂实例、编排 `<2500 Token` 认知黑板积木、管理五脑区算力代谢与五阶多态扩展配置、通过四轨终端与 8 步决策轨迹查证数字个体的行为、治理其记忆血缘与内建混合 RAG 知识库，并在隔离的实验副本上执行感官模拟、时间拨快、模块消融与回归回放。**
 
 * **关键工程边界：“运行扩展”在后台内核，“管理扩展”在网页控制台**：
-  * **前 7 大功能总线（`ext.shell` 至 `ext.soul_asset`）由后台无头守护进程 `@ai0/kernel` & `@ai0/daemon` 宿主运行**；关闭浏览器丝毫不影响数字生命与后台扩展持续运转；
+  * **前 7 大功能总线（`ext.shell` 至 `ext.soul_asset`）由后台无头守护进程 `@ai0/daemon` 宿主运行**；关闭浏览器丝毫不影响数字生命与后台扩展持续运转；
    * 页面模块在访问插件声明的路由时挂载。
 
 ### 4.3 常驻多态应用外壳、`LIVE / SANDBOX` 二元实例环境隔离与 `<main>` 一体式圆角卡片路由视口盒子（`MainRoundedCardOutlet`）

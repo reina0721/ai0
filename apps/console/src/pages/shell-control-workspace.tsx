@@ -273,7 +273,7 @@ function Simulator() {
           <>
             <p>{expression.fallback_text}</p>
             {embodied.success && embodied.data.keyframes?.map((frame, index) => (
-              <div key={`${frame.sync_anchor}:${index}`}><code>{frame.sync_anchor}</code> <small>{frame.facial?.expression ?? frame.gaze?.behavior}</small></div>
+              <div key={`${frame.sync_anchor}:${index}`}><code>{frame.sync_anchor}</code> <small>{frame.expression?.tag ?? frame.attention?.behavior}</small></div>
             ))}
           </>
         ) : <small>表达结果会在沙盒模拟完成后显示。</small>}

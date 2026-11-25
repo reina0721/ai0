@@ -15,13 +15,6 @@ PRAGMA secure_delete = ON;
  * foreign-key, or CHECK constraint.
  */
 export const SQLITE_SCHEMA_DDL = `
-CREATE VIEW IF NOT EXISTS demo_derived_memories AS
-WITH RECURSIVE lineage(memory_id) AS (
-  SELECT l.child_memory_id FROM memory_lineage_edges l JOIN event_log e ON l.parent_id=e.event_id
-  WHERE l.parent_type='event' AND json_extract(e.payload_json,'$.origin')='demo'
-  UNION SELECT l.child_memory_id FROM memory_lineage_edges l JOIN lineage p ON l.parent_id=p.memory_id
-  WHERE l.parent_type='memory'
-) SELECT memory_id FROM lineage;
 CREATE TABLE IF NOT EXISTS shell_action_intents (
     intent_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -157,22 +150,16 @@ CREATE TABLE IF NOT EXISTS prospective_commitments (
 CREATE INDEX IF NOT EXISTS idx_commitments_status_ts ON prospective_commitments(status, trigger_virtual_ts);
 
 CREATE TABLE IF NOT EXISTS cognitive_state_checkpoints (
-    state_rev               INTEGER PRIMARY KEY,
-    virtual_ts_ms           INTEGER NOT NULL,
-    caused_by_event_id      TEXT NOT NULL,
-    instant_valence         REAL NOT NULL,
-    instant_arousal         REAL NOT NULL,
-    mood_baseline_val       REAL NOT NULL,
-    mood_attribution        TEXT DEFAULT NULL,
-    mood_attr_scope         TEXT NOT NULL DEFAULT 'only_owner',
-    circadian_energy        REAL NOT NULL,
-    metabolic_energy        REAL NOT NULL,
-    drive_social_longing    REAL NOT NULL,
-    drive_curiosity         REAL NOT NULL,
-    relationship_json       TEXT NOT NULL,
-    user_model_json         TEXT NOT NULL,
-    working_memory_json     TEXT NOT NULL,
-    next_wakeup_ts_ms       INTEGER DEFAULT NULL
+    state_rev INTEGER PRIMARY KEY,
+    virtual_ts_ms INTEGER NOT NULL,
+    caused_by_event_id TEXT NOT NULL,
+    continuous_states_json TEXT NOT NULL DEFAULT '{}',
+    state_attributions_json TEXT NOT NULL DEFAULT '[]',
+    relationship_json TEXT NOT NULL DEFAULT '{}',
+    user_model_json TEXT NOT NULL DEFAULT '{}',
+    working_memory_json TEXT NOT NULL DEFAULT '{}',
+    hibernation_intervals_json TEXT NOT NULL DEFAULT '[]',
+    next_wakeup_ts_ms INTEGER DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS turn_decision_traces (
@@ -276,11 +263,6 @@ export function applyStorageSchema(database: DatabaseSync): void {
   database.exec("BEGIN IMMEDIATE");
   try {
     database.exec(SQLITE_SCHEMA_DDL);
-    // Earlier indexed archives predate retirement of superseded chunks.
-    const columns = database.prepare("PRAGMA table_info(knowledge_locations)").all();
-    if (!columns.some(column => column.name === "active")) {
-      database.exec("ALTER TABLE knowledge_locations ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
-    }
     database.exec("COMMIT");
   } catch (error) {
     if (database.isTransaction) database.exec("ROLLBACK");

@@ -4,11 +4,9 @@ import {
   AudienceScopeSchema,
   DeliveryReceiptSchema,
   ExpressionEnvelopeSchema,
-  ExtMediaSidebandV1Schema,
   HandshakeAckSchema,
   HandshakeManifestSchema,
   PerceptionEnvelopeSchema,
-  computeSpokenCharOffsetFromAudioMs,
   type AudienceScope,
   type DeliveryReceipt,
   type ExpressionEnvelope,
@@ -18,11 +16,12 @@ import {
   type PrincipalTrust
 } from "@ai0/protocol";
 import {
-  TurnDebounceAggregator,
   VirtualClock,
-  type DebounceBatch,
   type IVirtualClock
-} from "@ai0/kernel";
+} from "@ai0/cognition-core";
+
+import { EmbodimentAffordanceRegistry, ObservationNormalizer, TurnDebounceAggregator, type DebounceBatch } from "@ai0/perception-core";
+import { GroundingReceiptTracker, RealizerVocabularyNegotiator } from "@ai0/expression-core";
 
 export const SHELL_PROTOCOL_PATH = "/protocol/v0/shell";
 export const SHELL_DEBOUNCE_WINDOW_MS = 1_200;
@@ -148,11 +147,16 @@ function enforceAudienceScope(claimed: AudienceScope, ceiling: AudienceScope): A
 
 export class ShellProtocolGateway {
   readonly clock: IVirtualClock;
+  readonly affordances = new EmbodimentAffordanceRegistry();
+  readonly negotiator = new RealizerVocabularyNegotiator();
+  readonly grounding = new GroundingReceiptTracker();
+  private readonly normalizer: ObservationNormalizer;
   private readonly sessions = new Map<string, ShellSession>();
   private readonly expressionChunks = new Map<string, Map<number, ExpressionEnvelope>>();
 
   constructor(private readonly options: ShellProtocolGatewayOptions = {}) {
     this.clock = options.clock ?? new VirtualClock({ targetInstance: "live" });
+    this.normalizer = new ObservationNormalizer(this.clock);
   }
 
   issueScopedCapabilityToken(claims: ScopedCapabilityClaims, secretKey: string): string {
@@ -189,6 +193,8 @@ export class ShellProtocolGateway {
     const session: ShellSession = { lastSeen: Date.now(), target: claims.target ?? "live", direction, manifest, claims,
       debounce: new TurnDebounceAggregator(this.clock, SHELL_DEBOUNCE_WINDOW_MS), debounceState: "IDLE" };
     this.sessions.set(sessionId, session);
+    this.affordances.mount(manifest);
+    this.negotiator.mount(manifest);
     const ack = HandshakeAckSchema.parse({ session_id: sessionId, accepted_version: "0.1.0",
       enforced_venue_type: manifest.venue_type,
       max_audience_privacy_ceiling: claims.max_audience_privacy_ceiling,
@@ -200,7 +206,7 @@ export class ShellProtocolGateway {
     const result = [];
     for (const [id, session] of this.sessions) {
       if (Date.now() >= Math.min(session.claims.expires_at_ts_ms, session.lastSeen + 45_000)) {
-        this.sessions.delete(id);
+        this.removeSession(id);
         continue;
       }
       if (session.target !== (target === "live" ? "live" : "sandbox")) continue;
@@ -223,12 +229,14 @@ export class ShellProtocolGateway {
     const session = this.sessions.get(id);
     if (!session || session.manifest.auth_token !== token || session.lastSeen + 45_000 <= Date.now()
         || session.claims.expires_at_ts_ms <= Date.now()) return false;
-    if (close) this.sessions.delete(id);
+    if (close) this.removeSession(id);
     else {
       if (capabilities) {
         const updated = HandshakeManifestSchema.parse({ ...session.manifest, capabilities });
         updated.capabilities.sensors = updated.capabilities.sensors.filter(sensor => session.claims.allowed_modalities.includes(sensor));
         session.manifest = updated;
+        this.affordances.mount(updated);
+        this.negotiator.mount(updated);
       }
       session.lastSeen = Date.now();
     }
@@ -237,8 +245,22 @@ export class ShellProtocolGateway {
 
   disconnectPlugin(id: string, target: string) {
     for (const [key, session] of this.sessions) {
-      if (session.target === target && session.claims.plugin_id === id) this.sessions.delete(key);
+      if (session.target === target && session.claims.plugin_id === id) this.removeSession(key);
     }
+  }
+
+  disconnectTarget(target: "live" | "sandbox"): void {
+    for (const [id, session] of this.sessions) {
+      if (session.target === target) this.removeSession(id);
+    }
+  }
+
+  private removeSession(id: string): void {
+    const shell = this.sessions.get(id)?.manifest.shell_id;
+    this.sessions.delete(id);
+    if (!shell || [...this.sessions.values()].some(session => session.manifest.shell_id === shell)) return;
+    this.affordances.unmount(shell);
+    this.negotiator.unmount(shell);
   }
 
   handlePerception(sessionId: string, input: PerceptionEnvelope | Record<string, unknown>): {
@@ -255,12 +277,14 @@ export class ShellProtocolGateway {
       original.audience_scope ?? extension.audience_scope ?? session.manifest.current_audience.scope);
     const claimedTrust = session.claims.principal_id === "owner:local" ? "owner_verified" : "stranger";
     const audience = enforceAudienceScope(claimedAudience, session.claims.max_audience_privacy_ceiling);
-    const sanitized: GatewayPerceptionEnvelope = { ...envelope, audience_scope: audience,
+    const frame = this.normalizer.normalize(envelope, { shellId: session.manifest.shell_id,
+      principalId: session.claims.principal_id ?? "unknown", audienceScope: audience });
+    const sanitized: GatewayPerceptionEnvelope = { ...envelope, frame, audience_scope: audience,
       principal_trust: audience === claimedAudience ? claimedTrust : "stranger" };
-    const batch = session.debounce.ingest({ lifecycle: envelope.lifecycle, text: envelope.summary_text,
+    const batch = session.debounce.ingest({ lifecycle: envelope.lifecycle, text: envelope.summary_text, frame,
       virtual_ts_ms: this.clock.nowMs() });
     if (envelope.lifecycle === "retract") {
-      session.debounceState = "COMMITTED"; session.debounceDueAt = undefined;
+      if (session.debounceDueAt === undefined) session.debounceState = "COMMITTED";
       return { envelope: sanitized, state: session.debounceState, ...(batch ? { committed: batch } : {}) };
     }
     session.debounceState = "BUFFERING_1200MS";
@@ -293,6 +317,7 @@ export class ShellProtocolGateway {
     if (expression.chunk_seq > 0 && !chunks.has(expression.chunk_seq - 1))
       throw new Error("OUT_OF_ORDER_EXPRESSION_CHUNK");
     chunks.set(expression.chunk_seq, expression); this.expressionChunks.set(expression.intent_id, chunks);
+    this.grounding.recordGenerated(expression);
     await this.options.sendExpression?.(expression);
     return expression;
   }
@@ -307,23 +332,10 @@ export class ShellProtocolGateway {
     const playedMs = receiptInput.actual_played_audio_ms ?? receiptInput.played_audio_ms;
     const receipt = DeliveryReceiptSchema.parse({ ...receiptInput,
       ...(playedMs === undefined ? {} : { played_audio_ms: playedMs }) });
-    if (receipt.status !== "interrupted") return undefined;
-    const chunks = this.expressionChunks.get(receipt.intent_id);
-    const current = chunks?.get(receipt.chunk_seq);
-    if (!chunks || !current) throw new Error("UNKNOWN_EXPRESSION_CHUNK");
-    const sideband = ExtMediaSidebandV1Schema.safeParse(current.extensions["ext.media.sideband.v1"]);
-    const computedOffset = playedMs !== undefined && sideband.success
-      ? computeSpokenCharOffsetFromAudioMs(sideband.data.char_offset_timestamps_ms, playedMs)
-      : receipt.spoken_char_offset ?? 0;
-    const offset = Math.max(0, Math.min(Array.from(current.fallback_text).length, computedOffset));
-    const unsaidRemainder = [...chunks.entries()].sort(([left], [right]) => left - right)
-      .filter(([sequence]) => sequence >= receipt.chunk_seq)
-      .map(([sequence, chunk]) => sequence === receipt.chunk_seq
-        ? Array.from(chunk.fallback_text).slice(offset).join("") : chunk.fallback_text).join("");
-    const record: InterruptionRecord = { intent_id: receipt.intent_id, chunk_seq: receipt.chunk_seq,
-      spoken_char_offset: offset, unsaid_remainder: unsaidRemainder,
-      ...(receipt.interrupted_by_event_id ? { interrupted_by_event_id: receipt.interrupted_by_event_id } : {}) };
-    this.options.w1?.recordInterruption(record);
+    if ((receipt.status === "interrupted" || receipt.interruption_boundary)
+        && !this.expressionChunks.get(receipt.intent_id)?.has(receipt.chunk_seq)) throw new Error("UNKNOWN_EXPRESSION_CHUNK");
+    const record = this.grounding.receive(receipt);
+    if (record) this.options.w1?.recordInterruption(record);
     return record;
   }
 

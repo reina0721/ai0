@@ -26,12 +26,12 @@ const cleanups: (() => void)[] = [];
 afterEach(() => {
   while (cleanups.length) cleanups.pop()!();
 });
-function setup() {
+function setup(allowDeterministicSandbox = false) {
   const root = mkdtempSync(join(tmpdir(), "ai0-rag-test-"));
   const runtime = createDefaultDaemonRuntime({
     soulDir: join(root, "owner.soul"),
     ownerMasterToken: "owner-test",
-    seedIfEmpty: false
+    allowDeterministicSandbox
   });
   cleanups.push(() => {
     runtime.close();
@@ -44,8 +44,7 @@ function setup() {
     routingRules: [],
     profiles: cfg.profiles.map((p) => ({
       ...p,
-      knowledgeCollectionIds: ["manual"],
-      primaryChat: { providerId: "prov_ollama_local", modelId: "qwen2.5:7b-instruct" }
+      knowledgeCollectionIds: ["manual"]
     })),
     capabilities: {
       ...cfg.capabilities,
@@ -174,8 +173,8 @@ it("preserves old chunk IDs and separates previous counts on an idempotent upgra
   }
 });
 
-it("upgrades an already indexed archive without resetting locations or citation counts", () => {
-  const dir = mkdtempSync(join(tmpdir(), "ai0-indexed-upgrade-"));
+it("reopens a V1 knowledge archive without reactivating retired chunks or resetting citation counts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ai0-indexed-reopen-"));
   const path = join(dir, "soul_core.sqlite");
   try {
     const previous = new CoordinatorStorageMutator(path);
@@ -184,16 +183,15 @@ it("upgrades an already indexed archive without resetting locations or citation 
         chunk_index: 0, content_text: "existing content", citation_count: 7, created_at_ts_ms: 1 });
       listKnowledgeCollections(previous);
       previous.incrementKnowledgeCitation("retained", 2);
-      previous.sqlite.exec("ALTER TABLE knowledge_locations DROP COLUMN active");
-      previous.sqlite.exec("DROP TABLE knowledge_update_errors");
+      previous.sqlite.prepare("UPDATE knowledge_locations SET active=0 WHERE chunk_id=?").run("retained");
       previous.sqlite.prepare("INSERT INTO knowledge_import_errors VALUES(?,?,?)").run("manual","old.pdf","无法读取");
     } finally { previous.close(); }
     for (let open = 0; open < 2; open++) {
       const storage = new CoordinatorStorageMutator(path);
       try {
-        expect(listKnowledgeCollections(storage)).toMatchObject([{id:"manual",documents:1,searchableDocuments:1,chunks:1,citations:1,errors:1}]);
+        expect(listKnowledgeCollections(storage)).toMatchObject([{id:"manual",documents:1,searchableDocuments:0,chunks:0,citations:1,errors:1}]);
         expect(storage.sqlite.prepare("SELECT active,legacy_citations FROM knowledge_locations WHERE chunk_id='retained'").get())
-          .toMatchObject({active:1,legacy_citations:7});
+          .toMatchObject({active:0,legacy_citations:7});
       } finally { storage.close(); }
     }
   } finally { rmSync(dir,{recursive:true,force:true}); }
@@ -258,6 +256,9 @@ it("uses bound HTTP models, checks evidence in both shell requests and counts ac
     const cfg = readSoulProfileConfig(rt.soulDir);
     writeSoulProfileConfig(rt.soulDir, {
       ...cfg,
+      profiles: cfg.profiles.map(profile => ({
+        ...profile, primaryChat: { providerId: "prov_ollama_local", modelId: "qwen2.5:7b-instruct" }
+      })),
       capabilities: {
         ...cfg.capabilities,
         knowledge: {
@@ -387,7 +388,7 @@ it("uses bound HTTP models, checks evidence in both shell requests and counts ac
 });
 
 it("keeps sandbox uploads, profile mounts and source inspection local to their target", async () => {
-  const rt = setup();
+  const rt = setup(true);
   const path = "/api/admin/v1/capabilities/knowledge/collections";
   async function admin(method: string, suffix: string, target: string, body?: object) {
     return rt.adminServer.handleRequest({

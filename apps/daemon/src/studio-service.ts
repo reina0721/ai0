@@ -8,7 +8,7 @@ import {
   bundlePrivacyScrubbedCreatorAsset,
   distillSillyTavernCard,
   matchesUmoPattern
-} from "@ai0/kernel";
+} from "@ai0/cognition-core";
 import type { SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
 import {
   compileStudioPromptPreview,
@@ -50,53 +50,34 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Record<str
   return result as T;
 }
 
-export function listAvailableSoulInstances(activeSoulDir: string): Array<{
+export function discoverSoulDirectories(soulsRoot: string): string[] {
+  if (!existsSync(soulsRoot)) return [];
+  return readdirSync(soulsRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name.endsWith(".soul"))
+    .map(entry => entry.name)
+    .sort();
+}
+
+export function listAvailableSoulInstances(soulsRootOrActiveSoulDir: string, hasAwakenedSoul = true): Array<{
   id: string;
   name: string;
   role: string;
   path: string;
   active: boolean;
 }> {
-  const activeResolved = resolve(activeSoulDir);
-  const parentDir = dirname(activeResolved);
-  const results: Array<{ id: string; name: string; role: string; path: string; active: boolean }> = [];
-  if (existsSync(parentDir)) {
-    for (const entry of readdirSync(parentDir, { withFileTypes: true })) {
-      if (!entry.isDirectory() || !entry.name.endsWith(".soul")) continue;
-      const fullPath = resolve(parentDir, entry.name);
-      try {
-        const cfg = readConsoleStudioConfig(fullPath);
-        const roleMeta = ROLE_ARCHETYPE_PRESETS[cfg.soulStudio.primaryRole];
-        results.push({
-          id: entry.name,
-          name: cfg.soulStudio.displayName,
-          role: roleMeta.label,
-          path: fullPath,
-          active: fullPath === activeResolved
-        });
-      } catch {
-        results.push({
-          id: entry.name,
-          name: entry.name.replace(/\.soul$/, ""),
-          role: "数字生命",
-          path: fullPath,
-          active: fullPath === activeResolved
-        });
-      }
+  const resolved = resolve(soulsRootOrActiveSoulDir);
+  const active = hasAwakenedSoul && resolved.endsWith(".soul") ? resolved : undefined;
+  const root = active ? dirname(active) : resolved;
+  return discoverSoulDirectories(root).map(id => {
+    const path = join(root, id);
+    const item = { id, path, active: path === active };
+    try {
+      const { soulStudio } = readConsoleStudioConfig(path);
+      return { ...item, name: soulStudio.displayName, role: ROLE_ARCHETYPE_PRESETS[soulStudio.primaryRole].label };
+    } catch {
+      return { ...item, name: id.slice(0, -5), role: "数字生命" };
     }
-  }
-  if (!results.some((item) => item.active)) {
-    const cfg = readConsoleStudioConfig(activeResolved);
-    const roleMeta = ROLE_ARCHETYPE_PRESETS[cfg.soulStudio.primaryRole];
-    results.unshift({
-      id: activeResolved.split(/[\\/]/).at(-1) ?? "default.soul",
-      name: cfg.soulStudio.displayName,
-      role: roleMeta.label,
-      path: activeResolved,
-      active: true
-    });
-  }
-  return results;
+  });
 }
 
 // Both list and detail queries project the same accepted and delivered messages.
@@ -109,7 +90,6 @@ const conversationMessages = `WITH turns AS (
     json_extract(t.step8_delivery_receipt_json,'$.status') AS delivery_status
   FROM event_log e LEFT JOIN turn_decision_traces t ON t.turn_event_id=e.event_id
   WHERE e.event_category='perception_committed' AND e.redacted_at_ts_ms IS NULL
-    AND COALESCE(json_extract(e.payload_json,'$.origin'),'') <> 'demo'
 ), messages AS (
   SELECT *, 0 AS direction, summary_text AS content FROM turns
   UNION ALL SELECT *, 1 AS direction, substr(generated,1,delivered) AS content FROM turns
@@ -278,7 +258,7 @@ export function distillAndOptionallyApplyCard(
   input: { card: Record<string, unknown>; apply?: boolean; roleArchetype?: RelationshipArchetype }
 ) {
   const distilled = distillSillyTavernCard(input.card);
-  const cardName = String(input.card.name ?? input.card.display_name ?? (distilled.identity_dna.name || "Mio"));
+  const cardName = String(input.card.name ?? input.card.display_name ?? (distilled.identity_dna.name || "Soul"));
   const cardDesc = String(
     input.card.description ?? input.card.personality ?? distilled.identity_dna.description ?? ""
   );
@@ -583,7 +563,7 @@ export function createNewSoulInstance(
     .replace(/[^a-z0-9_-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "") || `soul-${Date.now()}`;
-  const targetDir = resolve(dirname(runtime.soulDir), `${safeSlug}.soul`);
+  const targetDir = resolve(runtime.soulsRoot, `${safeSlug}.soul`);
   try { mkdirSync(targetDir); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("SOUL_ALREADY_EXISTS"); throw error; }
   initializeSoulDirectory(targetDir);
@@ -601,7 +581,7 @@ export function createNewSoulInstance(
     ok: true,
     id: `${safeSlug}.soul`,
     path: targetDir,
-    instances: listAvailableSoulInstances(runtime.soulDir)
+    instances: runtime.listSoulInstances()
   };
 }
 

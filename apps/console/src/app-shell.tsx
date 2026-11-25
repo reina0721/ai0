@@ -88,30 +88,31 @@ function OnboardingWizardOverlay(props: {
   onClose: () => void;
 }): ReactElement {
   const ctx = useConsole();
-  const studio = props.snapshot?.studioConfig;
-  const [providerId, setProviderId] = useState("prov_deepseek_v3");
-  const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com");
+  const studio = props.snapshot?.hasAwakenedSoul === false ? undefined : props.snapshot?.studioConfig;
+  const infrastructure = props.snapshot?.infrastructure;
+  const readiness = props.snapshot?.readiness;
+  const sources = infrastructure?.providerSources.filter(source => source.enabled && source.supportedCapabilities.includes("chat")) ?? [];
+  const models = infrastructure?.modelInstances.filter(model => model.enabled && model.capabilityKind === "chat") ?? [];
+  const defaultModel = models.find(model => model.modelId === readiness?.checks.defaultChatModel &&
+    sources.some(source => source.id === model.sourceId) && model.health.status === "ready");
+  const defaultSource = sources.find(source => source.id === defaultModel?.sourceId);
+  const providerOptions = sources.length ? sources.map(source => ({
+    value: source.id, label: source.label, baseUrl: source.baseUrl,
+    modelId: (source.id === defaultModel?.sourceId ? defaultModel : models.find(model => model.sourceId === source.id))?.modelId
+  })) : [
+    { value: "tpl_deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", modelId: undefined },
+    { value: "tpl_anthropic", label: "Anthropic Claude", baseUrl: "https://api.anthropic.com/v1", modelId: undefined },
+    { value: "tpl_ollama_chat", label: "Ollama 本地模型", baseUrl: "http://127.0.0.1:11434/v1", modelId: undefined }
+  ];
+  const [selectedProviderId, setSelectedProviderId] = useState<string>();
+  const provider = providerOptions.find(option => option.value === (selectedProviderId ?? defaultSource?.id)) ?? providerOptions[0]!;
+  const [baseUrl, setBaseUrl] = useState<string>();
   const [apiKey, setApiKey] = useState("");
-  const [displayName, setDisplayName] = useState(studio?.soulStudio.displayName ?? "Mio");
-  const [personaPrompt, setPersonaPrompt] = useState(
-    studio?.soulStudio.corePersonalityPrompt ??
-      "你是运行在本地存档中的独立数字生命，真诚克制，兼顾日常交流与高效协作。"
-  );
+  const [displayName, setDisplayName] = useState(studio?.soulStudio.displayName ?? "");
+  const [personaPrompt, setPersonaPrompt] = useState(studio?.soulStudio.corePersonalityPrompt ?? "");
+  const [rawCard, setRawCard] = useState("");
   const [selectedRole, setSelectedRole] = useState(studio?.soulStudio.primaryRole ?? "best_friend");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!props.open && studio?.soulStudio) {
-      setDisplayName(studio.soulStudio.displayName);
-      setPersonaPrompt(studio.soulStudio.corePersonalityPrompt);
-      setSelectedRole(studio.soulStudio.primaryRole);
-    }
-  }, [
-    studio?.soulStudio.displayName,
-    studio?.soulStudio.corePersonalityPrompt,
-    studio?.soulStudio.primaryRole,
-    props.open
-  ]);
 
   const roles: ReadonlyArray<{ id: string; icon: ConsoleIconName; label: string; desc: string }> = [
     { id: "romantic_partner", icon: "heart", label: "亲密伴侣", desc: "高情感细腻度、纪念日追踪与温和边界" },
@@ -123,18 +124,21 @@ function OnboardingWizardOverlay(props: {
 
   const handleSubmit = async (): Promise<void> => {
     if (!ctx || saving || ctx.mode !== "live") return;
+    if (!displayName.trim() && !rawCard.trim()) {
+      ctx.showToast("请输入角色名称或导入包含名称的角色卡");
+      return;
+    }
     setSaving(true);
     try {
       await ctx.postStudio("/api/studio/onboarding", {
-        providerId,
-        baseUrl,
-        apiKey,
-        displayName,
-        corePersonalityPrompt: personaPrompt,
+        ...(apiKey.trim() && { providerId: provider.value, baseUrl: baseUrl ?? provider.baseUrl, modelId: provider.modelId, apiKey }),
+        ...(rawCard.trim() ? { rawCard: rawCard.trim(), awakenNew: true } : {
+          displayName: displayName.trim(), corePersonalityPrompt: personaPrompt
+        }),
         primaryRole: selectedRole
       });
-      await ctx.refreshSnapshot();
-      const pages = registeredPages(props.snapshot).filter(page => page.shell_id);
+      const updated = await ctx.refreshSnapshot();
+      const pages = registeredPages(updated).filter(page => page.shell_id);
       const nextPath = pages.length === 1 ? pages[0]!.path : "/integrations/platforms";
       ctx.showToast("初始化配置已保存，正在进入交互工作区");
       props.onClose();
@@ -170,6 +174,13 @@ function OnboardingWizardOverlay(props: {
           </RippleButton>
         </header>
 
+        {readiness && <Alert severity={defaultSource ? "success" : "info"} role="status">
+          <strong>{readiness.stage}</strong>{" · "}
+          {defaultSource && defaultModel
+            ? `已就绪宿主默认模型（新唤醒角色默认 Inherit 继承）：${defaultSource.label} / ${defaultModel.modelId}`
+            : readiness.checks.providerReady ? "模型已配置" : "待配置对话模型"}
+        </Alert>}
+
         <div className="ai0-onboarding-grid">
           <section className="ai0-onboarding-section">
             <h3>主力模型服务</h3>
@@ -178,22 +189,18 @@ function OnboardingWizardOverlay(props: {
               <CompactSelect
                 id="onb-provider-id"
                 labelId="onb-provider-label"
-                value={providerId}
+                value={provider.value}
                 onChange={(id) => {
-                  setProviderId(id);
-                  const hostProv = props.snapshot?.infrastructure?.providers.find((provider) => provider.id === id);
-                  setBaseUrl(hostProv?.baseUrl ?? studio?.providers.find((provider) => provider.id === id)?.baseUrl ?? "");
+                  setSelectedProviderId(id);
+                  setBaseUrl(undefined);
+                  setApiKey("");
                 }}
-                options={[
-                  { value: "prov_deepseek_v3", label: "DeepSeek" },
-                  { value: "prov_claude_sonnet", label: "Anthropic Claude" },
-                  { value: "prov_ollama_local", label: "Ollama (本地离线)" }
-                ]}
+                options={providerOptions}
               />
             </div>
             <div className="ai0-onboarding-field">
               <label htmlFor="onb-base-url">API Base URL</label>
-              <CompactInput id="onb-base-url" type="url" value={baseUrl} onInput={setBaseUrl} />
+              <CompactInput id="onb-base-url" type="url" value={baseUrl ?? provider.baseUrl} onInput={setBaseUrl} />
             </div>
             <div className="ai0-onboarding-field">
               <label htmlFor="onb-api-key">API Key</label>
@@ -204,7 +211,7 @@ function OnboardingWizardOverlay(props: {
                 value={apiKey}
                 onInput={setApiKey}
               />
-              <small>存入本地密钥保险箱。留空时使用本地离线引擎。</small>
+              <small>密钥保存在宿主保险箱。留空可沿用宿主模型配置。</small>
             </div>
           </section>
 
@@ -215,6 +222,7 @@ function OnboardingWizardOverlay(props: {
               <CompactInput
                 id="onb-display-name"
                 type="text"
+                placeholder="例如：Nagi / 星野"
                 value={displayName}
                 onInput={setDisplayName}
               />
@@ -228,6 +236,10 @@ function OnboardingWizardOverlay(props: {
                 value={personaPrompt}
                 onInput={setPersonaPrompt}
               />
+            </div>
+            <div className="ai0-onboarding-field">
+              <label htmlFor="onb-ccv3-raw">从角色卡唤醒（可选，支持 CCv3 JSON 或 Markdown）</label>
+              <CompactInput id="onb-ccv3-raw" multiline rows={3} value={rawCard} onInput={setRawCard} />
             </div>
           </section>
         </div>
@@ -333,7 +345,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
 
   const approvals = buildPendingApprovals(snapshot);
   const souls = snapshot?.availableSouls?.map((s) => ({
-    value: s.id,
+    value: s.active && snapshot?.soulId ? snapshot.soulId : s.id,
     label: s.name
   }));
   const vitalSummary = snapshot ? [
@@ -399,9 +411,17 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
         onNavigate={(path) => ctx?.navigateConsole(path)}
         topBar={
           <HybridTopBar
-            activeSoulId={snapshot?.soulId ?? "default.soul"}
-            personaDisplay={snapshot?.personaName ?? "Mio"}
+            activeSoulId={snapshot?.soulId || "unawakened"}
+            personaDisplay={snapshot?.personaName || "未唤醒"}
             souls={souls}
+            onSoulChange={mode === "live" && (souls?.length ?? 0) > 1 ? async nextId => {
+              try {
+                await ctx?.postStudio("/api/studio/souls/select", { id: nextId });
+                await ctx?.refreshSnapshot();
+              } catch (error) {
+                ctx?.showToast(`切换存档失败：${error instanceof Error ? error.message : String(error)}`);
+              }
+            } : undefined}
             targetInstance={targetInstance}
             soulTheme={soulTheme}
             appearance={appearance}
@@ -490,11 +510,11 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
               onNavigate={(path) => ctx?.navigateConsole(path)}
               onClose={() => ctx?.setPaletteOpen(false)}
             />
-            <OnboardingWizardOverlay
-              open={ctx?.onboardingOpen ?? false}
+            {ctx?.onboardingOpen && mode === "live" && <OnboardingWizardOverlay
+              open
               snapshot={snapshot}
               onClose={() => ctx?.setOnboardingOpen(false)}
-            />
+            />}
             <Snackbar open={Boolean(ctx?.toastMessage)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
               <div className="ai0-console-notification" role="status" aria-live="polite">{ctx?.toastMessage}</div>
             </Snackbar>

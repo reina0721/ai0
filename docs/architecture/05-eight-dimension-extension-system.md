@@ -27,11 +27,13 @@
 ### 1.2 五阶多态异构扩展载体（The 5 Polymorphic Extension Carriers —— 破除“只有一种代码插件类型”的生态瓶颈）
 
 **核心生态公理**：如果要求写一份世界观、配一个日常技能、接一个外部工具或编排一条跨端规则都必须编写并编译 TypeScript 代码包（`dist/index.js`），90% 的社区创作者将被挡在门外。
-为此，面向从零代码角色创作者、自然语言技能编写者、跨语言协议开发者、可视化流编排玩家到微内核源码开发者的全谱系创作者群体（同时原生兼容 **SillyTavern 角色卡 / Lorebook**、**MCP** 与 **`SKILL.md`** 等开放互操作格式），`@ai0/kernel` 内置 **五种异构多态扩展加载器（5 Polymorphic Loaders）**：
+为此，面向从零代码角色创作者、自然语言技能编写者、跨语言协议开发者、可视化流编排玩家到微内核源码开发者的全谱系创作者群体（同时原生兼容 **SillyTavern 角色卡 / Lorebook**、**MCP** 与 **`SKILL.md`** 等开放互操作格式），`@ai0/cognition-core` 的 `PolymorphicExtensionHost` 统一加载以下五种载体。
+
+Clean-Slate V1 采用八包四核架构。`@ai0/agent-core` 编排生命周期与话轮，`@ai0/perception-core` 负责感知，`@ai0/cognition-core` 承载认知与扩展宿主，`@ai0/expression-core` 负责表达。`plugins/**` 仅可依赖 `@ai0/protocol` 与 `@ai0/sdk`，由 `verify-architecture-boundaries.mjs` 在编译阶段强制校验。
 
 | 扩展载体形态 | 载体文件格式与开发门槛 | 核心运作机制与可玩性场景 | 覆盖的功能总线维度 |
 | :--- | :--- | :--- | :--- |
-| **形态 I：零代码声明式灵魂、世界观与剧情资产包**<br/>*(Declarative Soul, Lore & Story Packs)* | `.soul-template.yaml` / `.png` (Tavern V2/V3) / `lorebook.yaml` / `milestones.yaml` / `.scenario.yaml`<br/>**【零代码 / 网页可视化直接创作】** | 纯声明式数据与触发规则，零可执行代码，100% 免疫代码级恶意攻击；在控制台拖拽即食、通过“四步蒸馏料理台 / 词书激活模拟器 / 里程碑编辑器”在线可视化调教并一键打包分享。 | `ext.soul_asset`、`ext.cognitive_organ`（参数预设） |
+| **形态 I：零代码声明式灵魂、世界观与剧情资产包**<br/>*(Declarative Soul, Lore & Story Packs)* | `.soul-template.yaml` / `.png` (Tavern V2/V3) / `lorebook.yaml` / `milestones.yaml` / `.scenario.yaml`<br/>**【零代码 / 网页可视化直接创作】** | 静态 `chara_card_v3` 存放于 `souls/host/cards/`，注册表初始为空。CCv2/CCv3 导入经确定性越狱与 PUA 清洗，编辑和导出无损保留未知 `extensions.<namespace>` 嵌套结构。Owner 显式唤醒一个或多个独立的 `souls/<soul_id>.soul/` 实例，各自记录 `origin_card_id`。具身资产锚点由插件在其命名空间中定义。 | `ext.soul_asset`、`ext.cognitive_organ`（参数预设） |
 | **形态 II：Agent `SKILL.md` 自然语言技能手册与沙盒脚本包**<br/>*(Markdown Skill Manuals & Sandboxed Scripts)* | `<skill-folder>/SKILL.md` + 可选 `scripts/*.py|js` + `templates/`<br/>**【自然语言 Markdown / 轻量脚本】** | 吸收并升维 Agent Skills 规范：`SKILL.md` 包含 YAML Frontmatter（技能名、触发语义描述、所需的底层 MCP/Actuator 权限白名单、**角色内执行姿态提示 `in_character_demeanor`**）与 Markdown 步骤指南。用户无需编译代码，直接在控制台网页编写一段 Markdown 手册即可教会她新技能（如“每天陪我复盘代码提交并用傲娇语气写总结”）。 | `ext.action_mcp_skill`、`ext.cognitive_organ`（好奇心冲浪议程） |
 | **形态 III：免代码标准协议与跨进程热挂载连接器**<br/>*(Zero-Code Protocol & Out-of-Process Bridges)* | JSON/YAML 连接配置（`MCP stdio/SSE/HTTP`、`Protocol v0 WebSocket`、`OpenAPI / Webhook`、`OpenAI-Compatible API`）<br/>**【免写 `ai0` 插件代码 / 跨语言通用】** | 外部进程可使用任何语言（Python / Rust / C# Unity / C++ Unreal / Go）编写；在控制台仅需填写启动命令行、WebSocket/SSE URL 或导入 OpenAPI JSON Schema，并签发 `Scoped Capability Token` 即可秒级热挂载。 | `ext.shell`、`ext.action_mcp_skill`、`ext.model_provider`、`ext.media_pipeline` |
 | **形态 IV：可视化认知管线、好奇心子代理与跨插件 ECA 蓝图**<br/>*(Visual Cognitive Flows & ECA Blueprints)* | `.flow.yaml` / `orchestration_rules.yaml` / `blackboard_policy.yaml`<br/>**【控制台可视化积木与节点连线】** | 无需修改内核源码，在控制台通过可视化积木编排：**① `When -> If -> Then` 跨插件事件联动规则**、**② `W3` 后台好奇心冲浪/读书笔记子代理管线**、**③ `<2500 Token` 认知黑板槽位预算与语境预设**，支持一键导出 `.flow.yaml` 供社区复用。 | 跨总线协同编排、`ext.cognitive_organ`、`ext.memory_knowledge` |
@@ -201,9 +203,14 @@ config_schema:
 
 * **职责**：为五大认知脑区（`W1` 快对话、`W2` 8步行动规划、`W3` 睡眠整理与好奇心冲浪、`W4` 多模态感知、`L0` 本地安全危机分类器）以及内建 RAG 的 Embedding / Reranker 提供可插拔算力后端，原生支持**角色专属 LoRA 适配器热切换**与双轨精力 Token 代谢计量。
 
+* **Host Provider Pool**：`souls/host/infrastructure.json` 保存宿主连接及可用模型，凭据通过引用绑定至加密 Secrets Vault。支持 OpenCode Go（`opencode_go`，如 `deepseek-v4.1-flash`）、OpenAI-compatible、Anthropic、DeepSeek、Ollama、Embedding / Reranker 与 LoRA 适配器。
+* **Global Module Defaults 与角色绑定**：宿主配置 `consciousness`、`vision`、`speech` 的默认模型。角色逐模块选择 `Inherit` 或 `Override`，空值默认为 `Inherit`。每轮解析有效模型：`Inherit` 读取宿主对应模块的默认值，`Override` 使用角色显式绑定的提供商和模型或适配器。解析结果只用于当前话轮，不改写全局运行时存储。
+
 ### 总线 7：灵魂资产、世界观词库、关系里程碑与评测剧本包 (`ext.soul_asset` — 载体形态 I)
 
-* **职责**：让全球二次元与数字生命社区能够像分享游戏 Mod 一样，零编程门槛地分享与混搭四大类灵魂资产：
+* **静态角色卡与觉醒实例**：静态 Character Card V3（`chara_card_v3`）保存于 `souls/host/cards/`，Zero-Preset 注册表从空开始。编辑、保存及导出须无损往返保留未知插件或模块的 `extensions.<namespace>` 完整嵌套结构。具身资产锚点由插件在各自的 `extensions.<namespace>` 下定义，卡片核心保持引擎无关。
+* **导入与唤醒**：CCv2/CCv3 经四步蒸馏与确定性的 Jailbreak & PUA Sanitization 后保存为静态卡。Owner 才能显式从同一张卡唤醒一个或多个独立的 `souls/<soul_id>.soul/` 实例，每个实例记录 `origin_card_id` 并独立保存运行配置、状态和记忆。
+* **资产与导入支持**：
   1. **纯净灵魂模板包（`.soul-template.yaml`）**：打包 Tier 1 核心人格 DNA、双层存在论契约、24h 作息生物钟曲线参数与初始黄金声线样本（**由代码物理剥离一切个人聊天流水与私密记忆**，确保分享零隐私泄露）；
   2. **动态世界观词条库（`Lorebook / WorldInfo`）**：支持主触发词（`keys`）、次级合取触发词（`secondary_keys`）、递归激活深度（`recursive_depth`）、插入认知黑板槽位优先级与单轮 Token 预算硬上限；
   3. **关系羁绊里程碑、时间仪式与正向剧情事件包（`milestones_and_rituals.yaml`）**：定义当相伴天数、特殊纪念日/生日、关系信任/亲密阈值或共同完成的行动任务数量达成时，自动触发的正向角色成长提案（如解锁更亲密的专属称呼、新增一段纪念日黄金声线样本或注册一条温暖的前瞻约定；**严格受反操控宪章约束：仅允许正向奖励与成长，物理禁止配置任何“未上线扣分/错过纪念日冷暴力”等暗黑留存规则**）；

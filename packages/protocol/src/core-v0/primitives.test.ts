@@ -129,8 +129,8 @@ const standardExtensions = {
   },
   [EXT_EMBODIED_V1_KEY]: {
     sync_anchor: "pre_speech",
-    gaze: { target: "user_eyes", behavior: "glancing" },
-    facial: { expression: "soft_smile", intensity: 0.7, blush_level: 0.2 },
+    attention: { target: "interlocutor", behavior: "glancing" },
+    expression: { tag: "soft_smile", intensity: 0.7 },
     gesture: {
       category: "head_motion",
       intent: "tilt_head_curious",
@@ -140,7 +140,7 @@ const standardExtensions = {
     keyframes: [
       {
         sync_anchor: "on_substring:Hello",
-        facial: { expression: "bright_smile", intensity: 1 }
+        expression: { tag: "bright_smile", intensity: 1 }
       }
     ]
   },

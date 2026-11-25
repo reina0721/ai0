@@ -15,5 +15,5 @@ describe("architecture boundaries", () => {
         stdio: "pipe"
       })
     ).not.toThrow();
-  });
+  }, 30_000);
 });

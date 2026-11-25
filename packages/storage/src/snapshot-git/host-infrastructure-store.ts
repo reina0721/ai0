@@ -801,7 +801,7 @@ export function resolveEffectiveSourceApiKeys(
     if (secret) resolved.push(secret);
   }
   // Backward compat: if a vault key exists under source.id even without an apiKeys entry
-  if (resolved.length === 0) {
+  if (source.apiKeys.length === 0) {
     const legacy = readHostVaultKey(hostDirPath, source.id);
     if (legacy) resolved.push(legacy);
   }

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@ai0/protocol": "workspace:*",
-    "zod": "^3.24.0"
+    "zod": "^3.24.0",
+    "yaml": "1.10.3"
   }
 }

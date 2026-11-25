@@ -8,56 +8,66 @@
 
 ## 一、Local-First `.soul` 灵魂存档目录规范
 
-在本存储架构中，每一个数字生命实例在磁盘上都表现为一个完全自包含、零外部数据库服务依赖的独立文件夹（后缀为 `.soul`）。这种设计使“像 Git 一样随时快照回档”与“整包打包迁移到任何机器”变得极其简单可靠：
+Clean-Slate V1 将磁盘实体分为四层。宿主基础设施与静态角色卡注册表各自持久化在 `souls/host/`，活体实例与其检索投影位于各自的 `.soul` 目录。
+
+1. **宿主机基础设施** · `owner_claim.json` 保存 Owner 认证状态和 `deployment_mode`。`vault.enc` 加密保存 API 密钥与插件密钥。`infrastructure.json` 保存 Host Provider Pool 及 `consciousness`、`vision`、`speech` 三类 Global Module Defaults。
+2. **静态角色卡注册表** · `cards/<card_id>.ccv3.json` 和配套资源保存用户导入或创建的 CCv3 卡。导入执行越权指令清理，未知 `extensions.<namespace>` 无损保留。注册表初始为空。
+3. **独立活体灵魂存档** · 从 CCv3 卡唤醒后创建 `souls/<soul_id>.soul/`，记录来源、实例配置、事件与状态。`module_overrides` 以 `Inherit | Override` 表示随宿主默认值解析或使用实例配置。连续状态描述符由角色卡或已启用器官初始化。Vault 中的秘密通过引用解析。
+4. **可重建检索投影** · 每个实例独立持有 FTS5 与向量索引，由同一实例的权威数据重建，始终服从实例的 SQL 受众边界。
+
+**Zero-Preset** · 发行版的灵魂存档列表初始为空，移除的历史种子见 [07 清零账本](07-implementation-adrs-and-deviation-ledger.md)。
 
 ```text
-souls/example.soul/
-├── manifest.json                  # 存档元数据：schema_version, soul_id, created_at, active_model_profile
-├── identity.yaml                  # 【Tier 1 不可变人格核心 DNA】
-│                                  #   - core_values (核心价值观与角色内拒绝姿态)
-│                                  #   - ontological_contract ("poetic_cyber_life" | "strict_rp" | "transparent_ai")
-│                                  #   - voice_signature (口癖、代词、句长节奏、禁用客服词列表)
-│                                  #   - circadian_schedule (作息生物钟曲线参数与免打扰窗口)
-│                                  #   - proactivity_policy (每日主动搭话上限、冷却退避系数、最低可打扰度阈值)
-├── narrative.md                   # 【Tier 2 可演化自我叙事】(带 visibility_scope 标记的 Markdown 段落)
-├── voice_exemplars.jsonl          # 【黄金声线锚点池】用于换模型或降级时的动态 Few-Shot 声线校准
-├── blackboard_policy.yaml         # 【声明式认知黑板槽位编排与语境预设】各认知槽位 Token 预算配比、显著性门槛与场景预设
-├── milestones_and_rituals.yaml    # 【关系羁绊里程碑、纪念日仪式与正向剧情触发规则】(零暗黑惩罚，仅限正向成长解锁)
-├── lorebooks/                     # 【可热插拔动态世界观词条库】(载体形态 I：按关键词/语义递归激活的背景设定集)
-│   └── default_world.yaml
-├── skills/                        # 【自然语言与脚本混合技能包】(载体形态 II：包含 SKILL.md 手册与沙盒脚本)
-│   └── daily-companion-review/
-│       └── SKILL.md
-├── flows/                         # 【可视化认知流与跨插件 ECA 联动蓝图】(载体形态 IV：.flow.yaml & orchestration_rules.yaml)
-│   └── default_orchestration.flow.yaml
-├── knowledge/                     # 【内建混合 RAG 知识库文档源与卸载常识提炼池】
-│   └── documents/
-├── config/                        # 【五阶多态扩展运行态配置与权限覆写持久化】
-│   └── extensions_state.json      # 统一保存所有已启用扩展 (含 SKILL.md / .flow.yaml / 原生插件) 的 config_schema 实例值、D1~D5 权限覆写与 Vault 密钥引用指针
-├── state/
-│   ├── soul_core.sqlite           # 【核心状态、事件溯源与内建混合 RAG 数据库】(SQLite 3 + WAL + sqlite-vec + FTS5)
-│   └── redaction_ledger.json      # 【跨快照永久遗忘墓碑账本】记录已生效的真遗忘目标 ID，恢复旧快照时强制重放擦除!
-├── attachments/                   # 经授权保存的共同经历多媒体快照 (按内容哈希寻址)
-└── .git/                          # 内置轻量 Git 版本库，记录每次人格审批、睡眠整理检查点与显式快照
+souls/
+├── host/
+│   ├── owner_claim.json
+│   ├── vault.enc
+│   ├── infrastructure.json
+│   └── cards/
+│       ├── <card_id>.ccv3.json
+│       └── assets/
+└── <soul_id>.soul/
+    ├── manifest.json                  # soul_id、schema_version、origin_card_id、module_overrides
+    ├── identity.yaml                   # 人格核心、声线与行为策略
+    ├── narrative.md                    # 可演化自我叙事，带 visibility_scope
+    ├── voice_exemplars.jsonl
+    ├── blackboard_policy.yaml
+    ├── milestones_and_rituals.yaml
+    ├── state_descriptors.yaml          # 声明式连续状态描述符
+    ├── lorebooks/
+    ├── skills/                        # 可选，挂载用户 SKILL.md 技能包
+    ├── flows/
+    ├── knowledge/
+    │   └── documents/
+    ├── config/
+    │   └── extensions_state.json      # 启用扩展、权限覆写与 Vault 引用
+    ├── state/
+    │   ├── soul_core.sqlite           # SQLite WAL、FTS5 与向量索引
+    │   └── redaction_ledger.json       # 独立于快照分支的永久遗忘账本
+    ├── attachments/
+    └── .git/                          # 实例快照历史
 ```
 
 ---
 
 ## 二、SQLite 核心数据库完整 DDL 架构 (`soul_core.sqlite`)
 
-数据库表结构在设计上一步到位，原生内建 **`Principal × Venue × Audience` 四元组**、**`VirtualClock` 时间戳**、**四级认知溯源（Epistemic Provenance）** 与 **记忆血缘有向无环图（Lineage DAG）**。
+Clean-Slate V1 包含 **7 张权威表**，另设 `memory_lineage_edges` 关联边表与 FTS5／向量索引。边表记录权威记忆之间的派生与更替关系。兼容视图数为零，移除的历史视图见 [07 清零账本](07-implementation-adrs-and-deviation-ledger.md)。
 
 ### 2.1 表 1：不可变原始事件日志表 (`event_log` — Single Source of Truth)
+
+`event_log` 是不可变事件 SSOT，记录来源躯壳、主体（含信任级别）、场所、受众四元组。已提交感知的 `payload_json` 保留完整结构化 `UniversalObservationFrame`，摘要单独保存。Hard Forget 按下文的墓碑事务擦除原载荷。
+
 
 ```sql
 CREATE TABLE event_log (
     event_seq           INTEGER PRIMARY KEY AUTOINCREMENT, -- 全局严格递增物理序列号
     event_id            TEXT NOT NULL UNIQUE,              -- ULID (如 evt_01J9Z...)
     wall_ts_ms          INTEGER NOT NULL,                  -- 真实物理世界 UTC 毫秒时间戳
-    virtual_ts_ms       INTEGER NOT NULL,                  -- 内核 VirtualClock 虚拟毫秒时间戳
+    virtual_ts_ms       INTEGER NOT NULL,                  -- 认知核 VirtualClock 虚拟毫秒时间戳
     
     -- 四元组溯源信封 (The Provenance Quadruple)
-    source_shell_id     TEXT NOT NULL,                     -- 来源躯壳实例 ID (或 'kernel.internal')
+    source_shell_id     TEXT NOT NULL,                     -- 来源躯壳实例 ID (或 'cognition.internal')
     principal_id        TEXT NOT NULL,                     -- 归一化主体 ID ('owner' | 'friend:<id>' | 'stranger:<uid>' | 'system')
     principal_trust     TEXT NOT NULL CHECK (principal_trust IN ('owner_verified', 'bound_friend', 'stranger', 'environment_sensor', 'tool_output')),
     venue_type          TEXT NOT NULL CHECK (venue_type IN ('private_1on1', 'group_chat', 'public_livestream', 'local_ambient', 'internal_background')),
@@ -74,9 +84,9 @@ CREATE TABLE event_log (
                             'memory_redacted_tombstone',   -- 真遗忘擦除墓碑事件
                             'soul_rollback_bridge'         -- 灵魂回档断层弥合元事件
                         )),
-    modality            TEXT NOT NULL,                     -- 'text' | 'audio_transcript' | 'tactile' | 'visual_semantic' | 'system'
-    summary_text        TEXT NOT NULL,                     -- 供快速检索的文本摘要 (执行真遗忘后物理覆写为 '[REDACTED]')
-    payload_json        TEXT NOT NULL,                     -- 完整结构化 JSON 载荷 (执行真遗忘后物理覆写为 '{}')
+    modality            TEXT NOT NULL,                     -- 'text' | 'audio_transcript' | 'visual_cue' | 'contact_interaction' | 'system_chronoception' | 'custom.*'
+    summary_text        TEXT NOT NULL,                     -- 供快速检索的文本摘要 (执行真遗忘后物理覆写为 '[REDACTED_BY_OWNER]')
+    payload_json        TEXT NOT NULL,                     -- 完整结构化 JSON 载荷，感知事件保留 UniversalObservationFrame (执行真遗忘后物理覆写为 '{}')
     
     -- 因果与消融审计元数据
     state_rev_after     INTEGER NOT NULL,                  -- 该事件处理后的权威状态版本号 v_N
@@ -91,6 +101,9 @@ CREATE INDEX idx_event_log_category ON event_log(event_category, virtual_ts_ms);
 ```
 
 ### 2.2 表 2：多层次主观记忆投影表 (`memories`) 与血缘边表 (`memory_lineage_edges`)
+
+`EpistemicMemoryFirewall` 对记忆投影强制区分 `observed_firsthand`、`reported_hearsay`、`inferred_hypothesis`、`imagined_narrative`。语用防火墙禁止 `playful_banter` 和 `roleplay_fiction` 进入 `semantic_fact`。推断须设置过期时间。记录时间由 `created_virtual_ts` 与 `created_at_rev` 标识，有效时间由 `valid_from_virtual_ts` 与 `valid_until_virtual_ts` 标识，更替以 `supersedes` 边记录。`CommonGround` 在实际呈现后进入 `proposed_presented`，收到对方明确接纳的证据后进入 `mutually_grounded`，争议或弃用时进入 `disputed_retired`。
+
 
 ```sql
 CREATE TABLE memories (
@@ -187,28 +200,23 @@ CREATE INDEX idx_commitments_status_ts ON prospective_commitments(status, trigge
 
 ### 2.4 表 4：权威认知状态与内稳态检查点表 (`cognitive_state_checkpoints`)
 
+`continuous_states_json` 持久化 `ContinuousStateMetaEngine` 描述符与潜状态，按 `state_id` 索引。每项包含 `{ topology, baseline, rate, wakeup_thresholds, latent_displacement, impulse_at_ms, value }`，其中 `topology` 为 `bipolar_tanh | unipolar_sigmoid`。`state_attributions_json` 为 `{ state_id, reason, visibility_scope, caused_by_event_id }` 对象数组。公开场所的 Social Masking 在黑板编译时剥离 `only_owner` 归因。
+
+`working_memory_json` 保存近期话轮、`unsaid_remainder` 与四态表达账本 `generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`。中断回执分别记录 `silenced` 与 `done` 边界。`hibernation_intervals_json` 保存冬眠区间，供时感信号扣除。`next_wakeup_ts_ms` 保存反解得到的下一阈值唤醒虚拟时间戳。
+
+
 ```sql
 CREATE TABLE cognitive_state_checkpoints (
     state_rev           INTEGER PRIMARY KEY,               -- 单调递增的权威状态版本号 v_N
     virtual_ts_ms       INTEGER NOT NULL,
     caused_by_event_id  TEXT NOT NULL,
     
-    -- 情绪与内稳态锚点向量 S(t_0) (供懒求值解析时间函数 S(t) 作为初始值)
-    instant_valence     REAL NOT NULL,                     -- 瞬时情绪效价 [-1.0, 1.0]
-    instant_arousal     REAL NOT NULL,                     -- 瞬时情绪激活度 [0.0, 1.0]
-    mood_baseline_val   REAL NOT NULL,                     -- 慢速持久心境效价 [-1.0, 1.0]
-    mood_attribution    TEXT DEFAULT NULL,                 -- 心境成因简述
-    mood_attr_scope     TEXT NOT NULL DEFAULT 'only_owner',-- 心境成因的隐私作用域 (跨公开场合自动剥离!)
-    
-    circadian_energy    REAL NOT NULL,                     -- 昼夜生理精力 [0.0, 1.0]
-    metabolic_energy    REAL NOT NULL,                     -- Token 预算映射的算力代谢精力 [0.0, 1.0]
-    drive_social_longing REAL NOT NULL,                    -- 社交渴望/思念驱动力 [0.0, 1.0]
-    drive_curiosity     REAL NOT NULL,                     -- 好奇心驱动力 [0.0, 1.0]
-    
-    -- 关系、心结与用户模型 JSON 快照
-    relationship_json   TEXT NOT NULL,                     -- { trust, intimacy, playfulness, active_tensions: [{id, reason, intensity, half_life_h, created_ts}] }
-    user_model_json     TEXT NOT NULL,                     -- { estimated_activity, estimated_interruptibility, dnd_until_ts }
-    working_memory_json TEXT NOT NULL,                     -- 最近话轮窗口 + unsaid_remainder (被打断未说完的腹稿)
+    continuous_states_json TEXT NOT NULL,
+    state_attributions_json TEXT NOT NULL DEFAULT '[]',
+    relationship_json   TEXT NOT NULL,
+    user_model_json     TEXT NOT NULL,
+    working_memory_json TEXT NOT NULL,
+    hibernation_intervals_json TEXT NOT NULL DEFAULT '[]',
     next_wakeup_ts_ms   INTEGER DEFAULT NULL               -- 反解出的下一阈值唤醒虚拟时间戳
 );
 ```
@@ -230,14 +238,14 @@ CREATE TABLE turn_decision_traces (
     step4_homeostasis_json  TEXT NOT NULL,                 -- 裁决前稳态向量 -> 代码裁决后的状态 Diff
     step5_strategy_proposal_json TEXT NOT NULL,            -- 选用策略、model_reported_rationale (非权威)、theatrical_subtext (带 spoiler_level)
     step6_tool_auth_json    TEXT NOT NULL,                 -- 选择的 MCP/Skill/Shell Actuator 及三维权限引擎裁决结果
-    step7_emitted_intent_json TEXT NOT NULL,               -- 下发的 ExpressionEnvelope / 行动指令
-    step8_delivery_receipt_json TEXT DEFAULT NULL          -- 异步回填的 DeliveryReceipt (completed/interrupted, spoken_char_offset)
+    step7_emitted_intent_json TEXT NOT NULL,               -- 下发的 CommunicativeIntentEnvelope / 行动指令
+    step8_delivery_receipt_json TEXT DEFAULT NULL          -- 异步回填的 DeliveryReceipt (含呈现、执行、共同确认与 silenced / done 边界)
 );
 ```
 
 ### 2.6 表 6：内建开箱即用混合 RAG 知识库切片与 FTS5 稀疏索引表 (`knowledge_chunks`)
 
-每个实例的 `soul_core.sqlite` 分别保存知识库受众、文档原始字节和索引版本。`knowledge_locations` 将切片对应到文档、标题与行段或 PDF 页码。全文索引使用 FTS5，模型向量记录在 `knowledge_chunks_vec`，由 SQLite 注册的余弦函数检索。知识切片固定标记为 `untrusted_external`。`knowledge_turn_sources` 记录回答引用的切片，完整送达后才更新引用计数。旧归档的历史计数独立保存在 `legacy_citations`。
+每个实例的 `soul_core.sqlite` 保存知识切片及定位信息。`metadata_json` 记录标题、行段或 PDF 页码，原始文档位于实例的 `knowledge/documents/`。全文索引使用 FTS5，向量索引按 `chunk_id` 关联切片。切片固定标记为 `untrusted_external`，引用完整送达后才更新引用计数。
 
 ```sql
 CREATE TABLE knowledge_chunks (
@@ -287,7 +295,7 @@ CREATE TABLE soul_milestones_ledger (
 当认知快环（`W1`）或行动环（`W2`）发起记忆检索时，`@ai0/storage` 强制执行以下两阶段查询：
 
 1. **第一阶段：SQL 层受众作用域与有效性硬拦截（Deterministic Scope Guard）**
-   * 若当前 `Audience == 'only_owner'` 且 `Principal == 'owner_verified'`：允许检索 `visibility_scope IN ('only_owner', 'group:*', 'public_all')`；
+   * 若当前 `Audience == 'only_owner'` 且 `Principal == 'owner_verified'`：按允许值数量生成 SQL 占位符并逐项绑定 `only_owner`、`public_all` 和获授权的群组作用域，执行 `WHERE visibility_scope IN (…) AND invalidated_at_ts IS NULL`；
    * 若当前 `Audience == 'group:<gid>'`：**硬编码 SQL `WHERE visibility_scope IN ('group:<gid>', 'public_all') AND invalidated_at_ts IS NULL`**；
    * 若当前 `Audience == 'public_all'`（如公开直播间）：**硬编码 SQL `WHERE visibility_scope = 'public_all' AND invalidated_at_ts IS NULL`**。
    * **架构效果**：私密记忆在 SQLite 查询游标阶段就被物理排除，绝不进入内存，更绝不进入 LLM Prompt。
@@ -297,7 +305,7 @@ CREATE TABLE soul_milestones_ledger (
    * 其中 $H(m_i) = H_0 \cdot (1 + \beta \cdot \ln(1 + \text{recall\_count}_i))$ 为随每次成功回忆而延长的艾宾浩斯记忆稳定半衰期；
    * $C_{\text{cooldown}}(m_i) \in (0, 1]$ 为近期复用惩罚因子（防止在同一场对话中机械重复提及同一条记忆）。
 
-### 3.2 “真遗忘（Hard Forget）” vs. “话题封印（Topic Seal）”的血缘 DAG 算法
+### 3.2 五表 Hard Forget 级联与话题封印
 
 ```mermaid
 flowchart LR
@@ -317,9 +325,9 @@ flowchart LR
      * 若某衍生记忆 $M_k$ 的所有上游合法源事件/父记忆均被擦除 $\rightarrow$ 直接从 `memories` 与 `memories_vec` 中**物理硬删除**；
      * 若某衍生记忆 $M_k$ 还依赖同一场对话中的其他合法未擦除源事件（如上图中的 `evt_102`）或未失效父记忆 $\rightarrow$ 将旧 $M_k$ 物理删除，并按拓扑层级顺序触发一次**仅以剩余未擦除源事件/已更新父记忆为输入的局部微重算（Topological Targeted Micro-Reprojection）**，彻底解决“全量重放算力破产”、“父子节点重算因果倒置”与“衍生反思残留”三大难题！
    * **Step 4（全受管副本同步脱敏擦除 —— 杜绝审计轨迹与检查点残留）**：
-     在同一数据库事务中，同步清理除 `event_log` 与 `memories` 之外的所有受管副本：
+     同一事务覆盖五张载荷表。Step 2～3 处理 `event_log` 与 `memories`，本步处理以下三张表。受影响的血缘边和索引随记忆同步更新：
      * **`turn_decision_traces`（决策轨迹表）**：将所有 `turn_event_id IN {E_target}` 或在 `step3_memory_recall_json` 中召回了 `{M_tainted}` 的轨迹记录中对应的输入摘要、召回正文与输出文本物理覆写为 `'[REDACTED_BY_FORGET]'`；
-     * **`cognitive_state_checkpoints`（状态检查点表）**：清理历史检查点中 `working_memory_json` 与 `mood_attribution` 内关联 `{E_target}` 的文本片段；
+     * **`cognitive_state_checkpoints`（状态检查点表）**：清理历史检查点的 `working_memory_json`（包括表达账本及 `unsaid_remainder`）与 `state_attributions_json`。移除关联 `{E_target}` 或 `{M_tainted}` 的工作记忆片段和受染归因条目，保留结构化 JSON 及未受影响的数据；
      * **`prospective_commitments`（前瞻承诺表）**：物理删除 `source_event_id IN {E_target}` 的未决承诺；
      * **磁盘空闲页物理清零**：数据库连接强制开启 `PRAGMA secure_delete = ON` 并执行增量页清理，防止已删明文残留在 SQLite 空闲磁盘页中。
    * **Step 5（写入跨时间线永久墓碑账本 `state/redaction_ledger.json` —— 防止旧存档回档复活）**：

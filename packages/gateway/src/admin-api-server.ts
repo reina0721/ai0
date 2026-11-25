@@ -62,7 +62,15 @@ const ROUTES = [
   { methods: ["POST"], pattern: /^\/api\/admin\/v1\/config\/routing-rules\/test$/, operation: "config.routingRulesTest" },
   { methods: ["GET", "PATCH"], pattern: /^\/api\/admin\/v1\/capabilities\/knowledge$/, operation: "capabilities.knowledge" },
   { methods: ["GET", "PATCH"], pattern: /^\/api\/admin\/v1\/capabilities\/multimodal$/, operation: "capabilities.multimodal" },
-  { methods: ["GET", "PATCH"], pattern: /^\/api\/admin\/v1\/system\/settings$/, operation: "system.settings" }
+  { methods: ["GET", "PATCH"], pattern: /^\/api\/admin\/v1\/system\/settings$/, operation: "system.settings" },
+  { methods: ["GET"], pattern: /^\/api\/admin\/v1\/readiness$/, operation: "system.readiness" },
+  { methods: ["POST"], pattern: /^\/api\/admin\/v1\/host\/claim$/, operation: "host.claim" },
+  { methods: ["GET", "POST"], pattern: /^\/api\/admin\/v1\/cards$/, operation: "cards.collection" },
+  { methods: ["GET", "DELETE"], pattern: /^\/api\/admin\/v1\/cards\/(?<cardId>[^/]+)$/, operation: "cards.item" },
+  { methods: ["GET"], pattern: /^\/api\/admin\/v1\/souls$/, operation: "souls.collection" },
+  { methods: ["POST"], pattern: /^\/api\/admin\/v1\/souls\/awaken$/, operation: "souls.awaken" },
+  { methods: ["POST"], pattern: /^\/api\/admin\/v1\/souls\/select$/, operation: "souls.select" },
+  { methods: ["GET"], pattern: /^\/api\/admin\/v1\/souls\/(?<soulId>[^/]+)\/export-card$/, operation: "souls.exportCard" }
 ] as const;
 
 export type AdminOperation = (typeof ROUTES)[number]["operation"];

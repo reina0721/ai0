@@ -4,10 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  createDefaultConsoleStudioConfig,
-  writeConsoleStudioConfig
-} from "./console-studio-config.js";
+import { resolveHostDefaultChatBinding } from "./soul-model-binding.js";
 import {
   addSourceApiKey,
   deleteModelInstance,
@@ -51,42 +48,37 @@ describe("orthogonal host infrastructure & soul profile stores", () => {
     }
   });
 
-  it("migrates legacy console_studio.json cleanly and strips role suffixes from providers", () => {
-    const root = mkdtempSync(join(tmpdir(), "ai0-ortho-mig-"));
+  it("initializes unconfigured host profiles as unconfigured and inherits configured host default models", () => {
+    const root = mkdtempSync(join(tmpdir(), "ai0-ortho-"));
     dirs.push(root);
-    const soulDir = join(root, "mio.soul");
+    const soulDir = join(root, "alpha.soul");
     const hostDir = resolveHostInfrastructureDir(soulDir);
-
-    const legacy = createDefaultConsoleStudioConfig("Mio");
-    legacy.systemSettings.appearance = "dark";
-    legacy.systemSettings.soulTheme = "astral-blue";
-    writeConsoleStudioConfig(soulDir, legacy);
-
     const { infrastructure, soulProfiles } = ensureOrthogonalStoresMigrated(soulDir, hostDir);
-    expect(infrastructure.systemSettings).toMatchObject({
-      appearance: "dark",
-      soulTheme: "astral-blue",
-      navRailMode: "expanded",
-      inspectorView: "trace"
-    });
+    expect(resolveHostDefaultChatBinding(infrastructure)).toBeUndefined();
+    expect(soulProfiles.profiles[0]?.primaryChat).toEqual({ providerId: "unconfigured", modelId: "unconfigured" });
+    expect(ensureOrthogonalStoresMigrated(soulDir, hostDir).soulProfiles).toEqual(soulProfiles);
 
-    const deepseek = infrastructure.providers.find((p) => p.id === "prov_deepseek_v3");
-    expect(deepseek).toBeDefined();
-    expect(deepseek?.label).toBe("DeepSeek Flash");
-    expect(deepseek?.label).not.toContain("主力对话");
-    expect(deepseek?.capabilityKind).toBe("chat");
-    expect(deepseek?.models).toContain("deepseek-flash");
-
-    const rerank = infrastructure.providers.find((p) => p.id === "prov_bge_rerank");
-    expect(rerank?.capabilityKind).toBe("rerank");
-    expect(rerank?.label).not.toContain("知识库精排");
-
-    expect(soulProfiles.profiles.length).toBeGreaterThanOrEqual(3);
-    expect(soulProfiles.capabilities.knowledge.embeddingBinding?.providerId).toBe("prov_bge_embed");
-    expect(soulProfiles.capabilities.multimodal.ttsBinding?.providerId).toBe("prov_fish_tts");
-
-    const refs = findProviderReferences("prov_deepseek_v3", soulProfiles);
-    expect(refs.some((r) => r.scope === "profile_primary")).toBe(true);
+    const configuredInfra = upsertProviderInstance(
+      hostDir,
+      {
+        id: "prov_ready_chat",
+        label: "Ready Chat",
+        vendor: "OpenAI Compatible",
+        capabilityKind: "chat",
+        adapterType: "openai_compatible",
+        baseUrl: "https://relay.example.com/v1",
+        apiKeyMasked: "",
+        models: ["gpt-4.1-mini"],
+        defaultTemperature: 0.7,
+        defaultMaxTokens: 4096,
+        enabled: true,
+        health: { status: "ready", latencyMs: 42 }
+      },
+      "sk-live-key-1234567890"
+    );
+    const betaSoulDir = join(root, "beta.soul");
+    const betaMigrated = ensureOrthogonalStoresMigrated(betaSoulDir, hostDir);
+    expect(betaMigrated.soulProfiles.profiles[0]?.primaryChat).toEqual(resolveHostDefaultChatBinding(configuredInfra));
   });
 
   it("supports dynamic provider & platform CRUD with isolated host vault secrets", () => {

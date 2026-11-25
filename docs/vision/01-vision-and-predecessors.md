@@ -45,6 +45,46 @@
   * 心结（Tension）具备**强制半衰期（自动软化衰减）**与**暗黑行为黑名单（禁绝冷战死锁、禁绝离场内疚绑架、禁绝挑拨现实人际关系）**；
   * 所有情感参数、主动策略与心结状态在 WebUI 控制台中 **100% 白盒可见、可调、可一键清零**。
 
+### 1.3 三级渐进派生方法论
+
+**Clean-Slate V1 始终保持第一版，零历史沉积、零预设默认角色卡、三级渐进派生、四核正交分立。** 从愿景直接跳到终局 Schema 或封闭枚举，会把示例模态、人形器官和心理维度固化为协议与数据库债务。预装角色种子会跳过主权认领与资产选择，正则模板冒充离线模型回复会掩盖凭据、连通性与授权缺口。仓库分发从空部署验收，实验夹具和兼容垫片不进入生产路径。
+
+| 层级 | 推导任务 | 收敛产物 |
+| --- | --- | --- |
+| Level 1 顶层实体边界与零预设部署生命周期边界 | 先固定资产、运行身份、硬件权限和宿主主权的所有权。 | 四层实体物理分离和 L0–L5 Deploy-to-Live 闭环。 |
+| Level 2 跨场景消去法与四核正交分立 | 跨文本、语音、桌宠、机器人、游戏和私密手环消去设备细节与场景策略。 | 通用机械执行归 `@ai0/agent-core`，感知、认知、表达分别归无头同级包 `@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`，场景规则与驱动归 `plugins/**`。 |
+| Level 3 渐进证伪与主仓第一版收敛 | 按 Stage 0–4 运行可执行纸面轨迹和最小原型，先寻找反例，再固化接口。 | 通过场景轨迹后才将共性收敛进主仓 `packages/`，生产冷启动另有端到端验收。 |
+
+- [`stage0-paper-traces`](../../labs/stage0-paper-traces) 固定接地、所有权与部署状态转移的不变量。
+- [`stage1-agent-core`](../../labs/stage1-agent-core) 验证权限分栏、有序工具结算、取消与未核验目标。
+- [`stage2-airi-dissection`](../../labs/stage2-airi-dissection) 从真实源码提取角色卡解析、观察准入与上下文分桶。
+- [`stage3-perception-expression`](../../labs/stage3-perception-expression) 冻结执行环，验证跨壳观察、话轮、隐私与打断回执。
+- [`stage4-universal-derivation`](../../labs/stage4-universal-derivation) 用可替换器官、声明式连续状态和跨具身场景验证四核组合。
+
+### 1.4 四层实体物理分离法则
+
+| 实体 | 持久化与所有权 | 跨层引用 |
+| --- | --- | --- |
+| 宿主机基础设施（Host Infrastructure） | `souls/host/` 与加密 Secrets Vault 管理 Owner 凭据、已安装插件、宿主 Provider Pool 与全局模块默认值 `consciousness`、`vision`、`speech`，均独立于角色。 | Provider 选项包括 OpenCode Go（如 `deepseek-v4.1-flash`）、OpenAI-compatible、Anthropic、DeepSeek 与 Ollama。Owner 显式配置并实测，调用方以引用访问 Vault。 |
+| 静态角色卡资产（Static Character Card Asset） | `Character Card V3`（`chara_card_v3`）保存人格设定、对白样例、`character_book` Lorebook、可选具身锚点与资产元数据、声明式状态描述和可选 `Inherit / Override` 模型选择。私聊记录与运行密钥均留在卡外。 | 编辑和往返导出保留未知 `extensions.<namespace>` 的完整嵌套值。角色选择按回合解析，禁止回写宿主默认。 |
+| 活体灵魂实例（Awakened Soul Instance） | `*.soul` 拥有不可变 `event_log`、四级认知溯源 `memories`、`memory_lineage_edges`、`continuous_states_json`、`prospective_commitments` 与 `redaction_ledger.json`。 | 通过 `origin_card_id` 引用来源卡。一张卡可在宿主唤醒多个相互独立的实例，各自拥有经历与状态，零客户端渲染耦合。 |
+| 具身交互躯壳与扩展（Mounted Shells & Extensions） | 端侧或外部运行时持有设备权限、渲染资源与操作实现。 | 通过 `Scoped Capability Token` 挂载，动态声明 `Sensors / Realizers / Actuators` 与当前生效的具身锚点。 |
+
+### 1.5 零预设 L0–L5 Deploy-to-Live
+
+`@ai0/daemon` 持久化认领与配置并核验运行证据。`/healthz` 报告进程存活，`/readyz` 报告当前门禁与缺口，控制台以该结果驱动引导。
+
+| 阶段 | 进入下一阶段所需的证据 |
+| --- | --- |
+| `L0_UNCLAIMED` | 空角色卡、空灵魂、空挂载。Owner 设置主认证凭据、初始化 Vault 并显式确认 `deployment_mode`。 |
+| `L1_CLAIMED_NO_PROVIDER` | 写入 Vault 并实测真实模型调用与所需能力，保存宿主全局默认引用。未就绪时展示缺口。 |
+| `L2_PROVIDER_READY_NO_SOUL` | Owner 预览 CCv3 或从空白创建，并显式唤醒独立的 `*.soul`。实例绑定可用推理模型。 |
+| `L3_SOUL_AWAKENED_CONFIG_NEEDED` | 按需配置扩展和媒体管线，端侧显式授予设备权限。未授权模态维持 `blind`。 |
+| `L4_SOUL_AWAKENED_NO_SHELL` | Owner 签发绑定目标灵魂、场合与受众的受限令牌。跨端主体身份经显式绑定。 |
+| `L5_LIVE_READY` | Vault、可用模型、有效挂载和 Tier 0 披露能力全部通过门禁，认知循环开始提供服务。 |
+
+撤销 Provider 或最后一个有效 Shell 时，守护进程撤下就绪标记并报告对应缺口。休眠以独立运行状态及时间区间记账。Stage 0 的原型在 L4 标记上线、用 L5 表示休眠，主仓 V1 在 L5 表示上线就绪。
+
 ---
 
 ## 二、系统边界与先行者对照系深度剖析
@@ -57,7 +97,7 @@
   * VTuber 直播推流软件与弹幕抓取器；
   * 微信 / QQ / Discord / Telegram / Slack 等具体 IM 平台交互插件。
 * **专注打磨的核心（认知中枢本体）**：
-  1. **三大核心认知与协议层**：上行标准化语义感知协议、看不见的活体大脑认知微内核、下行语义化行为表达意图与具身执行回执协议；
+  1. **无头四核与协议层**：机械执行、上行结构化感知、认知裁决与下行语义表达及回执；
   2. **八大维度微内核扩展总线**：由后台无头运行时宿主执行的全链路扩展接口（涵盖具身躯壳、音视频媒体管线、认知器官、MCP/Skill 行动工具、记忆与知识连接器、模型推理后端、灵魂模板与世界观资产包）；
 * **随项目官方提供的配套管理与实验设施**：
   * **`WebUI 控制台` 与内置参考 `WebChat`**：官方随项目提供的浏览器管理界面（独立于后台内核运行，关闭浏览器不影响数字生命与已启用扩展的持续运转），以及一个**严格走外部标准协议、零内部后门的内置 WebChat Shell 插件（既供开箱日常相处，也作社区躯壳插件的官方参考样板）**。
@@ -68,22 +108,19 @@
 
 为了避免闭门造车，我们将现世真正经过工程与社区实证的五大先行体系作为严格对照系：
 
-#### 对照一：Project AIRI (`moeru-ai/airi`) —— “AI Waifu 灵魂容器”的得与失
+#### 对照一：Project AIRI（`moeru-ai/airi`）
 
-1. **AIRI 做对了什么** **`[文献/先行项目佐证]`**：
-   * **提出了“Soul Container（灵魂容器）”概念**：受到 Neuro-sama 等 AI VTuber 启发，意识到虚拟角色的灵魂不应锁死在单一界面里，尝试分离认知层与运行舞台（Stages）。
-   * **基于 Manifest 的插件扩展与按来源刷新的上下文注册表（`ContextRegistry`）**：通过 `extension.airi.json` 声明能力契约与生命周期钩子，让社区可以接入 Discord、Telegram 以及 Minecraft / Factorio 等游戏环境；并在 `core-agent` 中引入按来源（Source）原地替换或追加的上下文桶机制，避免高频环境状态无限堆积。
-   * **TypeScript 全栈同构工程化**：使用 TypeScript Monorepo 降低前后端与插件 SDK 的类型对齐成本。
+以下结论来自本轮核对的 AIRI 源码快照与 ADR。主仓采纳的约束是架构决策。
 
-2. **AIRI 踩过的坑与架构局限** **`[文献/先行项目佐证]`** + **`[架构推断]`**：
-   * **坑 1：“全栈大包揽”导致的精力极度分散**：AIRI 在同一个仓库里同时维护 `stage-web`（WebGPU/WebAudio 浏览器端）、`stage-tamagotchi`（Electron/Tauri 桌面宠客户端 + CUDA/Metal 原生绑定）、`stage-pocket`（移动端）、Live2D 与 VRM 渲染控制器、语音管线以及各类游戏插件。结果是团队 80% 的工程精力被跨平台客户端编译、显卡驱动兼容、前端音频缓冲区和 3D 渲染 Bug 吞噬。
-   * **坑 2：认知内核退化为“带数据库的常规 Agent 管线”**：因为外围客户端战线太长，其“大脑”本身缺乏对**记忆认知溯源（亲耳听到 vs 推断）、事件溯源与记忆血缘擦除、多主体/多受众隐私硬隔离、内稳态数学动力学、离线懒求值时间流、白盒可消融回归评估**的深度雕琢；其 `ContextRegistry` 也缺乏受众隐私 ACL、感官覆盖新鲜度 TTL（`freshness_ttl_ms`）与真遗忘删除屏障。
-   * **坑 3：宿主插件钩子（Host Extension Hooks）重于跨语言网络协议**：其插件更多是围绕自身 Electron/Web 宿主的内部生命周期钩子设计，而非一套极小、冻结、任何语言用几十行 WebSocket 就能接入的通用语义协议。
+1. **通用执行与取消**。 `@proj-airi/core-agent` 通过端口编排模型、工具和上下文，执行循环零情绪、头像与具体存储耦合。保持 `Turn / Round` 有序结算，按 `system`、`developer`、`context` 分栏。达到 `maxSteps` 仍结算末轮工具回执，检查点投影 `goalState: 'not-verified'`（本项目归为 `unverified`）。首个流事件交付前的 HTTP 408、429、5xx 最多重试三次，输出或工具副作用发生后停止自动重试。打断以 `silenced` 确认停播，以 `done` 等待控制记账。 [执行规范](https://github.com/moeru-ai/airi/blob/main/packages/core-agent/README.md) · [回合编排](https://github.com/moeru-ai/airi/blob/main/packages/core-agent/src/runtime/chat-orchestrator-runtime.ts) · [打断接口](https://github.com/moeru-ai/airi/blob/main/packages/core-agent/src/voice/interruption.ts)
+2. **角色卡与配置解析**。 `@proj-airi/ccc` 对齐 `chara_card_v3`，舞台类型要求编辑保留其他模块的未知 `extensions.<namespace>`。全局模块默认与角色 `Inherit / Override` 分离，按会话角色在回合中调用 `getModules(characterId)` 解析，激活角色无需修改全局 Store。 [CCv3 类型](https://github.com/moeru-ai/airi/blob/main/packages/ccc/src/define/card.ts) · [AIRI 扩展](https://github.com/moeru-ai/airi/blob/main/packages/stage-ui/src/types/airiCard.ts) · [模块解析](https://github.com/moeru-ai/airi/blob/main/packages/stage-ui/src/services/airi-card-modules.ts) · [默认值 ADR](https://github.com/moeru-ai/airi/blob/main/docs/ai/adr/2026-11-11-module-defaults-and-character-values.md)
+3. **按真实缺口引导**。 `onboarding.ts` 按 Provider 与设备条件引导，模块事件表达 `announced → configuration-needed → configured → capability:activated → ready`。原生观察 ADR 将授权准入与路由区分，要求宿主校验请求主体、目标生命周期、过期和撤销。 [引导 Store](https://github.com/moeru-ai/airi/blob/main/packages/stage-ui/src/stores/onboarding.ts) · [模块事件](https://github.com/moeru-ai/airi/blob/main/packages/plugin-protocol/src/types/events.ts) · [原生观察 ADR](https://github.com/moeru-ai/airi/blob/main/docs/ai/adr/2026-11-09-native-observation-admission.md)
 
-3. **本架构（`ai0`）与 AIRI 的本质分野**：
-   * 本架构**彻底砍掉所有 Stage 客户端渲染与硬件推理包袱**（不碰 Live2D/VRM/Electron 桌宠外壳），把省下来的 100% 架构预算全部砸进**“看不见的认知内核深度”**与**“白盒观测/消融/回放控制台”**；
-   * 吸收其按来源更新环境上下文的思想，但将其升维为**带受众隔离 ACL、视神经空间注意焦点（Foveal vs. Peripheral）与新鲜度过期状态机（`live_foveal | ambient_peripheral | stale | disconnected`）的瞬态感官覆盖桶**；
-   * 内置 WebChat 只是一个薄薄的协议参考客户端，灵魂与躯壳之间只隔着一层**极小且语言无关的标准协议 v0**。
+| AIRI 源码揭示的局限 | ai0 Clean-Slate V1 的决策 |
+| --- | --- |
+| `perception → reflex → conscious` 闭环位于 Minecraft 集成，三个阶段以 Mineflayer 血量、战斗和游戏任务为输入，Web、桌面与 IM 无法直接复用。 [感知](https://github.com/moeru-ai/airi/blob/main/integrations/minecraft/src/cognitive/perception/pipeline.ts) · [反射](https://github.com/moeru-ai/airi/blob/main/integrations/minecraft/src/cognitive/reflex/reflex-manager.ts) · [意识决策](https://github.com/moeru-ai/airi/blob/main/integrations/minecraft/src/cognitive/conscious/brain.ts) | 感知、认知和表达抽为与 `agent-core` 同级的可重用无头三核，战术和设备规则交由插件。来源桶补上受众隔离、TTL 和授权撤销。 |
+| 内置角色 ReLU → Iru 迁移引入十种语言的 SHA-256 指纹表 `preIruBuiltInDescriptionHashes` 和历史 `localStorage` 垫片，以区别旧预设与用户编辑。 `AiriExtension` 直接声明 `vrm`、`live2d`。 [卡片 Store](https://github.com/moeru-ai/airi/blob/main/packages/stage-ui/src/stores/modules/airi-card.ts) · [AIRI 扩展](https://github.com/moeru-ai/airi/blob/main/packages/stage-ui/src/types/airiCard.ts) | 零预设默认卡。具身资产进入插件自有命名空间，角色卡与运行实例分别持久化。 |
+| `onboarding/steps` 与活动角色等生命周期状态依赖浏览器 `localStorage` 和 Vue Pinia Store。 [引导 Store](https://github.com/moeru-ai/airi/blob/main/packages/stage-ui/src/stores/onboarding.ts) · [卡片 Store](https://github.com/moeru-ai/airi/blob/main/packages/stage-ui/src/stores/modules/airi-card.ts) | `@ai0/daemon` 持有 L0–L5 权威状态与 `/healthz`、`/readyz`，WebUI 映射缺口。 |
 
 ---
 
@@ -146,7 +183,7 @@
    * **OpenClaw / AstrBot / NapCat / Koishi 确立了无头内核与多渠道 Agent 运维控制台的操作视觉与配置范式**：
      * **`NapCat WebUI`** 证明了针对无头协议内核的管理面板，采用**清晰层次化的状态指标卡 + 实时连接监控 + 实时事件流终端（Live Event Console）**，能够带来极强的现代工程掌控感；
      * **`AstrBot / Koishi`** 证明了复杂的模型提供商（Providers）、消息平台适配器与插件系统必须采用**高密度功能型控制台**（紧凑导航 + 零手写 JSON 的主从分节 Schema 可视化表单 + 明确的 Dirty/Revision 保存状态机 + 插件“安装 $\neq$ 授权 $\neq$ 启用”分离 + 插件加载报错就地展示与一键热重载修复）。
-   * **开源社区中对 Material Design 3 进行轻盈化二次封装的视觉工艺实践（如二次元社区开源前端参考案例 `kirakira.moe`）提供了一条关键美学启示**：它证明了借助动态色调表面阶梯（Tonal Surface Elevation）、细腻指针水波纹点击反馈（Ripple）、弹簧/果冻物理阻尼缓动（Spring Easing）与精细化表单控件封装，可以彻底打破传统企业级后台的冰冷死板感，在保持专业感的同时赋予界面与数字生命相称的通透呼吸感与亲和力。（*注：本处仅作研究期视觉工艺参考溯源；具体落地规格均已独立提炼为 `ai0` 第一方紧凑 MD3 设计系统，详见 `docs/architecture/06` 第七章与 `ADR-006`。*）
+   * **开源社区中对 Material Design 3 进行轻盈化二次封装的视觉工艺实践（如二次元社区开源前端参考案例 `kirakira.moe`）提供了一条关键美学启示**：它证明了借助动态色调表面阶梯（Tonal Surface Elevation）、细腻指针水波纹点击反馈（Ripple）、弹簧/果冻物理阻尼缓动（Spring Easing）与精细化表单控件封装，可以彻底打破传统企业级后台的冰冷死板感，在保持专业感的同时赋予界面与数字生命相称的通透呼吸感与亲和力。（*注：本处仅作研究期视觉工艺参考溯源；具体落地规格均已独立提炼为 `ai0` 第一方紧凑 MD3 设计系统，详见 `docs/architecture/06` 第七章与 [ADR-010](../architecture/07-implementation-adrs-and-deviation-ledger.md#adr-010--双平面隔离与控制台)。*）
 
 2. **这些先行作品在“长期活体数字生命认知中枢”维度的局限** **`[架构推断]`**：
    * SillyTavern 本质是“无状态 Prompt 拼装器 + 聊天记录滑动窗口”，角色卡里常混杂着破坏安全边界的越狱指令（Jailbreak Prompts）或情感操控脚本，且缺乏跨平台具身感知、内稳态时间流、MVCC 并发行动环与血缘真遗忘；

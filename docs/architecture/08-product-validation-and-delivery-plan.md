@@ -1,37 +1,97 @@
-# 08. 产品质量验收标准与回归评测规范 (Product Verification & Acceptance Standard)
+# 08. 渐进推演实验验证、零预设部署到上线验收闭环与交付门禁规范
 
-> 本文档定义 `ai0` 发行版本的端到端质量验收维度、安全回归断言基线与跨端一致性核验标准。
+## 1. 六阶递进验证体系
 
----
-
-## 一、核心端到端验收维度
-
-| 验收维度 | 核验目标与通过准则 |
-| :--- | :--- |
-| **启动与持久化闭环** | 通过 `pnpm dev` 或 `docker compose up -d` 启动后，`/healthz` 返回 `200 OK`；对话事件、长期记忆与配置修改写入本地 `.soul` SQLite WAL 数据库，进程重启后完整恢复且 `state_rev` 单调递增。 |
-| **实时交互与流式打断** | 通过 Protocol v0 通道完成感知上报、流式回复输出与中途打断（Barge-in），精确回执 `spoken_char_offset` 并将未说完腹稿存入上下文黑板。 |
-| **受众隐私硬隔离** | 切换至公开受众（`public_all`）时，检索层 SQL 游标阶段强制过滤全部 `only_owner` 记忆，同步启用 70% 社交面具阻尼，防止私密信息泄露。 |
-| **五表级联真遗忘与防复活** | 对指定记忆执行 `Hard Forget` 后，关联五张 SQLite 表同步擦除并写入 `redaction_ledger.json`；回滚至历史 Git 快照时强制重放墓碑账本，确认已擦除记忆不可复活。 |
-| **沙盒隔离与时间主权** | `live` 环境下调用虚拟时钟推进接口返回 `HTTP 403`；`sandbox:*` 环境下允许虚拟时间推进、睡眠巩固模拟与对抗探针注入，且对正式存档零污染。 |
-| **创作者脱敏导出** | 导出 `.soul-template.json` 或 `.ai0pack.json` 时，物理剔除 `event_log`、`memories`、`api_key` 与 `owner_token`，并生成可校验的 `SHA-256` 摘要。 |
-| **架构边界不变量** | `pnpm verify:boundaries` 全部 6 项编译期守卫通过：五大核心包拓扑锁定、扩展零内核后门、内核零隐式时间依赖、控制台组件 5 子目录模块化与无静态 Schema 漂移。 |
-
----
-
-## 二、自动化回归命令与门禁
-
-```bash
-# 1. 全仓架构边界、TypeScript 编译、类型检查与全栈单元测试
-pnpm verify:all
-
-# 2. 运行 .scenario.yaml 端到端黄金安全回归剧本（22 项 Fail-Closed 断言）
-pnpm replay:golden
+```mermaid
+flowchart LR
+    S0["Stage 0: 纸面不变量"] --> S1["Stage 1: 无头执行"]
+    S1 --> S2["Stage 2: AIRI 解构验证"]
+    S2 --> S3["Stage 3: 感知与表达"]
+    S3 --> S4["Stage 4: 跨具身派生"]
+    S4 --> S5["Stage 5: 主仓端到端验收"]
 ```
 
----
+每阶交付输入夹具、可重放时间线、预期断言与失败轨迹。Stage 0 用正反例逐行推演，其余实验固定时钟与模型事件流，记录有序输出、状态、回执和副作用。主仓同时验收真实浏览器和真实 Provider。上游已冻结的契约继续运行原有回归，修订须从最早受影响阶段重新验证。
 
-## 三、控制台界面与交互验收标准
+| 阶段与验证位置 | 刺激与可判定通过条件 |
+| --- | --- |
+| Stage 0 · `labs/stage0-paper-traces` | 分别给出只生成、已呈现、执行核实、对方确认轨迹，验证 `Generated != Presented != Actuated != UserGrounded`。用宿主、卡片、运行实例和挂载躯壳的增删用例验证四层所有权。空卷、认领、仅导卡、显式唤醒和卸载最后躯壳逐步核对生命周期。 |
+| Stage 1 · `labs/stage1-agent-core` | 以约 145 行的纯执行核验证 `AuthorityRole` 隔离，观测中的指令不得升权。`Turn / Round` 并发工具逆序完成时按原顺序结算。`maxSteps` 到限且目标证据不足时返回 `goalVerification: unverified`。注入 408/429/5xx 检验首事件前且副作用前的有界重试，越过任一边界时工具只执行一次。 |
+| Stage 2 · `labs/stage2-airi-dissection` | `ScopedContextRegistry` 在超过 `freshnessTtlMs`、断连或撤权时分别进入 `stale`、`disconnected`、`blind`，禁止读取旧载荷，跨 `AudienceScope` 查询无结果。`ReflexGate` 抑制重复例行信号，断言 `llmTokens: 0` 与 `suppressedRoutineCount` 增量。`CharacterCardResolver` 保留未知 `extensions.<namespace>` 的嵌套值，交错验证 `Inherit / Override` 与全局配置稳定性。 |
+| Stage 3 · `labs/stage3-perception-expression` | 冻结 Stage 1。经 `EmbodimentAffordanceRegistry` 注册自定义模态并核对六元组。用 `TurnLifecycleGate` 回放 `activity / interim / commit / retract`，仅有效 commit 进入提交路径，撤回使目标输入失效。`ChronoceptiveSignalSynthesizer` 对重叠冬眠只扣一次。`CommunicativeIntentEnvelope` 经 `RealizerVocabularyNegotiator` 在无合规词表或躯壳时进入 `held_pending_compliant_shell`。`GroundingReceiptTracker` 收到 `silenced` 即停止播放，`done` 后按已交付水位回收未说内容（`unsaidRemainder`），重复回执只结算一次。 |
+| Stage 4 · `labs/stage4-universal-derivation` | 冻结 Stages 1–3。对 `ContinuousStateMetaEngine` 置换同刻冲量并核对值域、复演和检查点还原。执行下表四条跨具身场景，覆盖 `EpistemicMemoryFirewall` 和 `CognitiveOrgan`。 |
+| Stage 5 · 主仓 Clean-Slate V1 | 在空卷启动真实 daemon、网关、控制台和 `builtin.webchat`，完成第二节和全部发布门禁。以探针序列、实际传输回执、脱敏轨迹、数据库断言和导出包清单作为证据。 |
 
-1. **壳层空间拓扑**：外围顶栏与左侧导航栏融入全局底板环境色（无独立卡片边框与背景框），右下方 `<main>` 作为唯一 `16px` 圆角抬升画布。
-2. **视觉克制与组件一致性**：全界面使用统一 `currentColor` 单色 SVG 矢量图标（禁用彩色系统 Emoji 充当 UI Chrome），所有表单控件统一使用二次封装 MD3 组件（左侧激活竖条指示器、底部动态聚焦线、果冻弹性 Switch 与指针水波纹）。
-3. **跨主题与响应式适配**：浅色默认模式与深色模式、三套主题色（樱粉 / 星蓝 / 翠绿）切换无对比度回归；桌面宽屏与窄屏下导航栏折叠与右侧追踪抽屉无裁切溢出。
+| Stage 4 场景 | 通过条件 |
+| --- | --- |
+| WebChat 摄像头与竞争假设 | 对同一已授权观测保留带来源和时效的竞争假设，实证到达前维持推断等级。撤权后变为 `blind`，旧帧退出当前上下文。 |
+| 桌面猫耳三连拍与拖动 `shell_container` | 同为触碰输入，按对象和能力区分猫耳三连拍与容器拖动。仅前者进入对应表达路径，后者留在布局层。 |
+| 游戏自身与队友 HP、语用玩笑 | 以主体区分两套 HP；队友变化不得记为自身伤害。`playful_banter` 在即时互动和睡眠整理中均不得写成语义事实。 |
+| 排练蓝卡、器官热替换与静默手环 | 用蓝卡触发授权后的 `CognitiveOrgan` 热替换，保留主体与状态，仅新事件走替换后的路由。静默手环仅执行协商许可的非语言表达，验证动作回执及零语音输出。 |
+
+## 2. 空目录部署到上线
+
+```mermaid
+stateDiagram-v2
+    state "L0_UNCLAIMED" as L0
+    state "L1_CLAIMED_NO_PROVIDER" as L1
+    state "L2_PROVIDER_READY_NO_SOUL" as L2
+    state "L3_SOUL_AWAKENED_CONFIG_NEEDED" as L3
+    state "L4_SOUL_AWAKENED_NO_SHELL" as L4
+    state "L5_LIVE_READY" as L5
+    [*] --> L0
+    L0 --> L1: Owner 认领并初始化 Vault
+    L1 --> L2: 在线探测通过并绑定默认模型
+    L2 --> L3: 显式唤醒
+    L3 --> L4: 补齐必需运行配置
+    L4 --> L5: 首个合规 Shell 握手成功
+    L5 --> L4: 最后一个合规 Shell 失效
+    L5 --> L3: 必需角色配置失效
+    L5 --> L1: 宿主算力前置条件失效
+```
+
+图示为逐项补齐的验收路径。守护进程从最早缺项重算实际状态，允许跨级。前置条件恢复后重查现有实例、配置及在线握手。
+
+| 状态 | 进入下一阶段的条件 | 验收与降级 |
+| --- | --- | --- |
+| `L0_UNCLAIMED` | Owner 认领、选择部署模式、初始化加密 Vault | 卡片与 Soul 数均为零，空卷无自动唤醒 |
+| `L1_CLAIMED_NO_PROVIDER` | 至少一个 Provider 在线验证成功，为 `consciousness` 绑定可用默认模型 | 缺凭据、探测失败或无可用宿主默认模型时停留。若撤销后仍有符合条件的有效路由，重新按全量条件求值 |
+| `L2_PROVIDER_READY_NO_SOUL` | Owner 创建或导入角色卡并显式唤醒实例 | 仅导入卡仍保持本阶段，移除活动实例后重算 |
+| `L3_SOUL_AWAKENED_CONFIG_NEEDED` | 补齐必需扩展、Vault 引用和角色模型覆盖 | 必需角色覆盖失效时回本级。未授权可选感官保持 `"blind"` |
+| `L4_SOUL_AWAKENED_NO_SHELL` | 至少一个在线 Shell 的身份、令牌、受众和能力握手合规 | 最后一个合规 Shell 卸载、断连或授权失效后回本级（此前条件仍成立时） |
+| `L5_LIVE_READY` | 全部条件持续满足 | 接纳 LIVE 话轮，虚拟时钟锁定 1x。任一条件失效时收紧接纳 |
+
+关停、异常退出与恢复需纳入测试。持久记录 `last_alive_heartbeat_ts`，按第 03 篇在重启或导入时将超过五分钟的心跳缺口记入 `HibernationIntervals`。恢复使用新握手重判在线状态，并在内生时感中扣除与互动间隔重叠的冬眠时窗。
+
+| 探针 | HTTP 契约 | 调用方断言 |
+| --- | --- | --- |
+| `GET /healthz` | 进程能够服务探针时返回 `200 OK` | L0～L5 均可存活，供进程级探活 |
+| `GET /readyz` | L0～L4 返回 `503 Service Unavailable`，JSON 含 `stage` 与 `missing_prerequisites` 字符串数组。L5 返回 `200 OK` 且缺项数组为空 | 控制台据此引导，数据面接纳使用同一判定，Owner 配置和 Shell 握手仍可推进上线 |
+
+### 空 `/data` 自动化规程
+
+1. 为每次运行分配独立空卷，启动发行镜像。轮询探针至有界截止，断言 `/healthz` 为 200、`/readyz` 为 503 / `L0_UNCLAIMED`，卡片和 Soul 枚举均为零。向 Channel A 提交话轮并断言门控拒绝。
+2. 调用 `POST /api/admin/v1/host/claim` 完成 Owner 认领、部署模式选择及 Vault 初始化。断言 L1，刷新控制台与重启 daemon 后重查同一阶段。
+3. 验收 Provider 矩阵包含 `opencode_go` 的 `deepseek-v4.1-flash`、OpenAI-compatible、Anthropic、DeepSeek、Ollama。各适配器用隔离配置验证有效在线探测及错误凭据或不可达端点的失败路径。选定一个探测通过的路由绑定 `consciousness` 后确认 L2，`vision`、`speech` 可按需配置。发布证据记录适配器、模型、时间与结果，隐藏凭据。
+4. 导入含自定义 `extensions.<namespace>` 的 CCv3 卡，校验嵌套值无损及仅导卡仍为 L2。显式唤醒并查验 `origin_card_id` 和独立实例。用夹具保留一个必需配置缺口观察 L3，再补齐至 L4。注入未授权可选摄像头帧，断言 `"blind"`、旧载荷不可见且继续允许上线。
+5. 绑定 `Principal`，签发限定受众和能力的 `Scoped Capability Token`，通过 `HandshakeManifest` 挂载 `builtin.webchat`。先用失效令牌断言握手失败且仍为 L4，再用合规令牌断言 200 / `L5_LIVE_READY`。刷新或重连浏览器重查 daemon 权威状态。
+6. 执行真实模型话轮，核对 Provider 路由、结构化帧和呈现回执。播放中触发打断，验证 `silenced` 即停播，再用 `done` 核对交付水位及 `unsaid_remainder` 仅回收一次。导出并解包 CCv3、`.soul-template`，验证允许分享的自定义扩展可往返，私密聊天、记忆、轨迹、附件、遗忘账本和 Vault 凭据均未泄露。
+7. 卸载最后一个合规 Shell 验证回 L4，重新挂载恢复 L5。撤销唯一有效 Provider 验证回 L1 并拒绝新话轮，恢复后重验所有前置条件。以受控时钟模拟超过五分钟的关停，恢复后断言冬眠入账、交叠只扣一次，在线条件按新会话求值。
+
+## 3. CI 与发布门禁
+
+| 门禁 | 执行范围与通过证据 |
+| --- | --- |
+| 编译期边界 | `pnpm verify:boundaries` 运行 `verify-architecture-boundaries.mjs`，覆盖八包依赖方向、`plugins/**` 依赖白名单及核心和应用禁止反向导入插件。验证控制台设计系统 `tokens / primitives / shell / domain-visualizers / composites` 的约定边界。 |
+| 类型、构建、测试 | 运行工作区 Typecheck、Build 及 `labs/**`、`packages/**`、`apps/**` 的单元和集成测试。保存失败模块、编译诊断、测试断言与复演输入，任一执行失败阻断发布。 |
+| Fail-Closed 黄金剧本 | 执行 `.scenario.yaml` 正反例。私密检索验证 SQL `WHERE visibility_scope` 在候选产生前生效。睡眠写入阻断玩笑晋升与墓碑血缘的迟到提案。Hard Forget 注入可识别标记，检查 `event_log`、`memories`、`turn_decision_traces`、`cognitive_state_checkpoints`、`prospective_commitments` 及相关索引，断言纯衍生删除、混合记忆按拓扑序重算。从遗忘前快照恢复，确认先重放 `redaction_ledger.json` 再开放服务。 |
+| 浏览器组合 | `pnpm verify:composition-browser` 用 Playwright 在真实浏览器验证 Owner 引导、模型路由、插件动态挂载、单活动路由、LIVE 与 `SANDBOX:<fork_id>` 写入隔离及刷新后的权威就绪状态。 |
+| 发行镜像 | 对同一候选镜像运行第二节空卷 E2E，再执行生产备份恢复和迁移演练。保存镜像摘要、探针轨迹、在线探测结果、清除断言、浏览器报告和脱敏导出清单。缺失证据或跳过必需用例视为未通过。 |
+
+## 4. 空卷 Docker 部署与自托管交付
+
+1. 从通过门禁的镜像摘要启动守护进程，将新增命名卷或持久卷挂到容器 `/data`，使运行身份具备该目录的读写权限。部署参数从发行镜像取得，业务数据落在 `/data/souls/host/` 与 `/data/souls/<soul_id>.soul/`。前者持有宿主配置和 Vault，后者持有独立实例数据库、状态和附件，首次启动可为空。
+2. Docker HEALTHCHECK 使用 `/healthz`。Kubernetes 的 startupProbe 与 livenessProbe 使用 `/healthz`，readinessProbe 使用 `/readyz`，探针端口与容器配置一致。面向用户的话轮入口随就绪门控启用。通过受 Owner 认证保护、在未就绪时仍可访问的管理入口完成认领和握手，例如直接转发到 Pod 管理端口，避免依赖只路由就绪端点的 Service。
+3. 用 Owner 管理入口依序完成认领、算力探测、创建或导入、显式唤醒、配置与躯壳握手。以 `/readyz` 的 L5、真实话轮回执、最后躯壳失效后的降级作为交付验收证据。
+4. 备份使用存储层一致性快照，或停止写入后备份实例与宿主所需文件。保护加密 Vault 备份，将解封材料分开保管，持久保留独立于快照的最新遗忘账本。定期在隔离卷演练解封和快照重放。轮换 Provider 密钥时先在 Vault 写入新版本并实测，通过后更新引用、检查下一回合及就绪状态，再撤销旧版本。
+5. 无锁定迁移使用完整 `.soul` 迁移包，例如 `.soul.tar.zst`。冻结源实例写入，导出并核验归档完整性，在目标宿主导入后核对实例 ID、事件和检查点，重放最新遗忘账本并记录冬眠窗口。目标宿主独立认领和配置 Vault、Provider 与令牌，再按步骤挂载并验收真实话轮。切换前维持单一写入实例，失败时核对目标新增写入后再恢复源端服务。CCv3 与 `.soul-template` 用于脱敏分享，完整迁移包按私密备份保护。

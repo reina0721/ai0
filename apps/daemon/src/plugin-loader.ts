@@ -29,7 +29,7 @@ import {
   type RuntimePluginDescriptor,
   type StateDomain
 } from "@ai0/protocol";
-import type { PolymorphicExtensionHost } from "@ai0/kernel";
+import type { PolymorphicExtensionHost } from "@ai0/cognition-core";
 
 const REPO_ROOT = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
 
@@ -439,6 +439,16 @@ export class RuntimePluginLoader {
   }
 
   get revision() { return this.revisionValue; }
+
+  setSoulDirectory(soulDir: string): void {
+    const dir = resolve(soulDir, "plugins");
+    const root = this.roots.find(item => item.origin === "soul");
+    if (root?.dir === dir) return;
+    if (root) root.dir = dir;
+    else this.roots.splice(1, 0, { dir, origin: "soul" });
+    for (const host of this.scopes.keys()) this.configurations.delete(host);
+    this.forceReload();
+  }
 
   constructor(options: PluginLoaderOptions = {}) {
     const builtinDir = resolve(options.builtinPluginsDir ?? join(REPO_ROOT, "plugins"));

@@ -11,21 +11,20 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-import { GOLDEN_REGRESSION_SCENARIO_V1, ModelContextLimitError, runScenarioPlaybook } from "@ai0/kernel";
+import { ModelContextLimitError, ProviderNotConfiguredError, UpstreamInferenceError } from "@ai0/agent-core";
+import { GOLDEN_REGRESSION_SCENARIO_V1, runScenarioPlaybook } from "@ai0/cognition-core";
 import { AudienceScopeSchema, HandshakeManifestSchema, type AudienceScope, type SensorModality, type VenueType } from "@ai0/protocol";
 import {
   compileStudioPromptPreview,
   readConsoleStudioConfig,
-  readHostInfrastructureConfig,
+  listHostCharacterCards,
   readSoulArchiveConfig,
-  readSoulProfileConfig,
-  upsertProviderInstance,
   writeExtensionRuntimeConfig,
-  writeSoulProfileConfig,
   type RelationshipArchetype
 } from "@ai0/storage";
 
-import { createDefaultDaemonRuntime, type Ai0DaemonRuntime } from "./index.js";
+import { createDefaultDaemonRuntime, SoulNotAwakenedError, type Ai0DaemonRuntime } from "./index.js";
+import { completeOnboarding, lifecycleErrorResponse } from "./soul-lifecycle.js";
 import { registerShellProtocolRunRoutes } from "./shell-runs.js";
 import {
   readConversation,
@@ -34,11 +33,9 @@ import {
   dispatchOrAdvanceCoWorkTask,
   distillAndOptionallyApplyCard,
   ingestKnowledgeDocument,
-  listAvailableSoulInstances,
   pingStudioProvider,
   reviewGrowthProposal,
   runManualSleepReflection,
-  saveVaultProviderKey,
   searchKnowledgeChunks,
   updateStudioConfig
 } from "./studio-service.js";
@@ -110,12 +107,19 @@ export function createUnifiedDaemonHttpApp(
 
   app.get("/healthz", (c) => {
     c.header("cache-control", "no-store");
+    const readiness = runtime.computeReadiness();
     return c.json({
-      ok: true,
+      ok: true, alive: true,
       service: "ai0-daemon",
-      soulDir: runtime.soulDir,
+      stage: readiness.stage, hasAwakenedSoul: runtime.hasAwakenedSoul,
+      soulDir: runtime.hasAwakenedSoul ? runtime.soulDir : null,
       stateRev: runtime.coordinator.getSnapshot().state_rev
     });
+  });
+  app.get("/readyz", c => {
+    c.header("cache-control", "no-store");
+    const readiness = runtime.computeReadiness();
+    return c.json(readiness, readiness.ready ? 200 : 503);
   });
 
   // ---------------------------------------------------------------------------
@@ -277,10 +281,11 @@ export function createUnifiedDaemonHttpApp(
   });
 
   app.get("/api/studio/instances", (c) =>
-    c.json({ ok: true, instances: listAvailableSoulInstances(runtime.soulDir) })
+    c.json({ ok: true, instances: runtime.listSoulInstances() })
   );
 
   app.post("/api/studio/instances", async (c) => {
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const body = await readJsonObject(c);
     const result = createNewSoulInstance(runtime, {
       slug: String(body.slug ?? ""),
@@ -291,85 +296,30 @@ export function createUnifiedDaemonHttpApp(
     return c.json(result);
   });
 
-  app.post("/api/studio/onboarding", async (c) => {
-    const body = await readJsonObject(c);
-    const current = readConsoleStudioConfig(runtime.soulDir);
-    const nextRole = (body.primaryRole as RelationshipArchetype) ?? current.soulStudio.primaryRole;
-    const nextName =
-      String(body.displayName ?? current.soulStudio.displayName).trim() ||
-      current.soulStudio.displayName;
-    const nextProviders = [...current.providers];
-
-    if (typeof body.apiKey === "string" && body.apiKey.trim()) {
-      const targetId = String(body.providerId ?? "prov_deepseek_v3");
-      const rawKey = body.apiKey.trim();
-      const idx = nextProviders.findIndex((p) => p.id === targetId);
-      if (idx >= 0) {
-        saveVaultProviderKey(runtime.soulDir, targetId, rawKey);
-        nextProviders[idx] = {
-          ...nextProviders[idx]!,
-          apiKeyMasked:
-            rawKey.length > 8 ? `${rawKey.slice(0, 4)}••••••${rawKey.slice(-4)}` : "••••••",
-          baseUrl:
-            typeof body.baseUrl === "string" && body.baseUrl.trim()
-              ? body.baseUrl.trim()
-              : nextProviders[idx]!.baseUrl,
-          modelId:
-            typeof body.modelId === "string" && body.modelId.trim()
-              ? body.modelId.trim()
-              : nextProviders[idx]!.modelId,
-          status: "ready"
-        };
-      }
-      // Also update canonical HostInfrastructureStore & default Profile primaryChat binding
-      const infra = readHostInfrastructureConfig(runtime.hostDir);
-      const existingHostProv = infra.providers.find((p) => p.id === targetId);
-      if (existingHostProv) {
-        const chosenModel =
-          typeof body.modelId === "string" && body.modelId.trim()
-            ? body.modelId.trim()
-            : existingHostProv.models[0]!;
-        const nextModels = existingHostProv.models.includes(chosenModel)
-          ? existingHostProv.models
-          : [chosenModel, ...existingHostProv.models];
-        upsertProviderInstance(
-          runtime.hostDir,
-          {
-            ...existingHostProv,
-            baseUrl:
-              typeof body.baseUrl === "string" && body.baseUrl.trim()
-                ? body.baseUrl.trim()
-                : existingHostProv.baseUrl,
-            models: nextModels,
-            health: { ...existingHostProv.health, status: "ready" }
-          },
-          rawKey
-        );
-        const soulProfiles = readSoulProfileConfig(runtime.soulDir);
-        const nextProfList = soulProfiles.profiles.map((prof) =>
-          prof.id === soulProfiles.defaultProfileId
-            ? { ...prof, roleArchetype: nextRole, primaryChat: { providerId: targetId, modelId: chosenModel } }
-            : prof
-        );
-        writeSoulProfileConfig(runtime.soulDir, { ...soulProfiles, profiles: nextProfList });
-      }
-    }
-
-    const saved = updateStudioConfig(runtime, {
-      onboardingCompleted: true,
-      providers: nextProviders,
-      soulStudio: {
-        displayName: nextName,
-        primaryRole: nextRole,
-        ...(typeof body.corePersonalityPrompt === "string" && body.corePersonalityPrompt.trim()
-          ? { corePersonalityPrompt: body.corePersonalityPrompt.trim() }
-          : {})
-      }
+  app.get("/api/studio/cards", c => c.json({ cards: listHostCharacterCards(runtime.hostDir) }));
+  for (const [studioRoute, adminRoute] of Object.entries({
+    "host-claim": "host/claim", cards: "cards", "souls/awaken": "souls/awaken", "souls/select": "souls/select"
+  })) {
+    app.post("/api/studio/" + studioRoute, async c => {
+      if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
+      const result = await runtime.adminServer.handleRequest({
+        method: "POST", path: "/api/admin/v1/" + adminRoute,
+        headers: { "x-ai0-owner-token": c.req.header("x-ai0-owner-token") }, body: await readJsonObject(c)
+      });
+      return c.json(result.body, result.status as ContentfulStatusCode);
     });
-    return c.json({ ok: true, config: saved });
+  }
+
+  app.post("/api/studio/onboarding", async c => {
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
+    const body = await readJsonObject(c);
+    try {
+      return c.json(completeOnboarding(runtime, body));
+    } catch (error) {
+      const failure = lifecycleErrorResponse(error);
+      return c.json(failure.body, failure.status);
+    }
   });
-
-
 
   // ---------------------------------------------------------------------------
   // Dynamic Plugin Discovery, Manifest & Self-Contained Asset Hosting (/api/plugins/*)
@@ -533,6 +483,8 @@ export function createUnifiedDaemonHttpApp(
     if (!parsed.success) return c.json({ error: "INVALID_HANDSHAKE" }, 400);
     try {
       const claims = runtime.shellGateway.verifyScopedCapabilityToken(token, runtime.ownerMasterToken);
+      if (!runtime.hasAwakenedSoul && (claims.target ?? "live") === "live")
+        return c.json({ error: "SOUL_NOT_AWAKENED" }, 503);
       if (claims.soul_id && claims.soul_id !== readSoulArchiveConfig(runtime.soulDir).manifest.soul_id) return c.json({ error: "SOUL_MISMATCH" }, 403);
       if (claims.plugin_id && claims.generation !== runtime.generation(claims.plugin_id, claims.target)) return c.json({ error: "PLUGIN_REMOVED" }, 403);
       return c.json(runtime.shellGateway.handleHandshake(parsed.data, runtime.ownerMasterToken));
@@ -568,6 +520,10 @@ export function createUnifiedDaemonHttpApp(
       }, { deferDeliveryReceipt: true });
       return c.json(turn);
     } catch (error) {
+      if (error instanceof SoulNotAwakenedError)
+        return c.json({ error: error.code, message: error.message, readiness: runtime.computeReadiness() }, 503);
+      if (error instanceof ProviderNotConfiguredError) return c.json({ error: error.code, message: error.message }, 503);
+      if (error instanceof UpstreamInferenceError) return c.json({ error: error.code, message: error.message }, 502);
       if (error instanceof ModelContextLimitError) return c.json({ error: error.code, message: error.message }, 422);
       throw error;
     }
@@ -647,13 +603,15 @@ async function runCli(): Promise<void> {
 
   const host = process.env.AI0_HOST ?? "127.0.0.1";
   const port = parsePortArg(rawArgs) ?? Number(process.env.AI0_PORT ?? 4173);
-  const soulDir = process.env.AI0_SOUL_DIR ?? "souls/default.soul";
+  const soulDir = process.env.AI0_SOUL_DIR?.trim() || undefined;
+  const soulsRoot = process.env.AI0_SOULS_ROOT?.trim() || "souls";
+  const allowDeterministicSandbox = process.env.AI0_TEST_DETERMINISTIC_MODEL === "1";
   const ownerMasterToken = process.env.AI0_OWNER_TOKEN ?? "ai0-local-owner-dev-token";
   const llmApiKey = process.env.AI0_LLM_API_KEY?.trim() || undefined;
   const runtime = createDefaultDaemonRuntime({
-    soulDir,
+    ...(soulDir ? { soulDir } : {}), soulsRoot,
     ownerMasterToken,
-    seedIfEmpty: process.argv.includes("--demo"),
+    allowDeterministicSandbox,
     llmConfig: llmApiKey
       ? {
           provider:
@@ -673,7 +631,7 @@ async function runCli(): Promise<void> {
         "============================================================",
         " ai0 — Universal Cyber-Life Cognitive Kernel (Hono Daemon)",
         ` API & Dual-Plane Gateway:     http://${host}:${port}`,
-        ` Active Soul Archive:          ${runtime.soulDir}`,
+        ` Active Soul Archive:          ${runtime.hasAwakenedSoul ? runtime.soulDir : "unawakened"}`,
         ` Channel A Protocol Bridge:    POST /protocol/v0/shell/*`,
         ` Channel B Admin API (18+):    /api/admin/v1/*`,
         "============================================================"

@@ -150,7 +150,11 @@ export function useWebChatSession(
       setNeedsRecovery(false);
       const failureNotice = result.error === "MODEL_CONTEXT_LIMIT"
         ? "本轮内容超出模型上下文窗口。请缩短消息，或检查模型参数中的上下文窗口覆盖值。"
-        : "本次回复生成失败。";
+        : result.error === "PROVIDER_NOT_READY"
+          ? "尚未配置或验证可用模型服务，请先在初始化向导或模型服务池完成配置。"
+          : result.error === "SOUL_NOT_AWAKENED"
+            ? "当前尚未唤醒任何角色存档 (.soul)，请先导入或创建角色卡完成唤醒。"
+            : "本次回复生成失败。";
       setNotice(result.status === "failed" ? failureNotice : null);
       run.stream.abort();
     }

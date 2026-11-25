@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { AudienceScopeSchema } from "./audience.js";
+import { GroundingTruthStageSchema, RealizerAffordanceDescriptorSchema } from "../expression/index.js";
+import { BodyAnchorDescriptorSchema, SensorAffordanceDescriptorSchema, UniversalObservationFrameSchema } from "../perception/index.js";
 
 export const ProtocolVersionSchema = z.literal("0.1.0");
 export type ProtocolVersion = z.infer<typeof ProtocolVersionSchema>;
@@ -11,20 +14,7 @@ export const VenueTypeSchema = z.enum([
 ]);
 export type VenueType = z.infer<typeof VenueTypeSchema>;
 
-const GroupAudienceScopeSchema = z
-  .string()
-  .regex(/^(only_owner|public_all|group:[a-zA-Z0-9_.:-]+)$/)
-  .refine(
-    (scope): scope is `group:${string}` => scope.startsWith("group:"),
-    "Group audience scopes must start with group:"
-  );
-
-export const AudienceScopeSchema = z.union([
-  z.literal("only_owner"),
-  z.literal("public_all"),
-  GroupAudienceScopeSchema
-]);
-export type AudienceScope = z.infer<typeof AudienceScopeSchema>;
+export { AudienceScopeSchema, type AudienceScope } from "./audience.js";
 
 export const WellKnownShellKindSchema = z.enum([
   "webchat",
@@ -63,20 +53,18 @@ export type WellKnownSensorModality = z.infer<
   typeof WellKnownSensorModalitySchema
 >;
 
-const CustomSensorModalitySchema = z
+const OpenSensorModalitySchema = z
   .string()
-  .regex(/^custom\..+$/)
-  .refine(
-    (modality): modality is `custom.${string}` => modality.startsWith("custom.")
-  );
+  .min(1)
+  .refine((value) => !value.endsWith(".") && (!value.startsWith("custom.") || value.length > "custom.".length));
 
-export const SensorModalitySchema = z.union([
-  WellKnownSensorModalitySchema,
-  CustomSensorModalitySchema
-]);
+export const SensorModalitySchema = z.union([WellKnownSensorModalitySchema, OpenSensorModalitySchema]);
 export type SensorModality = z.infer<typeof SensorModalitySchema>;
 
 export const ExpressionVocabularySchema = z.object({
+  expression_tags: z.array(z.string()).optional(),
+  semantic_actions: z.array(z.string()).optional(),
+  haptic_cues: z.array(z.string()).optional(),
   facial_expressions: z.array(z.string()).optional(),
   gesture_intents: z.array(z.string()).optional(),
   voice_emotion_tags: z.array(z.string()).optional()
@@ -108,6 +96,11 @@ export const HandshakeManifestSchema = z.object({
   }),
   latency_budget_ms: z.number(),
   capabilities: z.object({
+    supports_card_assets: z.boolean().optional(),
+    embodiment_anchors: z.array(z.string()).optional(),
+    body_anchors: z.array(BodyAnchorDescriptorSchema).optional(),
+    sensor_affordances: z.array(SensorAffordanceDescriptorSchema).optional(),
+    realizer_affordances: z.array(RealizerAffordanceDescriptorSchema).optional(),
     sensors: z.array(SensorModalitySchema),
     supported_extensions: z.array(z.string()),
     expression_vocabulary: ExpressionVocabularySchema.optional(),
@@ -139,6 +132,7 @@ export const PerceptionEnvelopeSchema = z.object({
   summary_text: z.string(),
   confidence: z.number().min(0).max(1),
   sustained_ms: z.number().optional(),
+  frame: UniversalObservationFrameSchema.optional(),
   persistence_hint: z.enum(["permanent", "ephemeral_blackboard"]),
   extensions: z.record(z.unknown())
 });
@@ -149,7 +143,11 @@ export const ExpressionEnvelopeSchema = z.object({
   correlation_event_id: z.string(),
   chunk_seq: z.number(),
   is_final: z.boolean(),
-  action_type: z.enum(["speak", "explicit_silence", "invoke_actuator"]),
+  action_type: z.enum(["speak", "explicit_silence", "invoke_actuator", "request_observation"]),
+  attention_target: z.string().optional(),
+  expressive_stance: z.record(z.unknown()).optional(),
+  delivery_constraints: z.record(z.unknown()).optional(),
+  observation_request: z.record(z.unknown()).optional(),
   fallback_text: z.string(),
   silence_reason: z
     .enum([
@@ -180,7 +178,9 @@ export const DeliveryReceiptSchema = z.object({
     "degraded",
     "failed"
   ]),
-  spoken_char_offset: z.number().optional(),
+  grounding_stage: GroundingTruthStageSchema.optional(),
+  interruption_boundary: z.enum(["silenced", "done"]).optional(),
+  spoken_char_offset: z.number().int().nonnegative().optional(),
   played_audio_ms: z.number().optional(),
   interrupted_by_event_id: z.string().optional(),
   degraded_extensions: z.array(z.string()).optional(),
