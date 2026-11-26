@@ -1061,7 +1061,7 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
        AND (? IS NULL OR e.principal_id=?) AND json_extract(e.payload_json,'$.thread') IS ?
        AND e.redacted_at_ts_ms IS NULL AND (
          EXISTS (SELECT 1 FROM turn_decision_traces t WHERE t.turn_event_id=e.event_id) OR
-         json_extract(e.payload_json,'$.channel_run_status') IN ('cancelled','failed'))
+         json_extract(e.payload_json,'$.channel_run_status') IN ('cancelled','failed','held_pending_compliant_channel'))
        ORDER BY e.event_seq DESC LIMIT 50`
     ).all(channelId, audience, principal ?? null, principal ?? null, thread ?? null));
   }
@@ -1079,13 +1079,23 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     return row ? JSON.parse(String(row.snapshot_json)) as ChannelRunProcess : undefined;
   }
 
+  holdChannelRunIntent(channelId: string, eventId: string, intent: import("@ai0/protocol").CommunicativeIntentEnvelope): void {
+    this.#database.prepare(
+      `UPDATE event_log SET payload_json = json_set(payload_json, '$.channel_run_status', 'held_pending_compliant_channel',
+         '$.pending_intent', json(?))
+       WHERE event_id = ? AND source_channel_id = ? AND redacted_at_ts_ms IS NULL
+         AND json_extract(payload_json,'$.channel_process_redacted') IS NULL`
+    ).run(JSON.stringify({ id: intent.intentId, kind: intent.intent, correlation: intent.correlationEventId,
+      constraints: intent.deliveryConstraints }), eventId, channelId);
+  }
+
   markChannelRunEnded(
     channelId: string,
     eventId: string,
     status: "cancelled" | "failed"
   ): void {
     this.#database.prepare(
-      `UPDATE event_log SET payload_json = json_set(payload_json, '$.channel_run_status', ?)
+      `UPDATE event_log SET payload_json = json_set(json_remove(payload_json, '$.pending_intent'), '$.channel_run_status', ?)
        WHERE event_id = ? AND source_channel_id = ?
          AND redacted_at_ts_ms IS NULL`
     ).run(status, eventId, channelId);

@@ -10,9 +10,11 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 import {
   AgentSkillRecordSchema,
+  CarrierProjectionSchema, type CarrierProjection,
   type AgentSkillRecord,
   type AudienceScope,
   type CapabilityRisk
@@ -131,6 +133,7 @@ export function parseSkillMarkdown(rawText: string): ParsedSkillMarkdown {
   const fmText = match[1]!;
   const bodyMarkdown = match[2]!.trim();
   const frontmatter: Record<string, unknown> = {};
+  if (fmText.trimStart().startsWith("{") || /^projections\s*:/mu.test(fmText)) return { frontmatter: parseYaml(fmText), bodyMarkdown };
   let activeArrayKey: string | undefined;
 
   for (const line of fmText.split("\n")) {
@@ -173,6 +176,7 @@ export function parseSkillMarkdown(rawText: string): ParsedSkillMarkdown {
 }
 
 export function serializeSkillMarkdown(record: {
+  projections?: readonly CarrierProjection[];
   id: string;
   displayName: string;
   description: string;
@@ -186,6 +190,7 @@ export function serializeSkillMarkdown(record: {
 }): string {
   const lines = [
     "---",
+    ...(record.projections ? [`projections: ${JSON.stringify(record.projections)}`] : []),
     `skill_id: ${JSON.stringify(record.id)}`,
     `display_name: ${JSON.stringify(record.displayName)}`,
     `description: ${JSON.stringify(record.description)}`,
@@ -243,6 +248,7 @@ function scanSkillsDirectory(
           : "only_owner";
 
       const record = AgentSkillRecordSchema.parse({
+        projections: frontmatter.projections,
         id,
         slug: entry.name,
         displayName,
@@ -305,6 +311,7 @@ export function setAgentSkillEnabled(
 }
 
 export interface SaveUserSkillInput {
+  projections?: CarrierProjection[];
   slug?: string;
   id?: string;
   displayName: string;
@@ -329,6 +336,7 @@ export function saveUserAgentSkill(
   const filePath = join(skillDir, "SKILL.md");
 
   const markdown = serializeSkillMarkdown({
+    projections: input.projections,
     id,
     displayName: input.displayName.trim() || slug,
     description: input.description?.trim() ?? "",
@@ -393,6 +401,7 @@ export function importUserSkillMarkdown(
       : "only_owner";
 
   return saveUserAgentSkill(soulDirPath, {
+    projections: CarrierProjectionSchema.array().optional().parse(frontmatter.projections),
     slug,
     id:
       typeof frontmatter.skill_id === "string" && frontmatter.skill_id.trim()

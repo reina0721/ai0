@@ -16,7 +16,7 @@
   "permissions": {
     "read_blackboard_domains": [
       "D1_WORKING_TURN",
-      "D2_HOMEOSTASIS_AFFECT"
+      "D2_CONTINUOUS_STATES"
     ],
     "propose_mutation_domains": [],
     "max_audience_scope": "only_owner",

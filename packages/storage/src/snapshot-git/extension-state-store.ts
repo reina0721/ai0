@@ -68,7 +68,7 @@ export function writeExtensionRuntimeConfig(
   const enabled = meta.enabled ?? existing?.enabled ?? true;
 
   const facets = meta.facets ?? existing?.facets;
-  if (!facets?.length) throw new TypeError("Extension state requires at least one facet");
+  if (!facets) throw new TypeError("Extension state requires its declared facet list");
   const entry: ExtensionPersistentState = {
     extension_id: extensionId,
     carrier_kind: meta.carrier_kind ?? existing?.carrier_kind ?? "native_code_plugin",

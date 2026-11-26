@@ -3,9 +3,11 @@ import { z } from "zod";
 import { AudienceScopeSchema } from "../core-v0/primitives.js";
 import {
   CapabilityRiskSchema,
+  CarrierProjectionSchema,
   ExtensionCarrierKindSchema,
   ExtensionFacetIdSchema,
   ExtensionPermissionsSchema,
+  ExtensionServicesSchema,
   PluginConfigFieldSchema,
   ThemeColorPresetSchema
 } from "../plugin-manifests/index.js";
@@ -182,6 +184,7 @@ export const McpTransportSchema = z.enum(["stdio", "sse", "streamable_http"]);
 export type McpTransport = z.infer<typeof McpTransportSchema>;
 
 export const McpToolDescriptorSchema = z.object({
+  inputSchema: z.record(z.unknown()).optional(), outputSchema: z.record(z.unknown()).optional(),
   name: z.string().min(1),
   description: z.string().default(""),
   inputSchemaSummary: z.string().optional(),
@@ -190,6 +193,9 @@ export const McpToolDescriptorSchema = z.object({
 export type McpToolDescriptor = z.infer<typeof McpToolDescriptorSchema>;
 
 export const McpServerConfigSchema = z.object({
+  projections: z.array(CarrierProjectionSchema).optional(),
+  /** Set by the host owner. Importing an author's projections does not subscribe. */
+  subscribedResourceUris: z.array(z.string().url()).optional(),
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().default(""),
@@ -210,6 +216,7 @@ export const McpServerConfigSchema = z.object({
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
 export const AgentSkillRecordSchema = z.object({
+  projections: z.array(CarrierProjectionSchema).optional(),
   id: z.string().min(1),
   slug: z.string().min(1),
   displayName: z.string().min(1),
@@ -235,7 +242,8 @@ export const ExtensionMarketEntrySchema = z.object({
   version: z.string().min(1),
   author: z.string().min(1),
   description: z.string().default(""),
-  facets: z.array(ExtensionFacetIdSchema).min(1),
+  facets: z.array(ExtensionFacetIdSchema),
+  services: ExtensionServicesSchema.optional(),
   carrierKind: ExtensionCarrierKindSchema,
   tags: z.array(z.string()).default([]),
   homepage: z.string().optional(),

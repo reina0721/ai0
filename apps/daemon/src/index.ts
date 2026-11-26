@@ -1,6 +1,6 @@
 import { allowedCollections, mountedCollectionIds, profileMounts, searchKnowledge } from "./knowledge-service.js";
 import { countDeliveredSources, listKnowledgeCollections, turnKnowledgeSources } from "@ai0/storage";
-import { ExtensionCoreHost, ExtensionComposition, cognitionStateDynamicsFacet, cognitionContextContributorFacet, cognitionAttentionArbitratorFacet } from "@ai0/sdk";
+import { ExtensionCoreHost, ExtensionComposition, cognitionStateDynamicsFacet, cognitionAttentionArbitratorFacet } from "@ai0/sdk";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,18 +16,18 @@ import {
 } from "@ai0/gateway";
 import {
   AuthoritativeStateCoordinator,
+  mountCardCodec,
   BlackboardCompiler,
-  BrainRegionRouter,
+  DigitalLifeBrainRegionRouter as BrainRegionRouter,
   buildRegionBindingsFromProfile,
-  InteractionOpportunityPool,
   resolveSessionProfile,
-  SensoryCoverageBucketManager,
   ThreeDimensionalPolicyEngine,
-  ContinuousStateMetaEngine,
   evaluateCrisisGuard,
   toBrainRouterConfig,
   UniversalLlmProviderClient,
-  VirtualClock,
+  createW1DialogueProfile,
+  renderEmbodiedPresentation,
+  digitalLifeHypothesisRevision,
   W1FastDialogueWorker,
   W2AgencyTaskWorker,
   W3SleepReflectionWorker,
@@ -36,14 +36,25 @@ import {
   type ReadOnlyCognitiveSnapshot,
   type KernelMemoryRetriever,
   type KernelReadOnlyStorageView,
-  type TargetInstance,
   type W1AsyncTurnOptions,
   type VerifiableTurnTrace as KernelTurnTrace
-} from "@ai0/cognition-core";
-import { getEffectiveModelContextWindow, ProviderNotConfiguredError, type LlmProviderConfig } from "@ai0/agent-core";
-import type { AudienceScope, DeploymentReadinessReport, SensorModality, VenueType } from "@ai0/protocol";
+} from "./profiles/digital-life/index.js";
 import {
-  compileStudioPromptPreview,
+  InteractionOpportunityPool
+} from "@ai0/expression-core";
+import {
+  SensoryCoverageBucketManager
+} from "@ai0/perception-core";
+import {
+  ContinuousStateMetaEngine,
+  VirtualClock,
+  type TargetInstance
+} from "@ai0/cognition-core";
+import { AgentCoreRuntime, ModelRequestJournal, UpstreamModelClient, getEffectiveModelContextWindow, registeredModelTransport, tracePreparedRequest,
+  ProviderNotConfiguredError, type AgentBindings, type AgentOptions, type LlmProviderConfig } from "@ai0/agent-core";
+import type { AudienceScope, DeploymentReadinessReport, HostInfrastructureConfig, ModelSlotBinding, SensorModality, VenueType } from "@ai0/protocol";
+import {
+  compileStudioPrompt,
   CoordinatorStorageMutator,
   deleteExtensionRuntimeState,
   ensureOrthogonalStoresMigrated,
@@ -66,6 +77,7 @@ import {
   SoulArchiveManager,
   initializeSoulDirectory,
   readConsoleStudioConfig,
+  isTaskExecutionApproved,
   readSoulArchiveConfig,
   writeExtensionRuntimeConfig
 } from "@ai0/storage";
@@ -79,11 +91,13 @@ import {
 } from "./admin-handlers.js";
 import {
   buildConversationsList,
-  buildLivePromptPreviews,
   discoverSoulDirectories,
   listAvailableSoulInstances,
   readVaultProviderKey
 } from "./studio-service.js";
+import { mountKnowledgeTaskExecutor } from "./task-executors.js";
+import { channelInference, selectResponseContract, ChannelRequestPreview } from "./channel-inference.js";
+import type { SoulConsoleStudioConfig } from "@ai0/storage";
 import { RuntimePluginLoader, type InstallExternalPluginInput } from "./plugin-loader.js";
 
 export { ProviderNotConfiguredError };
@@ -94,6 +108,8 @@ export interface DefaultDaemonOptions {
   ownerMasterToken?: string;
   targetInstance?: string;
   allowDeterministicSandbox?: boolean;
+  capturePromptBodies?: boolean;
+  dialogueModelPackageId?: string;
   llmConfig?: LlmProviderConfig;
   extraPluginDirs?: readonly string[];
   builtinPluginsDir?: string;
@@ -133,33 +149,20 @@ function createCoordinatorStorage(
       const cp = getStorage().getLatestCheckpoint();
       if (!cp) return undefined;
       const data = JSON.parse(cp.working_memory_json);
-      if (data.format !== "ai0.coordinator.v1") return undefined;
+      if (data.format !== "ai0.coordinator.v1" && data.format !== "ai0.coordinator.v2") return undefined;
       return data.snapshot as ReadOnlyCognitiveSnapshot;
     },
     checkpointCoordinatorState(snapshot) {
-      const affect = snapshot.D2_HOMEOSTASIS_AFFECT;
       const eventId = snapshot.D1_WORKING_TURN.recent_turns.at(-1)?.event_id.replace(/:w1$/, "") ?? "";
-      const normalizedScope: AudienceScope =
-        affect.mood_attr_scope === "public_all" || affect.mood_attr_scope === "public"
-          ? "public_all"
-          : affect.mood_attr_scope.startsWith("group:") ? affect.mood_attr_scope as AudienceScope : "only_owner";
       getStorage().saveCheckpoint({
         state_rev: snapshot.state_rev,
         virtual_ts_ms: getStorage().getEventById(eventId)?.virtual_ts_ms ?? 0,
         caused_by_event_id: eventId,
-        continuous_states_json: JSON.stringify({
-          instant_valence: affect.instant_valence,
-          instant_arousal: affect.instant_arousal,
-          mood_baseline_val: affect.mood_baseline_val,
-          circadian_energy: affect.circadian_energy,
-          metabolic_energy: affect.metabolic_energy,
-          drive_social_longing: affect.drive_social_longing,
-          drive_curiosity: affect.drive_curiosity
-        }),
-        state_attributions_json: JSON.stringify({ mood_attribution: affect.mood_attribution, mood_attr_scope: normalizedScope }),
+        continuous_states_json: JSON.stringify(snapshot.D2_CONTINUOUS_STATES.values),
+        state_attributions_json: JSON.stringify(snapshot.D2_CONTINUOUS_STATES.attributions),
         relationship_json: "{}",
         user_model_json: "{}",
-        working_memory_json: JSON.stringify({ format: "ai0.coordinator.v1", snapshot }),
+        working_memory_json: JSON.stringify({ format: "ai0.coordinator.v2", snapshot }),
         hibernation_intervals_json: "[]"
       });
     },
@@ -239,26 +242,67 @@ function createKernelRetriever(
   };
 }
 
+function resolveProviderConfig(infrastructure: HostInfrastructureConfig, routedBinding: ModelSlotBinding | undefined,
+  hostDir: string, soulDir?: string, sessionId?: string): LlmProviderConfig | undefined {
+  const matchedModel = routedBinding && (
+    (routedBinding.modelInstanceId
+      ? infrastructure.modelInstances.find((m) => m.id === routedBinding.modelInstanceId)
+      : undefined) ??
+    infrastructure.modelInstances.find(
+      (m) => m.sourceId === routedBinding.providerId && m.modelId === routedBinding.modelId
+    ));
+  const routedSource = routedBinding && (
+    infrastructure.providerSources.find((s) => s.id === (matchedModel?.sourceId ?? routedBinding.providerId)) ??
+    infrastructure.providerSources.find((s) => routedBinding.providerId.startsWith(`${s.id}__`)));
+  const resolvedKeys = routedSource ? resolveEffectiveSourceApiKeys(hostDir, routedSource) : [];
+  const fallbackLegacyKey = soulDir && routedSource && routedSource.apiKeys.length === 0 && resolvedKeys.length === 0
+    ? readVaultProviderKey(soulDir, routedSource.id) : undefined;
+  const effectiveApiKeys = resolvedKeys.length > 0 ? resolvedKeys : (fallbackLegacyKey ? [fallbackLegacyKey] : []);
+  const isOllama = routedSource?.adapterType === "ollama";
+  const modelId = routedBinding?.modelId || matchedModel?.modelId;
+  const settingsModel = matchedModel?.modelId === modelId ? matchedModel : infrastructure.modelInstances.find(
+    (model) => model.sourceId === routedSource?.id && model.modelId === modelId
+  );
+  const keylessEndpoint = isOllama || (routedSource?.adapterType === "custom_http" &&
+    settingsModel?.health.status === "ready" && Boolean(routedSource.baseUrl.trim()));
+  const discoveredModel = routedSource && modelId ? getModelCatalogEntry(routedSource, modelId, settingsModel) : undefined;
+  return routedSource?.enabled && (settingsModel?.enabled ?? true) && (effectiveApiKeys.length > 0 || keylessEndpoint)
+      ? {
+          provider: routedSource.adapterType === "anthropic"
+            ? "anthropic"
+            : isOllama
+              ? "ollama"
+              : "openai-compatible",
+          adapterType: routedSource.adapterType,
+          sourceId: routedSource.id,
+          baseUrl: routedSource.baseUrl,
+          apiKey: effectiveApiKeys[0],
+          apiKeys: effectiveApiKeys,
+          keyRotationStrategy: routedSource.keyRotationStrategy,
+          customHeaders: routedSource.customHeaders,
+          timeoutMs: routedSource.timeoutMs,
+          temperature: settingsModel?.defaultTemperature,
+          maxTokens: settingsModel?.defaultMaxTokens,
+          contextWindow: discoveredModel?.contextWindow ?? settingsModel?.contextWindow,
+          contextWindowOverride: settingsModel?.contextWindowOverride,
+          useCatalogContextWindow: settingsModel?.useCatalogContextWindow,
+          useCatalogMaxOutputTokens: settingsModel?.useCatalogMaxOutputTokens,
+          reasoningEffort: settingsModel?.reasoningEffort,
+          model: modelId,
+          discoveredModel,
+          sessionId: routedSource.adapterType === "opencode_go"
+            ? sessionId
+            : undefined
+        }
+      : undefined;
+}
+
 export class Ai0DaemonRuntime {
-  private readonly dynamics = new WeakMap<object, ContinuousStateMetaEngine>();
+  private readonly channelUpstream: UpstreamModelClient;
   private readonly attention = new Map<string, { channelId: string | null; switchedAt: number }>();
 
   getContinuousStates(mode: "live" | "sandbox" = "live"): Record<string, number> {
-    const host = mode === "live" ? this.extensionHost : this.sandboxExtensionHost;
-    const now = (mode === "live" ? this.virtualClock : this.sandboxClock).nowMs();
-    const states: Record<string, number> = {};
-    for (const entry of host.listFacets(cognitionStateDynamicsFacet)) {
-      const values = host.invokeFacet(entry, ({ descriptors }) => {
-        let engine = this.dynamics.get(entry);
-        if (!engine) {
-          engine = new ContinuousStateMetaEngine(descriptors, now);
-          this.dynamics.set(entry, engine);
-        }
-        return engine.evolveTo(now);
-      });
-      Object.assign(states, values);
-    }
-    return states;
+    return (mode === "live" ? this.coordinator : this.sandboxCoordinator).getSnapshot().D2_CONTINUOUS_STATES.values;
   }
 
   private readonly revoked = new Map<string, AbortController>();
@@ -313,8 +357,12 @@ export class Ai0DaemonRuntime {
     readonly mutableState: DaemonMutableState,
     readonly pluginLoader: RuntimePluginLoader,
     private readonly compositions: ExtensionComposition[],
-    readonly bundledSkillsDir: string
+    readonly bundledSkillsDir: string,
+    readonly modelRequests: Record<"live" | "sandbox", ModelRequestJournal>,
+    private readonly hostModelConfig?: LlmProviderConfig,
+    private readonly dialogueModelPackageId?: string
   ) {
+    this.channelUpstream = new UpstreamModelClient(hostModelConfig);
     this.capabilityTimer = setInterval(() => {
       void this.refreshCapabilities().catch(error => this.adminServer.broadcastTelemetry("[SYS]",
         { action: "capability_refresh_failed", error: String(error) }, "live", Date.now()));
@@ -323,6 +371,7 @@ export class Ai0DaemonRuntime {
   }
 
   get soulDir(): string { return this.activeSoulDir; }
+  get archiveSignal(): AbortSignal { return this.archiveLifetime.signal; }
   get hasAwakenedSoul(): boolean { return this.awakened; }
   get soulArchiveManager(): SoulArchiveManager { return this.archiveManager; }
 
@@ -409,11 +458,11 @@ export class Ai0DaemonRuntime {
 
   private pendingRefresh?: Promise<void>;
   private refreshingSoulDir?: string;
-  async refreshCapabilities(): Promise<void> {
+  async refreshCapabilities(changed = false): Promise<void> {
     if (this.pendingRefresh) {
-      if (this.refreshingSoulDir === this.soulDir) return this.pendingRefresh;
+      if (!changed && this.refreshingSoulDir === this.soulDir) return this.pendingRefresh;
       await this.pendingRefresh;
-      return this.refreshCapabilities();
+      return this.refreshCapabilities(true);
     }
     this.refreshingSoulDir = this.soulDir;
     const before = this.pluginLoader.listPlugins();
@@ -428,7 +477,10 @@ export class Ai0DaemonRuntime {
         this.pluginLoader.seedPersistedConfig(this.sandboxExtensionHost, extId, entry.config_values);
       }
     }
-    this.pluginLoader.reload(overrides);
+    this.pluginLoader.reload(overrides, { servers: readHostInfrastructureConfig(this.hostDir).mcpServers,
+      skills: listAgentSkills(this.soulDir, this.bundledSkillsDir),
+      grants: Object.fromEntries(Object.entries(persistedExtState.extensions).map(([id, item]) => [id, item.permission_overrides]))
+    });
     for (const prior of before) {
       if (prior.generation !== this.pluginLoader.getPlugin(prior.manifest.extension_id)?.generation) {
         this.revoke(prior.manifest.extension_id, "live");
@@ -436,8 +488,10 @@ export class Ai0DaemonRuntime {
       }
     }
     this.pendingRefresh = Promise.all([
-      this.pluginLoader.mountIntoHost(this.extensionHost, this.compositions[0]!),
-      this.pluginLoader.mountIntoHost(this.sandboxExtensionHost, this.compositions[1]!)
+      this.pluginLoader.mountIntoHost(this.extensionHost, this.compositions[0]!, {
+        admitObservation: evidence => this.workers.w4.admitCarrierObservation(evidence)
+      }),
+      this.pluginLoader.mountIntoHost(this.sandboxExtensionHost, this.compositions[1]!, { allowMcp: false })
     ]).then(() => {
       if (revision !== this.pluginLoader.revision) this.adminServer.broadcastTelemetry("[SYS]",
         { action: "capabilities_changed", revision: this.pluginLoader.revision }, "live", Date.now());
@@ -519,10 +573,51 @@ export class Ai0DaemonRuntime {
   }
 
   replaceLiveStorage(nextStorage: CoordinatorStorageMutator): void {
+    this.modelRequests.live.clear();
+    this.modelRequests.sandbox.clear();
     this.liveStorage = nextStorage;
     this.liveRetriever = new HybridMemoryRetriever(nextStorage);
     this.liveHardForget = new HardForgetEngine(nextStorage.sqlite);
     this.coordinator.restoreCheckpoint();
+  }
+
+  async runAgent(input: Omit<AgentOptions, "bindings" | "adapter" | "model" | "executeTool"> & {
+    bindings?: Omit<AgentBindings, "host">; mode?: "live" | "sandbox"
+  }) {
+    const { mode = "live", bindings, onStep, ...options } = input;
+    const host = mode === "live" ? this.extensionHost : this.sandboxExtensionHost;
+    const trace = this.modelRequests[mode].lease();
+    const signal = AbortSignal.any([options.signal, this.archiveLifetime.signal]);
+    let adapter;
+    if (!bindings?.modelPackageId) {
+      const infrastructure = readHostInfrastructureConfig(this.hostDir);
+      const config = resolveProviderConfig(infrastructure, resolveHostDefaultChatBinding(infrastructure), this.hostDir) ?? this.hostModelConfig;
+      if (!config?.model) throw new ProviderNotConfiguredError();
+      adapter = new UpstreamModelClient(config).asModelAdapter(config.model, trace);
+    }
+    return new AgentCoreRuntime().runTurn({ ...options, adapter, signal, bindings: { ...bindings, host },
+      wrapFetch: (request, provider, send) => tracePreparedRequest(trace, request, provider, send),
+      onStep(manifest) {
+        trace({ stepId: manifest.stepId, assembly: manifest, attempts: [], model: manifest.model.id }, [], manifest.model.id);
+        onStep?.(manifest);
+      }
+    });
+  }
+
+  async previewChannelRequest(input: Parameters<Ai0DaemonRuntime["handleChannelTurn"]>[0], config: SoulConsoleStudioConfig) {
+    try {
+      await this.handleChannelTurn(input, { preview: config, eventId: "preview" });
+    } catch (error) {
+      if (error instanceof ChannelRequestPreview) {
+        const promptText = error.request.messages.map(message => JSON.stringify(message)).join("\n");
+        return { ...error.request, promptText, totalTokens: Math.ceil(promptText.length / 2.5), maxTokens: config.soulStudio.maxBlackboardTokens,
+          bricks: error.request.manifest.fragments.map(part => ({ id: part.id, title: part.source, icon: "",
+            tokens: Math.ceil(part.chars / 2.5), maxTokens: config.soulStudio.maxBlackboardTokens, included: part.messageIndex !== undefined,
+            reason: part.reason, rendered: part.messageIndex === undefined ? "" : JSON.stringify(error.request.messages[part.messageIndex]) })) };
+      }
+      throw error;
+    }
+    throw new Error("No model request for this input");
   }
 
   async handleChannelTurn(input: {
@@ -534,9 +629,10 @@ export class Ai0DaemonRuntime {
     audience_scope?: AudienceScope;
     modality?: SensorModality;
     mode?: "live" | "sandbox";
-  }, options: W1AsyncTurnOptions & { eventId?: string } = {}) {
+  }, options: W1AsyncTurnOptions & { eventId?: string; preview?: SoulConsoleStudioConfig } = {}) {
     const isSandbox = input.mode === "sandbox";
-    if (!isSandbox && !this.hasAwakenedSoul) throw new SoulNotAwakenedError();
+    const traceLease = this.modelRequests[isSandbox ? "sandbox" : "live"].lease();
+    if (!options.preview && !isSandbox && !this.hasAwakenedSoul) throw new SoulNotAwakenedError();
     const signal = options.signal
       ? AbortSignal.any([options.signal, this.archiveLifetime.signal])
       : this.archiveLifetime.signal;
@@ -574,7 +670,7 @@ export class Ai0DaemonRuntime {
       ? resolveSoulTurnModelBinding(manifest, soulProfiles, infrastructure).consciousness
       : resolved.route.primaryChat;
 
-    storage.appendEvent({
+    if (!options.preview) storage.appendEvent({
       event_id: eventId,
       wall_ts_ms: Date.now(),
       virtual_ts_ms: nowMs,
@@ -598,7 +694,7 @@ export class Ai0DaemonRuntime {
       active_modules_mask: 31
     });
 
-    this.adminServer.broadcastTelemetry("[EVENT]", {
+    if (!options.preview) this.adminServer.broadcastTelemetry("[EVENT]", {
       event_id: eventId,
       channel_id: channelId,
       venue_type: venue,
@@ -608,33 +704,22 @@ export class Ai0DaemonRuntime {
       ...(options.eventId ? {} : { summary_text: input.text })
     }, target, nowMs);
 
-    const studioConfig = readConsoleStudioConfig(this.soulDir);
+    const studioConfig = options.preview ?? readConsoleStudioConfig(this.soulDir);
     const snapBefore = coordinator.getSnapshot();
     const primaryRoleMeta =
       ROLE_ARCHETYPE_PRESETS[resolved.profile.roleArchetype] ??
       ROLE_ARCHETYPE_PRESETS[studioConfig.soulStudio.primaryRole];
     const effectivePublicMask = resolved.route.socialMaskActive || audience !== "only_owner" || principal !== "owner_verified";
     const host = isSandbox ? this.sandboxExtensionHost : this.extensionHost;
+    const response = selectResponseContract(host, studioConfig.soulStudio.responseContract, audience);
     const continuous = this.getContinuousStates(isSandbox ? "sandbox" : "live");
-    const matchedLoreEntries: { title: string; content: string }[] = [];
-    if (!effectivePublicMask) {
-      for (const entry of host.listFacets(cognitionContextContributorFacet)) {
-        if (entry.packageId !== "builtin.lorebook-contributor" ||
-            !host.allowsReadDomain(entry.packageId, "D1_WORKING_TURN") ||
-            !host.allowsReadDomain(entry.packageId, "D5_IDENTITY_NARRATIVE")) continue;
-        const item = await host.invokeFacetAsync(entry, facet => facet.contributeToBlackboard({
-          D1_WORKING_TURN: { recent_turns: [{ role: "user", text: input.text }] },
-          D5_IDENTITY_NARRATIVE: { lorebook: { book_id: "studio", title: "Lorebook",
-            entries: studioConfig.soulStudio.lorebooks.map(entry => ({
-              entry_id: entry.id, keys: entry.keys, content: entry.content, enabled: entry.enabled,
-              priority: entry.priority, recursive_depth: 3, max_token_budget: 240
-            })) } }
-        }, 240));
-        if (item) matchedLoreEntries.push({ title: item.slot_id, content: item.text });
-      }
-    }
+    const lorebook = effectivePublicMask ? undefined : { book_id: "studio", title: "Lorebook",
+      entries: studioConfig.soulStudio.lorebooks.map(item => ({
+        entry_id: item.id, keys: item.keys, secondary_keys: item.secondaryKeys, content: item.content, enabled: item.enabled,
+        priority: item.priority, recursive_depth: 3, max_token_budget: item.tokenBudget
+      })) };
     const previousFocus = this.attention.get(target);
-    const policy = host.listFacets(cognitionAttentionArbitratorFacet)[0];
+    const policy = !options.preview && host.listFacets(cognitionAttentionArbitratorFacet)[0];
     const focus = policy && host.invokeFacet(policy, facet => facet.arbitrate({
       candidates: [...new Set([channelId, ...this.channelGateway.listConnections(isSandbox ? "sandbox" : "live").map(connection => connection.channel_id)])]
         .map(id => ({ channel_id: id, salience: Number(id === channelId),
@@ -644,71 +729,21 @@ export class Ai0DaemonRuntime {
       now_ts_ms: nowMs,
       events: [{ channel_id: channelId, event_type: "perception_committed" }]
     }));
-    if (focus?.switched) {
+    if (focus && focus.switched) {
       this.attention.set(target, { channelId: focus.selected_channel_id, switchedAt: nowMs });
       this.adminServer.broadcastTelemetry("[SYS]", { action: "attention_focus", ...focus }, target, nowMs);
     }
-    const compiledStudioPrompt = compileStudioPromptPreview(studioConfig, {
+    const compiledStudioPrompt = compileStudioPrompt(studioConfig, {
       audienceScope: effectivePublicMask ? "public_all" : "only_owner",
       venueType: venue,
       platform: channelId,
-      moodValence: continuous.instant_valence ?? snapBefore.D2_HOMEOSTASIS_AFFECT.instant_valence,
-      circadianEnergy: continuous.circadian_energy ?? snapBefore.D2_HOMEOSTASIS_AFFECT.circadian_energy,
-      metabolicEnergy: continuous.metabolic_energy ?? snapBefore.D2_HOMEOSTASIS_AFFECT.metabolic_energy
+      moodValence: effectivePublicMask ? undefined : continuous.instant_valence,
+      circadianEnergy: effectivePublicMask ? undefined : continuous.circadian_energy,
+      metabolicEnergy: effectivePublicMask ? undefined : continuous.metabolic_energy
     });
 
-    const matchedModel = routedBinding && (
-      (routedBinding.modelInstanceId
-        ? infrastructure.modelInstances.find((m) => m.id === routedBinding.modelInstanceId)
-        : undefined) ??
-      infrastructure.modelInstances.find(
-        (m) => m.sourceId === routedBinding.providerId && m.modelId === routedBinding.modelId
-      ));
-    const routedSource = routedBinding && (
-      infrastructure.providerSources.find((s) => s.id === (matchedModel?.sourceId ?? routedBinding.providerId)) ??
-      infrastructure.providerSources.find((s) => routedBinding.providerId.startsWith(`${s.id}__`)));
-    const resolvedKeys = routedSource ? resolveEffectiveSourceApiKeys(this.hostDir, routedSource) : [];
-    const fallbackLegacyKey = routedSource && routedSource.apiKeys.length === 0 && resolvedKeys.length === 0
-      ? readVaultProviderKey(this.soulDir, routedSource.id) : undefined;
-    const effectiveApiKeys = resolvedKeys.length > 0 ? resolvedKeys : (fallbackLegacyKey ? [fallbackLegacyKey] : []);
-    const isOllama = routedSource?.adapterType === "ollama";
-    const modelId = routedBinding?.modelId || matchedModel?.modelId;
-    const settingsModel = matchedModel?.modelId === modelId ? matchedModel : infrastructure.modelInstances.find(
-      (model) => model.sourceId === routedSource?.id && model.modelId === modelId
-    );
-    const keylessEndpoint = isOllama || (routedSource?.adapterType === "custom_http" &&
-      settingsModel?.health.status === "ready" && Boolean(routedSource.baseUrl.trim()));
-    const discoveredModel = routedSource && modelId ? getModelCatalogEntry(routedSource, modelId, settingsModel) : undefined;
-    const dynamicLlmConfig: LlmProviderConfig | undefined =
-      routedSource?.enabled && (settingsModel?.enabled ?? true) && (effectiveApiKeys.length > 0 || keylessEndpoint)
-        ? {
-            provider: routedSource.adapterType === "anthropic"
-              ? "anthropic"
-              : isOllama
-                ? "ollama"
-                : "openai-compatible",
-            adapterType: routedSource.adapterType,
-            sourceId: routedSource.id,
-            baseUrl: routedSource.baseUrl,
-            apiKey: effectiveApiKeys[0],
-            apiKeys: effectiveApiKeys,
-            keyRotationStrategy: routedSource.keyRotationStrategy,
-            customHeaders: routedSource.customHeaders,
-            timeoutMs: routedSource.timeoutMs,
-            temperature: settingsModel?.defaultTemperature,
-            maxTokens: settingsModel?.defaultMaxTokens,
-            contextWindow: discoveredModel?.contextWindow ?? settingsModel?.contextWindow,
-            contextWindowOverride: settingsModel?.contextWindowOverride,
-            useCatalogContextWindow: settingsModel?.useCatalogContextWindow,
-            useCatalogMaxOutputTokens: settingsModel?.useCatalogMaxOutputTokens,
-            reasoningEffort: settingsModel?.reasoningEffort,
-            model: modelId,
-            discoveredModel,
-            sessionId: routedSource.adapterType === "opencode_go"
-              ? createHash("sha256").update(JSON.stringify([manifest.soul_id, target, channelId, sessionKey])).digest("hex")
-              : undefined
-          }
-        : undefined;
+    const sessionId = createHash("sha256").update(JSON.stringify([manifest.soul_id, target, channelId, sessionKey])).digest("hex");
+    const dynamicLlmConfig = resolveProviderConfig(infrastructure, routedBinding, this.hostDir, this.soulDir, sessionId);
     // D1 is shared across channels. Only replay this session's turns; knowledge is recalled
     // afresh under the current mounts and audience instead of replaying an old quotation.
     const history = snapBefore.D1_WORKING_TURN.recent_turns;
@@ -734,6 +769,8 @@ export class Ai0DaemonRuntime {
     }
     const visibleTurns = !effectivePublicMask && modelWindow === undefined ? history.slice(-24).filter(canReplay) : [];
     const latestTurn = history.at(-1);
+    if (options.preview && evaluateCrisisGuard(input.text, clock).status === "INTERCEPTED_CRISIS")
+      throw new Error("Local intervention handles this input without model inference");
     const turn = await w1.runTurnAsync({
       event_id: eventId,
       target_channel_id: this.channelGateway.listConnections(isSandbox ? "sandbox" : "live")
@@ -745,11 +782,13 @@ export class Ai0DaemonRuntime {
       summary_text: input.text,
       knowledgeRecall: async signal => {
         const collections=allowedCollections(storage,profileMounts(storage,resolved.profile),audience,principal==="owner_verified");
-        const hits=await searchKnowledge(this,storage,input.text,collections,signal,()=>this.eventKnowledgeCollections(storage,eventId));
-        const currentAllowed=this.eventKnowledgeCollections(storage,eventId);
+        const allowed = () => options.preview ? collections : this.eventKnowledgeCollections(storage,eventId);
+        const hits = input.text ? await searchKnowledge(this,storage,input.text,collections,signal,allowed) : { results: [] };
+        const currentAllowed = allowed();
         return hits.results.filter(h=>currentAllowed.includes(h.collectionId) && h.score>=soulProfiles.capabilities.knowledge.honestForgetThreshold);
       },
       liveStudioContext: {
+        dialogueProfile: response?.implementation.inputFormat === "bounded_observation" ? createW1DialogueProfile(response.implementation) : undefined,
         publicMask: effectivePublicMask,
         workingTurnText: visibleTurns.map((turn) => `${turn.role}: ${turn.text}`).join("\n"),
         workingTurnHistory: modelWindow === undefined ? undefined : recentSessionHistory(),
@@ -760,12 +799,19 @@ export class Ai0DaemonRuntime {
         roleLabel: primaryRoleMeta?.label,
         catchphrases: studioConfig.soulStudio.catchphrases,
         bannedCliches: studioConfig.soulStudio.bannedCliches,
-        matchedLoreEntries,
-        compiledBlackboardOverride: compiledStudioPrompt.promptText,
-        dynamicLlmConfig,
+        lorebook,
+        promptSources: compiledStudioPrompt.bricks.map(brick => ({ id: "studio/" + brick.id,
+          version: createHash("sha256").update(studioConfig.soulStudio.promptBricks.find(item => item.id === brick.id)!.template).digest("hex"),
+          field: "system", authority: "host_profile", source: brick.source, text: brick.rendered, budget: brick.maxTokens,
+          disposition: brick.reason ?? "included" })),
+        configuredInstructions: compiledStudioPrompt.bricks.filter(brick => brick.included && brick.source !== "legacy_unknown")
+          .map(brick => "### " + brick.title + "\n" + brick.rendered).join("\n\n"),
+        dynamicLlmConfig: { ...dynamicLlmConfig, traceLease },
         maxTotalTokens: resolved.route.maxContextTokens
       }
-    }, { ...options, signal, deferDeliveryReceipt: true });
+    }, { ...options, signal, deferDeliveryReceipt: true, infer: channelInference({ studio: studioConfig,
+      host, response, currentStudio: options.preview ? undefined : () => readConsoleStudioConfig(this.soulDir), upstream: this.channelUpstream, modelPackageId: this.dialogueModelPackageId, sandboxFallback: this.allowDeterministicSandbox,
+      preview: Boolean(options.preview), trace: options.preview ? undefined : traceLease }) });
     signal.throwIfAborted();
 
     storage.runInTransaction(() => {
@@ -801,6 +847,7 @@ export class Ai0DaemonRuntime {
     return {
       event_id: eventId,
       expression: turn.expression,
+      modelRequestId: [eventId, eventId + "/0"].find(id => this.modelRequests[isSandbox ? "sandbox" : "live"].has(id)),
       sources: this.knowledgeSources(isSandbox ? "sandbox" : "live",eventId),
       trace: turn.trace,
       compiledBlackboard: turn.compiledBlackboard,
@@ -925,7 +972,7 @@ export class Ai0DaemonRuntime {
       {
         max_total_tokens: 2_200,
         tier0_safety_invariants:
-          "Tier 0 SB 243: Honest cyber-life companion; strict audience scope isolation; zero exit-guilt.",
+          "",
         narrative_self_text: archiveConfig.narrative,
         memory_projection_text: memories.slice(0, 4).map((m) => m.content_text).join("\n")
       },
@@ -1015,18 +1062,11 @@ export class Ai0DaemonRuntime {
         habituationDecayRate: activeDefaultProfile.conversationGate.habituationDecayRate
       };
     }
-    const { promptPreviewPrivate, promptPreviewPublic } = buildLivePromptPreviews(
-      this,
-      studioConfig,
-      memories,
-      archiveConfig.narrative,
-      mode
-    );
     for (const plugin of this.pluginLoader.listPlugins()) {
       const manifest = plugin.manifest;
       if (!studioConfig.ecosystem.plugins.some(item => item.id === manifest.extension_id)) {
         studioConfig.ecosystem.plugins.push({ id: manifest.extension_id, name: manifest.display_name,
-          version: manifest.version, bus: manifest.facets[0]!, carrier: manifest.carrier_kind,
+          version: manifest.version, bus: manifest.facets[0] ?? "extension.service", carrier: manifest.carrier_kind,
           enabled: plugin.enabled, description: "", configFields: [] });
       }
     }
@@ -1054,10 +1094,10 @@ export class Ai0DaemonRuntime {
       memoriesCount: unawakened ? 0 : Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM memories WHERE invalidated_at_ts IS NULL").get()?.n),
       tracesCount: unawakened ? 0 : Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM turn_decision_traces").get()?.n),
       redactionLedgerCount: redactionCount,
-      metabolicEnergy: snapshot.D2_HOMEOSTASIS_AFFECT.metabolic_energy,
-      circadianEnergy: snapshot.D2_HOMEOSTASIS_AFFECT.circadian_energy,
-      moodValence: snapshot.D2_HOMEOSTASIS_AFFECT.instant_valence,
-      socialLonging: snapshot.D2_HOMEOSTASIS_AFFECT.drive_social_longing,
+      metabolicEnergy: snapshot.D2_CONTINUOUS_STATES.values.metabolic_energy,
+      circadianEnergy: snapshot.D2_CONTINUOUS_STATES.values.circadian_energy,
+      moodValence: snapshot.D2_CONTINUOUS_STATES.values.instant_valence,
+      socialLonging: snapshot.D2_CONTINUOUS_STATES.values.drive_social_longing,
       frictionTension: snapshot.D5_IDENTITY_NARRATIVE.active_tensions.filter((t) => !t.resolved).length,
 
       blackboardSlots: unawakened ? [] : compiled.slots.map((slot, idx) => ({
@@ -1069,8 +1109,8 @@ export class Ai0DaemonRuntime {
         summary: slot.content.slice(0, 96) || "Empty slot",
         locked: slot.locked
       })),
-      compiledBlackboardPrompt: unawakened ? "" : promptPreviewPrivate.promptText || compiled.compiled_prompt_text,
-      totalBlackboardTokens: unawakened ? 0 : promptPreviewPrivate.totalTokens || compiled.total_tokens,
+      compiledBlackboardPrompt: unawakened ? "" : compiled.compiled_prompt_text,
+      totalBlackboardTokens: unawakened ? 0 : compiled.total_tokens,
       maxBlackboardTokens: unawakened ? 0 : studioConfig.soulStudio.maxBlackboardTokens || compiled.max_total_tokens,
       lineageNodes: memories.map((memory) => ({
         id: memory.memory_id,
@@ -1100,7 +1140,7 @@ export class Ai0DaemonRuntime {
           origin: plugin.origin,
           pages: plugin.pages,
           moduleUrls: plugin.moduleUrls,
-          uiSlots: [...plugin.uiSlots],
+          uiSlots: this.pluginLoader.uiSlotsFor(plugin, extHost),
           missingAssets: plugin.missingAssets,
           generation: this.generation(id, mode),
           activationError: this.pluginLoader.activationError(extHost, id),
@@ -1127,14 +1167,15 @@ export class Ai0DaemonRuntime {
       sb243Metrics: storage.getSb243Metrics(),
       pragmaStatus: storage.getTablePragmaStatus(),
       recentTranscript,
-      studioConfig: unawakened ? undefined : studioConfig,
+      studioConfig: unawakened ? undefined : { ...studioConfig, agency: { ...studioConfig.agency,
+        activeTasks: studioConfig.agency.activeTasks.map(task => ({ ...task,
+          approvalCurrent: isTaskExecutionApproved(task, studioConfig.agency.subAgents.find(agent => agent.id === task.subAgentId))
+        })) } },
       infrastructure,
       soulProfiles: {...soulProfiles,profiles},
       providerUsages,
       modelUsages,
       skills,
-      promptPreviewPrivate: unawakened ? undefined : promptPreviewPrivate,
-      promptPreviewPublic: unawakened ? undefined : promptPreviewPublic,
       conversations,
       availableSouls,
       narrativeText: unawakened ? undefined : archiveConfig.narrative
@@ -1142,6 +1183,8 @@ export class Ai0DaemonRuntime {
   }
 
   close(): void {
+    this.modelRequests.live.clear();
+    this.modelRequests.sandbox.clear();
     clearInterval(this.capabilityTimer);
     this.archiveLifetime.abort();
     for (const controller of this.revoked.values()) controller.abort();
@@ -1216,16 +1259,18 @@ function composeDaemonRuntime(
     initialVirtualTsMs: virtualClock.nowMs()
   });
 
+  const extensionHost = new ExtensionCoreHost();
+  const sandboxExtensionHost = new ExtensionCoreHost();
   const coordinatorTraces: KernelTurnTrace[] = [];
   let runtimeRef: Ai0DaemonRuntime | undefined;
   const getLiveStorage = () => runtimeRef?.storage ?? liveStorage;
   const coordinator = new AuthoritativeStateCoordinator(
     virtualClock,
-    createCoordinatorStorage(getLiveStorage, coordinatorTraces)
+    createCoordinatorStorage(getLiveStorage, coordinatorTraces), extensionHost
   );
   const sandboxCoordinator = new AuthoritativeStateCoordinator(
     sandboxClock,
-    createCoordinatorStorage(() => sandboxStorage, coordinatorTraces)
+    createCoordinatorStorage(() => sandboxStorage, coordinatorTraces), sandboxExtensionHost
   );
 
   const readOnlyView = createReadOnlyView(getLiveStorage);
@@ -1247,15 +1292,14 @@ function composeDaemonRuntime(
     ...(options.userPluginsDir ? { userPluginsDir: options.userPluginsDir } : {}),
     ...(options.extraPluginDirs ? { extraPluginDirs: options.extraPluginDirs } : {})
   });
-  const extensionHost = new ExtensionCoreHost();
-  const sandboxExtensionHost = new ExtensionCoreHost();
   const compositions = [new ExtensionComposition(), new ExtensionComposition()];
 
 
   const brainRegionRouter = new BrainRegionRouter(toBrainRouterConfig(buildRegionBindingsFromProfile(initialDefaultProfile)));
 
-  const llmClient = new UniversalLlmProviderClient(options.llmConfig, allowDeterministicSandbox);
-  const sensoryCoverage = new SensoryCoverageBucketManager(virtualClock);
+  const dialogueClient = (host: ExtensionCoreHost) => new UniversalLlmProviderClient(options.llmConfig, allowDeterministicSandbox,
+    undefined, options.dialogueModelPackageId ? registeredModelTransport(host, options.dialogueModelPackageId) : undefined);
+  const sensoryCoverage = new SensoryCoverageBucketManager(virtualClock, digitalLifeHypothesisRevision);
   const opportunityPool = new InteractionOpportunityPool(virtualClock);
   const ownerMasterToken = options.ownerMasterToken ?? randomBytes(32).toString("base64url");
   if (!ownerMasterToken) throw new TypeError("ownerMasterToken must not be empty.");
@@ -1289,6 +1333,7 @@ function composeDaemonRuntime(
   };
 
   const channelGateway = new ChannelProtocolGateway({
+    renderPresentation: renderEmbodiedPresentation,
     extensionHost,
     clock: virtualClock,
     w1: {
@@ -1304,7 +1349,7 @@ function composeDaemonRuntime(
       {
         blackboardCompiler,
         brainRouter: brainRegionRouter,
-        llmClient,
+        llmClient: dialogueClient(extensionHost),
         allowDeterministicSandbox,
         realizerNegotiator: channelGateway.negotiator,
         extensionHost,
@@ -1324,7 +1369,7 @@ function composeDaemonRuntime(
     {
       blackboardCompiler: sandboxBlackboardCompiler,
       brainRouter: brainRegionRouter,
-      llmClient,
+      llmClient: dialogueClient(sandboxExtensionHost),
       allowDeterministicSandbox,
       realizerNegotiator: channelGateway.negotiator,
       extensionHost: sandboxExtensionHost,
@@ -1335,6 +1380,7 @@ function composeDaemonRuntime(
 
   const handlerContext: DaemonHandlerContext = {
     get runtime() { return runtimeRef!; },
+    refreshCapabilities: changed => runtimeRef!.refreshCapabilities(changed),
     reloadExtension: (id, mode, config, expected) => runtimeRef!.reloadExtension(id, mode, config, expected),
     reloadSingleExtension: (id, mode) => runtimeRef!.reloadSingleExtension(id, mode),
     reloadAllExtensions: () => runtimeRef!.reloadAllExtensions(),
@@ -1413,8 +1459,14 @@ function composeDaemonRuntime(
     mutableState,
     pluginLoader,
     compositions,
-    bundledSkillsDir
+    bundledSkillsDir,
+    { live: new ModelRequestJournal({ captureBodies: options.capturePromptBodies, now: Date.now }),
+      sandbox: new ModelRequestJournal({ captureBodies: options.capturePromptBodies, now: Date.now }) },
+    options.llmConfig, options.dialogueModelPackageId
   );
+  mountCardCodec(extensionHost);
+  mountCardCodec(sandboxExtensionHost);
+  mountKnowledgeTaskExecutor(extensionHost, runtimeRef);
   return runtimeRef;
 }
 

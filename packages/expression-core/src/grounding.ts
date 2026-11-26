@@ -1,7 +1,10 @@
-import { computeSpokenCharOffsetFromAudioMs, ExtMediaSidebandV1Schema, type DeliveryReceipt,
-  type ExpressionEnvelope, type GroundingTruthStage } from "@ai0/protocol";
+import { AudienceScopeSchema, type AudienceScope, type DeliveryReceipt, type ExpressionEnvelope, type GroundingTruthStage } from "@ai0/protocol";
+import type { ExtensionCoreHost, FacetRegistration } from "@ai0/extension-core";
+import { expressionMediaTranscoderFacet, type ExpressionMediaTranscoder } from "./facets.js";
 
 interface Segment {
+  cursor?: FacetRegistration<ExpressionMediaTranscoder>;
+  audience?: AudienceScope;
   envelope: ExpressionEnvelope;
   presented: number;
   stage: GroundingTruthStage;
@@ -21,11 +24,19 @@ export interface RecoveredInterruption {
 
 export class GroundingReceiptTracker {
   private readonly intents = new Map<string, IntentDelivery>();
+  constructor(private readonly host?: ExtensionCoreHost) {}
 
   recordGenerated(envelope: ExpressionEnvelope) {
     const entry = this.intents.get(envelope.intent_id) ?? { segments: new Map<number, Segment>() };
-    if (!entry.segments.has(envelope.chunk_seq))
-      entry.segments.set(envelope.chunk_seq, { envelope: structuredClone(envelope), presented: 0, stage: "generated_unpresented" });
+    if (!entry.segments.has(envelope.chunk_seq)) {
+      const scope = AudienceScopeSchema.safeParse(envelope.delivery_constraints?.audienceScope ?? "only_owner");
+      const audience = scope.success ? scope.data : undefined;
+      const compatible = audience && this.host?.listFacets(expressionMediaTranscoderFacet).filter(({ packageId, implementation }) =>
+        this.host!.allowsAudienceScope(packageId, audience, expressionMediaTranscoderFacet.id) &&
+        implementation.cursor && Object.hasOwn(envelope.extensions, implementation.cursor.extension));
+      entry.segments.set(envelope.chunk_seq, { envelope: structuredClone(envelope), presented: 0, stage: "generated_unpresented",
+        audience, cursor: compatible?.length === 1 ? compatible[0] : undefined });
+    }
     this.intents.set(envelope.intent_id, entry);
   }
 
@@ -43,11 +54,16 @@ export class GroundingReceiptTracker {
     const entry = this.intents.get(receipt.intent_id);
     const segment = entry?.segments.get(receipt.chunk_seq);
     if (!entry || !segment || entry.settled) return;
-    const sideband = ExtMediaSidebandV1Schema.safeParse(segment.envelope.extensions["ext.media.sideband.v1"]);
     const length = Array.from(segment.envelope.fallback_text).length;
-    const offset = Math.min(length, Math.max(0, receipt.played_audio_ms !== undefined && sideband.success
-      ? receipt.played_audio_ms <= 0 ? 0 : computeSpokenCharOffsetFromAudioMs(sideband.data.char_offset_timestamps_ms, receipt.played_audio_ms)
-      : receipt.spoken_char_offset ?? segment.presented));
+    const authorized = segment.cursor && segment.audience && this.host?.allowsAudienceScope(
+      segment.cursor.packageId, segment.audience, expressionMediaTranscoderFacet.id);
+    const translated = authorized && segment.cursor && this.host?.invokeFacet(segment.cursor, ({ cursor }) => cursor?.resolve(
+      structuredClone(segment.envelope.extensions[cursor.extension]),
+      { played_audio_ms: receipt.played_audio_ms, playback_cursor: structuredClone(receipt.playback_cursor) }
+    ));
+    const reported = typeof translated === "number" && Number.isSafeInteger(translated) && translated >= 0
+      ? translated : receipt.spoken_char_offset ?? segment.presented;
+    const offset = Math.min(length, Math.max(0, reported));
     if (!entry.stopped) {
       if (["rendered", "completed"].includes(receipt.status)) segment.presented = length;
       else if (receipt.status !== "failed") segment.presented = Math.max(segment.presented, offset);

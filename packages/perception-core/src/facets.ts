@@ -1,10 +1,42 @@
 import { defineFacetPoint, sortFacetsByPriority, type ExtensionCoreHost } from "@ai0/extension-core";
-import { InteractionChannelSchema, type InteractionChannel } from "@ai0/protocol";
+import { InteractionChannelSchema, perceptionSourceContract, type AudienceScope, type InteractionChannel } from "@ai0/protocol";
 import type { DebounceInputEvent } from "./sensory.js";
+import { perceptionExtractorContract } from "@ai0/protocol";
+export const perceptionExtractorFacet = defineFacetPoint(perceptionExtractorContract);
 
 export const perceptionIngressFacet = defineFacetPoint<InteractionChannel>({
   owner: "perception", name: "ingress", version: 1, parse: raw => InteractionChannelSchema.parse(raw)
 });
+export const perceptionSourceFacet = defineFacetPoint(perceptionSourceContract);
+
+/** Host attribution is bound to a registration. Resource text cannot supply a principal or a revision. */
+export interface AdmittedSourceObservation { source: string; sourceKey: string; revision: number; content: string; audience: AudienceScope }
+export async function subscribePerceptionSource(host: ExtensionCoreHost, packageId: string, audience: AudienceScope,
+  signal: AbortSignal, admit: (observation: AdmittedSourceObservation) => void, sourceKey?: string) {
+  const entries = host.listFacets(perceptionSourceFacet).filter(entry => entry.packageId === packageId &&
+    (sourceKey === undefined || entry.implementation.sourceKey === sourceKey));
+  if (!entries.length || !host.allowsAudienceScope(packageId, audience, perceptionSourceFacet.id)) throw new Error("Perception source unavailable");
+  const lifetime = new AbortController();
+  try {
+    for (const entry of entries) {
+      const lease = host.leaseFacet(entry);
+      const combined = AbortSignal.any([signal, lifetime.signal, lease.signal]);
+      let revision = 0;
+      let close: (() => void | Promise<void>) | undefined;
+      const stop = () => { lease.dispose(); if (close) void Promise.resolve(close()).catch(() => undefined); };
+      combined.addEventListener("abort", stop, { once: true });
+      try {
+        combined.throwIfAborted();
+        close = await entry.implementation.subscribe(content => {
+          if (!combined.aborted && typeof content === "string" && host.allowsAudienceScope(packageId, audience, perceptionSourceFacet.id))
+            admit({ source: packageId, sourceKey: entry.implementation.sourceKey ?? packageId, revision: ++revision, content, audience });
+        }, combined);
+        if (combined.aborted) { stop(); combined.throwIfAborted(); }
+      } catch (error) { lease.dispose(); throw error; }
+    }
+  } catch (error) { lifetime.abort(); throw error; }
+  return () => lifetime.abort();
+}
 
 export type PerceptionFilterResult =
   | { kind: "pass"; event: DebounceInputEvent }

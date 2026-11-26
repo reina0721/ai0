@@ -11,12 +11,16 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
+import { ResponseContractUnavailable } from "./channel-inference.js";
 import { ModelContextLimitError, ProviderNotConfiguredError, UpstreamInferenceError } from "@ai0/agent-core";
-import { GOLDEN_REGRESSION_SCENARIO_V1, runScenarioPlaybook } from "@ai0/cognition-core";
-import { CHANNEL_PROTOCOL_PATH } from "@ai0/gateway";
-import { AudienceScopeSchema, HandshakeManifestSchema, type AudienceScope, type SensorModality, type VenueType } from "@ai0/protocol";
 import {
-  compileStudioPromptPreview,
+  GOLDEN_REGRESSION_SCENARIO_V1,
+  runScenarioPlaybook
+} from "./profiles/digital-life/index.js";
+import { CHANNEL_PROTOCOL_PATH } from "@ai0/gateway";
+import { AudienceScopeSchema, ExtensionPermissionsSchema, HandshakeManifestSchema, type AudienceScope, type SensorModality, type VenueType } from "@ai0/protocol";
+import {
+  SoulConsoleStudioConfigSchema,
   readConsoleStudioConfig,
   listHostCharacterCards,
   readSoulArchiveConfig,
@@ -158,16 +162,18 @@ export function createUnifiedDaemonHttpApp(
 
   app.post("/api/studio/plugin-enabled", async (c) => {
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
-    const { id, enabled } = await readJsonObject(c);
+    const { id, enabled, permissions } = await readJsonObject(c);
     if (typeof id !== "string" || typeof enabled !== "boolean") return c.json({ error: "INVALID_PLUGIN_SETTING" }, 400);
     const plugin = runtime.pluginLoader.getPlugin(id);
     if (!plugin) return c.json({ error: "PLUGIN_NOT_FOUND" }, 404);
+    const grants = ExtensionPermissionsSchema.optional().safeParse(permissions);
+    if (!grants.success || (grants.data && !plugin.carrier)) return c.json({ error: "INVALID_CARRIER_PERMISSIONS" }, 400);
     const { plugins } = readConsoleStudioConfig(runtime.soulDir).ecosystem;
     const existing = plugins.find(item => item.id === id);
     if (existing) existing.enabled = enabled;
     else {
       const { display_name: name, version, facets, carrier_kind: carrier } = plugin.manifest;
-      plugins.push({ id, name, version, bus: facets[0]!, carrier, enabled, description: "", configFields: [] });
+      plugins.push({ id, name, version, bus: facets[0] ?? "extension.service", carrier, enabled, description: "", configFields: [] });
     }
     updateStudioConfig(runtime, { ecosystem: { plugins } });
     writeExtensionRuntimeConfig(
@@ -178,28 +184,35 @@ export function createUnifiedDaemonHttpApp(
         carrier_kind: plugin.manifest.carrier_kind,
         facets: plugin.manifest.facets,
         enabled,
-        permissions: plugin.manifest.permissions
+        permissions: grants.data ?? plugin.manifest.permissions
       }
     );
-    await runtime.refreshCapabilities();
+    await runtime.refreshCapabilities(true);
     return c.json({ ok: true });
   });
 
   app.post("/api/studio/prompt-preview", async (c) => {
+    if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const body = await readJsonObject(c);
     const base = readConsoleStudioConfig(runtime.soulDir);
     const override = (
       typeof body.config === "object" && body.config !== null ? body.config : undefined
     ) as typeof base | undefined;
-    const cfg = override ?? base;
-    const privatePreview = compileStudioPromptPreview(cfg, {
-      audienceScope: "only_owner",
-      venueType: String(body.venueType ?? "private_1on1")
-    });
-    const publicPreview = compileStudioPromptPreview(cfg, {
-      audienceScope: "public_all",
-      venueType: "public_livestream"
-    });
+    const parsed = SoulConsoleStudioConfigSchema.safeParse(override ?? base);
+    if (!parsed.success) return c.json({ error: "INVALID_STUDIO_DRAFT" }, 400);
+    const turn = { text: typeof body.text === "string" ? body.text : "", principalId: "owner:local",
+      thread: typeof body.thread === "string" ? body.thread : undefined,
+      channel_id: typeof body.channelId === "string" ? body.channelId : undefined,
+      mode: body.mode === "sandbox" ? "sandbox" as const : "live" as const };
+    const compile = async (audience_scope: "only_owner" | "public_all", venue_type: "private_1on1" | "public_livestream") => {
+      try { return await runtime.previewChannelRequest({ ...turn, audience_scope, venue_type }, parsed.data); }
+      catch (error) {
+        if (error instanceof ResponseContractUnavailable) return { unavailable: true, reason: error.message };
+        throw error;
+      }
+    };
+    const privatePreview = await compile("only_owner", "private_1on1");
+    const publicPreview = await compile("public_all", "public_livestream");
     return c.json({ ok: true, privatePreview, publicPreview });
   });
 
@@ -208,8 +221,11 @@ export function createUnifiedDaemonHttpApp(
     const card = (
       typeof body.card === "object" && body.card !== null ? body.card : body
     ) as Record<string, unknown>;
-    const result = distillAndOptionallyApplyCard(runtime, {
+    const result = await distillAndOptionallyApplyCard(runtime, {
       card,
+      asset: body.asset,
+      format: typeof body.format === "string" ? body.format : undefined,
+      provider: typeof body.provider === "string" ? body.provider : undefined,
       apply: body.apply === true,
       roleArchetype: body.roleArchetype as RelationshipArchetype | undefined
     });
@@ -369,12 +385,12 @@ export function createUnifiedDaemonHttpApp(
     return c.json({ messages: readConversation(storage, conversation, before) });
   });
   app.get("/api/plugins", (c) =>
-    c.json({ ok: true, plugins: runtime.pluginLoader.listDescriptors(enabledOverrideMap()) })
+    c.json({ ok: true, plugins: runtime.pluginLoader.listDescriptors(enabledOverrideMap(), runtime.extensionHost) })
   );
 
   app.get("/api/plugins/:extensionId/manifest", (c) => {
     const extensionId = decodeURIComponent(c.req.param("extensionId"));
-    const descriptor = runtime.pluginLoader.getDescriptor(extensionId, enabledOverrideMap());
+    const descriptor = runtime.pluginLoader.getDescriptor(extensionId, enabledOverrideMap(), runtime.extensionHost);
     if (!descriptor) return c.json({ error: "PLUGIN_NOT_FOUND" }, 404);
     return c.json({ ok: true, plugin: descriptor });
   });
@@ -465,6 +481,7 @@ export function createUnifiedDaemonHttpApp(
       method === "GET" || method === "HEAD" ? undefined : await readJsonObject(c);
     const result = await runtime.adminServer.handleRequest({
       method,
+      signal: c.req.raw.signal,
       path: url.pathname,
       headers,
       query: Object.fromEntries(url.searchParams.entries()),
@@ -526,6 +543,7 @@ export function createUnifiedDaemonHttpApp(
       if (error instanceof SoulNotAwakenedError)
         return c.json({ error: error.code, message: error.message, readiness: runtime.computeReadiness() }, 503);
       if (error instanceof ProviderNotConfiguredError) return c.json({ error: error.code, message: error.message }, 503);
+      if (error instanceof ResponseContractUnavailable) return c.json({ error: "RESPONSE_CONTRACT_UNAVAILABLE", message: error.message }, 422);
       if (error instanceof UpstreamInferenceError) return c.json({ error: error.code, message: error.message }, 502);
       if (error instanceof ModelContextLimitError) return c.json({ error: error.code, message: error.message }, 422);
       throw error;
@@ -612,6 +630,8 @@ async function runCli(): Promise<void> {
   const ownerMasterToken = process.env.AI0_OWNER_TOKEN ?? "ai0-local-owner-dev-token";
   const llmApiKey = process.env.AI0_LLM_API_KEY?.trim() || undefined;
   const runtime = createDefaultDaemonRuntime({
+    capturePromptBodies: process.env.AI0_CAPTURE_PROMPT_BODIES === "1",
+    dialogueModelPackageId: process.env.AI0_DIALOGUE_MODEL_PACKAGE || undefined,
     ...(soulDir ? { soulDir } : {}), soulsRoot,
     ownerMasterToken,
     allowDeterministicSandbox,

@@ -1,6 +1,6 @@
 # 08. 渐进推演实验验证、零预设部署到上线验收闭环与交付门禁规范
 
-## 1. 七阶段实验与主仓验收
+## 1. Stage 0–7 实验与主仓验收
 
 ```mermaid
 flowchart LR
@@ -10,7 +10,8 @@ flowchart LR
     S3 --> S4["Stage 4: 跨具身派生"]
     S4 --> S5["Stage 5: 多切面通道"]
     S5 --> S6["Stage 6: 机制与策略消融"]
-    S6 --> V1["主仓端到端验收"]
+    S6 --> S7["Stage 7: 公共契约与切面替换"]
+    S7 --> V1["主仓端到端验收"]
 ```
 
 每阶交付输入夹具、可重放时间线、预期断言与失败轨迹。Stage 0 用正反例逐行推演，其余实验固定时钟与模型事件流，记录有序输出、状态、回执和副作用。主仓同时验收真实浏览器和真实 Provider。上游已冻结的契约继续运行原有回归，修订须从最早受影响阶段重新验证。
@@ -24,6 +25,7 @@ flowchart LR
 | Stage 4 · `labs/stage4-universal-derivation` | 冻结 Stages 1–3。对 `ContinuousStateMetaEngine` 置换同刻冲量并核对值域、复演和检查点还原。执行下表四条跨具身场景，覆盖 `EpistemicMemoryFirewall` 和 `cognition.*` 认知器官扩展包。 |
 | Stage 5 · `labs/stage5-composite-channel-facets` | WebChat 文本和新增具身词表协商，NapCat 面向正确受众收发，重载淘汰旧注册，故障和半途激活按包清理。 |
 | Stage 6 · `labs/stage6-mechanism-policy-ablation` | CLI 在输入的虚拟时间运行，策略等待 0 ms，工具接地可核验、状态为空、撤稿中性。陪伴配置验证 1200 ms 合并、作息与耦合、焦点迟滞和词表约束、递归世界书预算。热消融检查旧缓存不会补发。 |
+| Stage 7 · `labs/stage7-public-contracts` | 从公开 SDK 与各核入口验证作者契约、替换模型提供方、无模型复用同一服务、撤权及空装配。 |
 | 主仓 Clean-Slate V1 | 在空卷启动真实 daemon、网关、控制台和 `builtin.webchat`，完成第二节和全部发布门禁。以探针序列、实际传输回执、脱敏轨迹、数据库断言和导出包清单作为证据。 |
 
 | Stage 4 场景 | 通过条件 |

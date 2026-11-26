@@ -191,6 +191,7 @@ export const DeliveryReceiptSchema = z.object({
   interruption_boundary: z.enum(["silenced", "done"]).optional(),
   spoken_char_offset: z.number().int().nonnegative().optional(),
   played_audio_ms: z.number().optional(),
+  playback_cursor: z.object({ unit: z.string().min(1), position: z.number().finite().nonnegative() }).optional(),
   interrupted_by_event_id: z.string().optional(),
   degraded_extensions: z.array(z.string()).optional(),
   actuator_outcome: z

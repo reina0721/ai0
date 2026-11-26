@@ -1,4 +1,5 @@
 {
+  "default_enabled": false,
   "manifest_version": "2.0.0",
   "extension_id": "builtin.companion-homeostasis",
   "display_name": "陪伴稳态",
@@ -7,6 +8,8 @@
   "carrier_kind": "native_code_plugin",
   "facets": [
     "cognition.state_dynamics",
+    "cognition.response_contract",
+    "expression.intent_decorator",
     "cognition.context_contributor",
     "console.config_schema"
   ],
@@ -14,10 +17,10 @@
   "permissions": {
     "read_blackboard_domains": [
       "D1_WORKING_TURN",
-      "D2_HOMEOSTASIS_AFFECT"
+      "D2_CONTINUOUS_STATES"
     ],
     "propose_mutation_domains": [
-      "D2_HOMEOSTASIS_AFFECT"
+      "D2_CONTINUOUS_STATES"
     ],
     "max_audience_scope": "only_owner",
     "network_access": false

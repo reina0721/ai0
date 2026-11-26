@@ -26,10 +26,6 @@ export interface IVirtualClock {
 }
 
 const HIBERNATION_THRESHOLD_MS = 5 * 60 * 1000;
-const HOUR_MS = 3_600_000;
-const DEFAULT_DRIVE_MAX = 1;
-const DEFAULT_DRIVE_LAMBDA_PER_HOUR = Math.LN2 / 12;
-const DEFAULT_PROACTIVE_THRESHOLD = 0.75;
 
 export interface VirtualClockOptions {
   targetInstance: TargetInstance;
@@ -106,81 +102,6 @@ export class VirtualClock implements IVirtualClock {
     this.hibernationIntervals.sort((a, b) => a.start_ts_ms - b.start_ts_ms);
     return { ...interval };
   }
-}
-
-export function computeSecondOrderCoupledAffect(params: {
-  v_instant_0: number; v_mood_0: number; v_base: number;
-  lambda_emo_per_hour?: number; lambda_mood_per_hour?: number;
-  effective_elapsed_ms: number;
-}): { instant_valence: number; mood_baseline_val: number } {
-  const lambdaMood = params.lambda_mood_per_hour ?? Math.LN2 / 12;
-  const lambdaEmo = params.lambda_emo_per_hour ?? Math.LN2 / (20 / 60);
-  const hours = elapsedHours(params.effective_elapsed_ms);
-  const moodDelta = params.v_mood_0 - params.v_base;
-  const moodDecay = Math.exp(-lambdaMood * hours);
-  const emoDecay = Math.exp(-lambdaEmo * hours);
-  const mood = params.v_base + moodDelta * moodDecay;
-  let instant: number;
-  if (Math.abs(lambdaEmo - lambdaMood) <= Number.EPSILON * 16) {
-    instant = mood + (params.v_instant_0 - params.v_mood_0) * emoDecay +
-      lambdaMood * moodDelta * hours * moodDecay;
-  } else {
-    const kappa = lambdaMood * moodDelta / (lambdaEmo - lambdaMood);
-    instant = mood +
-      (params.v_instant_0 - params.v_mood_0 - kappa) * emoDecay +
-      kappa * moodDecay;
-  }
-  return { instant_valence: instant, mood_baseline_val: mood };
-}
-
-export function computeMonotonicDriveIntegral(params: {
-  d0: number; d_max?: number; lambda_drive_per_hour?: number;
-  effective_elapsed_ms: number;
-}): number {
-  const maximum = params.d_max ?? DEFAULT_DRIVE_MAX;
-  const lambda = params.lambda_drive_per_hour ?? DEFAULT_DRIVE_LAMBDA_PER_HOUR;
-  return maximum - (maximum - params.d0) *
-    Math.exp(-lambda * elapsedHours(params.effective_elapsed_ms));
-}
-
-export { computeSensoryHabituation } from "@ai0/perception-core";
-
-export function solveNextWakeupTimestamp(params: {
-  t0_ms: number; d_longing_0: number; d_max?: number;
-  theta_proactive?: number; lambda_drive_per_hour?: number;
-  sleep_dirty_window_ts_ms?: number | null;
-  next_commitment_due_ts_ms?: number | null;
-}): {
-  next_wakeup_ts_ms: number; drive_wake_ts_ms: number;
-  trigger_reason: "proactive_drive" | "sleep_consolidation" | "commitment_due";
-} {
-  const maximum = params.d_max ?? DEFAULT_DRIVE_MAX;
-  const threshold = params.theta_proactive ?? DEFAULT_PROACTIVE_THRESHOLD;
-  const lambda = params.lambda_drive_per_hour ?? DEFAULT_DRIVE_LAMBDA_PER_HOUR;
-  let crossingHours = 0;
-  if (params.d_longing_0 < threshold) {
-    const ratio = (maximum - threshold) / (maximum - params.d_longing_0);
-    crossingHours = ratio > 0 && lambda > 0 ? -Math.log(ratio) / lambda : Infinity;
-  }
-  const driveWake = params.t0_ms + crossingHours * HOUR_MS;
-  const candidates: Array<{ ts: number; reason:
-    "proactive_drive" | "sleep_consolidation" | "commitment_due" }> = [
-    { ts: driveWake, reason: "proactive_drive" },
-  ];
-  if (params.sleep_dirty_window_ts_ms != null) {
-    candidates.push({ ts: params.sleep_dirty_window_ts_ms, reason: "sleep_consolidation" });
-  }
-  if (params.next_commitment_due_ts_ms != null) {
-    candidates.push({ ts: params.next_commitment_due_ts_ms, reason: "commitment_due" });
-  }
-  const selected = candidates.reduce((earliest, item) => item.ts < earliest.ts ? item : earliest);
-  return { next_wakeup_ts_ms: selected.ts, drive_wake_ts_ms: driveWake,
-    trigger_reason: selected.reason };
-}
-
-function elapsedHours(elapsedMs: number): number {
-  assertFiniteNonNegative(elapsedMs, "effective_elapsed_ms");
-  return elapsedMs / HOUR_MS;
 }
 
 function assertFiniteNonNegative(value: number, name: string): void {

@@ -9,3 +9,8 @@ export const GroundingTruthStageSchema = z.enum([
 ]);
 export type RealizerAffordanceDescriptor = z.infer<typeof RealizerAffordanceDescriptorSchema>;
 export type GroundingTruthStage = z.infer<typeof GroundingTruthStageSchema>;
+/** A media adapter translates a device cursor into Unicode code points in the fallback text. */
+export interface MediaCursorResolver {
+  extension: string;
+  resolve(payload: unknown, progress: { played_audio_ms?: number; playback_cursor?: { unit: string; position: number } }): number | undefined;
+}

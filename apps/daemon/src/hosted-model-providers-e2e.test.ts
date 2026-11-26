@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { DiscoveredRemoteModel, ModelInstance, ProviderCatalogSource, ProviderSource, ChannelTokenUsage, SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
 import { expect, it } from "vitest";
 
+import { updateStudioConfig } from "./studio-service.js";
 import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer } from "./index.js";
 
 const goModel = "glm-5.3-flash";
@@ -54,9 +55,7 @@ function makeReplyStream(model: string, messagesApi: boolean, reply = replyFor(m
     interaction_frame: "serious_factual",
     vocal_emotion_tag: "neutral",
     facial_expression: "neutral",
-    valence_impulse: "none",
-    provider_used: "test-provider",
-    model_used: model
+    valence_impulse: "none"
   });
   if (messagesApi) {
     const frames = [
@@ -141,6 +140,10 @@ it("discovers, imports, probes and uses hosted models through real admin and Web
     }
   });
   const runtime = createDefaultDaemonRuntime({ soulDir: join(tempRoot, "test.soul"), ownerMasterToken: ownerToken });
+  updateStudioConfig(runtime, { soulStudio: { responseContract: "companion.structured_v1" }, ecosystem: { plugins: [{
+    id: "builtin.companion-homeostasis", name: "Structured dialogue", carrier: "native_code_plugin", bus: "cognition.response_contract",
+    version: "1", description: "", enabled: true, configFields: [] }] } });
+  await runtime.refreshCapabilities(true);
   const server = createUnifiedDaemonHttpServer(runtime);
 
   try {
@@ -381,7 +384,7 @@ it("discovers, imports, probes and uses hosted models through real admin and Web
     runtime.close();
     rmSync(tempRoot, { recursive: true, force: true });
   }
-});
+}, 15_000);
 
 it("applies a model context override to real conversation prompts and rejects input that cannot fit", async () => {
   const tempRoot = mkdtempSync(join(tmpdir(), "ai0-model-context-"));
@@ -430,11 +433,16 @@ it("applies a model context override to real conversation prompts and rejects in
       response.end(JSON.stringify({ choices: [{ message: { content: "OK" } }] }));
       return;
     }
-    const undelivered = body.messages.find((message) => message.role === "user")?.content.includes("request-undelivered-marker");
+    const prompt = body.messages.find(message => message.role === "user")?.content ?? "";
+    const undelivered = prompt.startsWith("{") && JSON.parse(prompt).userText === "request-undelivered-marker";
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.end(makeReplyStream(modelId, false, undelivered ? "assistant-undelivered-marker" : "正常送达的模型回复。"));
   });
   const runtime = createDefaultDaemonRuntime({ soulDir: join(tempRoot, "test.soul"), ownerMasterToken: ownerToken });
+  updateStudioConfig(runtime, { soulStudio: { responseContract: "companion.structured_v1" }, ecosystem: { plugins: [{
+    id: "builtin.companion-homeostasis", name: "Structured dialogue", carrier: "native_code_plugin", bus: "cognition.response_contract",
+    version: "1", description: "", enabled: true, configFields: [] }] } });
+  await runtime.refreshCapabilities(true);
   const server = createUnifiedDaemonHttpServer(runtime);
 
   try {
@@ -470,8 +478,10 @@ it("applies a model context override to real conversation prompts and rejects in
     }
 
     function observedHistory(): string {
-      const system = modelRequests.at(-1)?.messages.find((message) => message.role === "system")?.content ?? "";
-      return system.match(/\[slot\.tier1_working_turn\]\n([\s\S]*?)(?=\n\n\[slot\.|\n\n--- OUTPUT CONTRACT ---|$)/u)?.[1] ?? "";
+      const messages = modelRequests.at(-1)?.messages ?? [];
+      const history = JSON.parse(messages.find(message => message.role === "user")?.content ?? "{}").context?.["slot.tier1_working_turn"] ?? "";
+      expect(messages.find(message => message.role === "system")?.content).not.toContain("slot.tier1_working_turn");
+      return history;
     }
 
     const sourcePath = `/api/admin/v1/integrations/sources/${sourceId}`;
@@ -517,7 +527,9 @@ it("applies a model context override to real conversation prompts and rejects in
       await turn(`history-item-${index} ${"abcdef0123456789 ".repeat(60)}`);
     }
     await turn("foreign-thread-marker", { thread: "foreign-thread" });
+    updateStudioConfig(runtime, { soulStudio: { responseContract: "agent.standard_v1" } });
     await turn("public-audience-marker", { venue_type: "public_livestream", audience_scope: "public_all" });
+    updateStudioConfig(runtime, { soulStudio: { responseContract: "companion.structured_v1" } });
     const redacted = await turn("redacted-history-marker");
     runtime.storage.sqlite.prepare("UPDATE event_log SET redacted_at_ts_ms = ? WHERE event_id = ?").run(Date.now(), redacted.event_id);
     const beforePending = modelRequests.length;

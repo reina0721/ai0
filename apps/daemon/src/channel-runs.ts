@@ -1,3 +1,4 @@
+import { PendingExpressionDelivery } from "@ai0/expression-core";
 import { ModelContextLimitError, ProviderNotConfiguredError, UpstreamInferenceError } from "@ai0/agent-core";
 import { readSoulArchiveConfig } from "@ai0/storage";
 import { timingSafeEqual } from "node:crypto";
@@ -13,7 +14,7 @@ import { SoulNotAwakenedError, type Ai0DaemonRuntime } from "./index.js";
 type Mode = "live" | "sandbox";
 type Target = "live" | "sandbox:console";
 type Stage = ChannelRunStage;
-type Status = "accepted" | "generating" | "delivering" | "completed" | "interrupted" | "cancelled" | "failed";
+type Status = "accepted" | "generating" | "delivering" | "completed" | "interrupted" | "cancelled" | "held_pending_compliant_channel" | "failed";
 type Receipt = { status: "completed" | "interrupted"; spokenCharOffset: number };
 
 interface RunStatus extends ChannelRunPresentation {
@@ -246,7 +247,7 @@ export function registerChannelProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRu
         channel_run_status?: unknown;
       };
       const statusFlag = payload.channel_run_status;
-      return { ...base, ...presentation(mode, event.event_id), status: statusFlag === "cancelled" ? "cancelled" : "failed" };
+      return { ...base, ...presentation(mode, event.event_id), status: statusFlag === "cancelled" || statusFlag === "held_pending_compliant_channel" ? statusFlag : "failed" };
     }
     const receipt = receiptOf(trace);
     return {
@@ -471,7 +472,10 @@ export function registerChannelProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRu
             error instanceof ProviderNotConfiguredError || error instanceof SoulNotAwakenedError ||
             error instanceof UpstreamInferenceError)) process.error = error.code;
         if (!archived) saveProcess();
-        if (!run.trace) {
+        if (!controller.signal.aborted && error instanceof PendingExpressionDelivery) {
+          run.state.status = error.code;
+          storageFor(mode).holdChannelRunIntent(channelId, run.state.eventId, error.intent);
+        } else if (!run.trace) {
           const status = controller.signal.aborted ? "cancelled" : "failed";
           run.state.status = status;
           storageFor(mode).markChannelRunEnded(channelId, run.state.eventId, status);
@@ -512,6 +516,8 @@ export function registerChannelProtocolRunRoutes(app: Hono, runtime: Ai0DaemonRu
           .join("");
         run.state.deliveryFinished = true;
       }
+    } else if (!run && getStatus(channelId, mode, id)?.status === "held_pending_compliant_channel") {
+      storageFor(mode).markChannelRunEnded(channelId, EVENT_PREFIX + id, "cancelled");
     } else if (run && !trace) {
       run.state.status = "cancelled";
       storageFor(mode).markChannelRunEnded(channelId, run.state.eventId, "cancelled");

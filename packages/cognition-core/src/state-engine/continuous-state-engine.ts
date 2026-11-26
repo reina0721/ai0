@@ -54,6 +54,16 @@ export class ContinuousStateMetaEngine {
       [id, decode(state.baseline + this.displacementAt(state, nowMs), state.topology)]));
   }
 
+  setValue(id: string, value: number, nowMs: number) {
+    this.checkTime(nowMs);
+    const state = this.states.get(id);
+    if (!state || !Number.isFinite(value)) throw new RangeError("Invalid state value");
+    const min = state.topology === "bipolar_tanh" ? -1 + Number.EPSILON : Number.EPSILON;
+    state.displacement = encode(Math.max(min, Math.min(1 - Number.EPSILON, value)), state.topology) - state.baseline;
+    state.impulseAtMs = nowMs;
+    this.nowMs = nowMs;
+  }
+
   impulse(id: string, amount: number, nowMs: number, impulseId?: string) {
     if (impulseId !== undefined && this.impulseIds.has(impulseId)) return;
     this.checkTime(nowMs);
@@ -81,12 +91,3 @@ export class ContinuousStateMetaEngine {
     return Number.isFinite(next) ? next : null;
   }
 }
-
-export const COMPANION_HOMEOSTASIS_DESCRIPTORS: readonly ContinuousStateDescriptor[] = [
-  { id: "instant_valence", topology: "bipolar_tanh", baseline: 0, halfLifeMs: 3_600_000, wakeupThresholds: [] },
-  { id: "instant_arousal", topology: "unipolar_sigmoid", baseline: 0.35, halfLifeMs: 3_600_000, wakeupThresholds: [] },
-  { id: "mood_baseline_val", topology: "bipolar_tanh", baseline: 0, halfLifeMs: 43_200_000, wakeupThresholds: [] },
-  ...["circadian_energy", "metabolic_energy", "drive_social_longing", "drive_curiosity"].map(id => ({
-    id, topology: "unipolar_sigmoid" as const, baseline: 0.5, halfLifeMs: 43_200_000, wakeupThresholds: []
-  }))
-];

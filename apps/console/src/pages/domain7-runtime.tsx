@@ -64,9 +64,10 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
       if (!ctx || !canWrite || pending) return;
       setPending(true);
       try {
-        await ctx.postStudio("/api/studio/co-work-task", { action, taskId });
+        const result = await ctx.postStudio("/api/studio/co-work-task", { action, taskId });
         await ctx.refreshSnapshot();
-        ctx.showToast(action === "execute" ? "已记录知识库检索结果" : action === "approve" ? "任务已批准，等待执行器" : "任务已暂停");
+        if (!result.ok) throw new Error(String(result.error ?? "任务未能推进"));
+        ctx.showToast(action === "execute" ? "已记录执行回执" : action === "approve" ? "任务已批准，等待执行器" : "任务已暂停");
       } catch (err) {
         ctx.showToast(`操作失败：${err instanceof Error ? err.message : String(err)}`);
       } finally {
@@ -119,7 +120,11 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
             </div>
             <div className="ai0-workspace-stack">
               {!agency?.activeTasks.length ? <small>暂无已登记任务。</small> : null}
-              {(agency?.activeTasks ?? []).map((task) => (
+              {(agency?.activeTasks ?? []).map((task) => {
+                const executor = agency?.subAgents.find(agent => agent.id === task.subAgentId && agent.enabled)?.executor;
+                const taskAction = task.status === "waiting_approval" ? "approve" :
+                  task.status === "queued" && executor ? (task.approvalCurrent ? "execute" : "approve") : undefined;
+                return (
                 <WorkspaceItem key={task.id} as="article" data-task-card={task.id}>
                   <WorkspaceRow>
                     <div>
@@ -132,17 +137,17 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
                       <WorkspaceStatus data-tone={task.status === "completed" ? "good" : task.status === "waiting_approval" ? "warn" : "info"}>
                         {task.status === "completed" ? "已完成并归档" : task.status === "waiting_approval" ? "待审批" : task.status === "queued" ? "待执行" : task.status === "paused" ? "已暂停" : `执行中 ${task.currentStep}/${task.totalSteps}`}
                       </WorkspaceStatus>
-                      {task.status === "running" || task.status === "waiting_approval" || (task.status === "queued" && task.subAgentId === "sub_research_scholar") ? (
+                      {taskAction ? (
                         <RippleButton
                           variant="primary"
                           size="sm"
                           data-quick-approve={task.id}
                           data-quick-kind="task"
                           disabled={!canWrite || pending}
-                          onClick={() => void handleTaskAction(task.id, task.status === "queued" ? "execute" : task.status === "running" ? "pause" : "approve")}
+                          onClick={() => void handleTaskAction(task.id, taskAction)}
                         >
                           {renderConsoleIcon("check", 13)}
-                          <span>{task.status === "queued" ? "执行知识库检索" : task.status === "running" ? "暂停" : "批准执行"}</span>
+                          <span>{taskAction === "execute" ? "执行任务" : "批准执行"}</span>
                         </RippleButton>
                       ) : null}
                     </div>
@@ -152,7 +157,7 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
                     aria-label={`${task.title} 进度`} />
                   {task.outputSummary ? <small>产出摘要：{task.outputSummary}</small> : null}
                 </WorkspaceItem>
-              ))}
+              ); })}
             </div>
           </WorkspaceSection>
 

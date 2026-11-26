@@ -1,14 +1,18 @@
+import { cognitionResponseContractPoint } from "@ai0/protocol";
 import { defineFacetPoint } from "@ai0/extension-core";
+import { perceptionExtractorContract, cognitionProposalPolicyContract } from "@ai0/protocol";
+export const perceptionExtractorFacet = defineFacetPoint(perceptionExtractorContract);
+export const cognitionProposalPolicyFacet = defineFacetPoint(cognitionProposalPolicyContract);
 import {
   ConsolePageSchema,
+  perceptionSourceContract,
   ContinuousStateDescriptorSchema,
-  InteractionChannelSchema,
-  type AgentToolCall,
-  type AgentToolResult,
+  EmbodiedPresentationStyleSchema, type EmbodiedPresentationStyle, InteractionChannelSchema,
   type CommunicativeIntentEnvelope,
   type ContinuousStateDescriptor,
   type ConsoleUiSlotContribution,
   type ExpressionEnvelope,
+  type DeliveryReceipt,
   type InteractionChannel,
   type PluginConfigField,
   type RuntimeConsolePage,
@@ -35,10 +39,12 @@ export interface SdkPerceptionFilter {
 
 export interface SdkExpressionRealizer {
   channel: InteractionChannel;
-  deliver?(envelope: ExpressionEnvelope): void | Promise<void>;
+  presentationStyle?: EmbodiedPresentationStyle;
+  deliver?(envelope: ExpressionEnvelope, signal?: AbortSignal): void | DeliveryReceipt | Promise<void | DeliveryReceipt>;
 }
 
 export interface SdkExpressionMediaTranscoder {
+  cursor?: import("@ai0/protocol").MediaCursorResolver;
   getSupportedVocabulary?(): {
     voice_emotion_tags?: string[];
     visual_semantic_cues?: string[];
@@ -52,6 +58,7 @@ export interface SdkExpressionMediaTranscoder {
 
 export interface SdkExpressionIntentDecorator {
   priority?: number;
+  presentationStyle?: EmbodiedPresentationStyle;
   decorate(intent: CommunicativeIntentEnvelope, channel: InteractionChannel): CommunicativeIntentEnvelope;
 }
 
@@ -59,7 +66,7 @@ export interface SdkCognitionContextContributor {
   priority?: number;
   contributeToBlackboard(
     snapshot: Readonly<Record<string, unknown>>,
-    maxTokens: number
+    maxTokens: number, request?: { text: string }
   ): { slot_id: string; text: string } | null | Promise<{ slot_id: string; text: string } | null>;
 }
 
@@ -91,19 +98,6 @@ export interface SdkAttentionArbitrator {
   };
 }
 
-export interface SdkAgentToolProvider {
-  tools: readonly {
-    name: string;
-    description: string;
-    execute(call: AgentToolCall, signal: AbortSignal): AgentToolResult | Promise<AgentToolResult>;
-  }[];
-}
-
-export interface SdkAgentSkillManual {
-  id: string;
-  instructions: string;
-}
-
 export const channelBridgeFacet = defineFacetPoint<{ channel_id: string; protocol_path?: string }>({
   owner: "channel",
   name: "bridge",
@@ -126,6 +120,7 @@ export const perceptionIngressFacet = defineFacetPoint<InteractionChannel>({
   version: 1,
   parse: (raw) => InteractionChannelSchema.parse(raw)
 });
+export const perceptionSourceFacet = defineFacetPoint(perceptionSourceContract);
 
 export const perceptionFilterFacet = defineFacetPoint<SdkPerceptionFilter>({
   owner: "perception",
@@ -206,7 +201,8 @@ export const expressionRealizerFacet = defineFacetPoint<SdkExpressionRealizer>({
     if (!value || (value.deliver !== undefined && typeof value.deliver !== "function")) {
       throw new TypeError("Invalid expression.realizer facet");
     }
-    return { channel: InteractionChannelSchema.parse(value.channel), deliver: value.deliver };
+    return { channel: InteractionChannelSchema.parse(value.channel),
+      presentationStyle: EmbodiedPresentationStyleSchema.optional().parse(value.presentationStyle), deliver: value.deliver };
   }
 });
 
@@ -220,7 +216,8 @@ export const expressionMediaTranscoderFacet = defineFacetPoint<SdkExpressionMedi
       !value ||
       (value.onUpstreamMediaFrame !== undefined && typeof value.onUpstreamMediaFrame !== "function") ||
       (value.onDownstreamExpression !== undefined && typeof value.onDownstreamExpression !== "function") ||
-      (!value.onUpstreamMediaFrame && !value.onDownstreamExpression)
+      (value.cursor !== undefined && (!value.cursor?.extension || typeof value.cursor.resolve !== "function")) ||
+      (!value.onUpstreamMediaFrame && !value.onDownstreamExpression && !value.cursor)
     ) {
       throw new TypeError("Invalid expression.media_transcoder facet");
     }
@@ -237,41 +234,7 @@ export const expressionIntentDecoratorFacet = defineFacetPoint<SdkExpressionInte
     if (typeof value?.decorate !== "function" || (value.priority !== undefined && !Number.isFinite(value.priority))) {
       throw new TypeError("Invalid expression.intent_decorator facet");
     }
-    return value;
-  }
-});
-
-export const agentToolProviderFacet = defineFacetPoint<SdkAgentToolProvider>({
-  owner: "agent",
-  name: "tool_provider",
-  version: 1,
-  parse(raw) {
-    const value = raw as SdkAgentToolProvider | null;
-    if (
-      !Array.isArray(value?.tools) ||
-      !value.tools.every(
-        (tool) =>
-          tool &&
-          typeof tool.name === "string" &&
-          typeof tool.description === "string" &&
-          typeof tool.execute === "function"
-      )
-    ) {
-      throw new TypeError("Invalid agent.tool_provider facet");
-    }
-    return value;
-  }
-});
-
-export const agentSkillManualFacet = defineFacetPoint<SdkAgentSkillManual>({
-  owner: "agent",
-  name: "skill_manual",
-  version: 1,
-  parse(raw) {
-    const value = raw as SdkAgentSkillManual | null;
-    if (!value?.id || typeof value.id !== "string" || typeof value.instructions !== "string") {
-      throw new TypeError("Invalid agent.skill_manual facet");
-    }
+    EmbodiedPresentationStyleSchema.optional().parse(value.presentationStyle);
     return value;
   }
 });
@@ -308,3 +271,5 @@ export const consoleConfigSchemaFacet = defineFacetPoint<{ fields: readonly Plug
     return { fields: [...value.fields] };
   }
 });
+
+export const cognitionResponseContractFacet = defineFacetPoint(cognitionResponseContractPoint);

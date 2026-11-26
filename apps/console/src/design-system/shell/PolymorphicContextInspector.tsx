@@ -39,7 +39,7 @@ function TraceSections({ trace }: { trace?: VerifiableTurnTrace }): ReactElement
     { label: "状态更新", body: <p>rev {trace.state_rev_before} → {trace.state_rev_after}{typeof mood === "number" ? " · 心境 " + mood.toFixed(2) : ""}</p> },
     { label: "回应策略", body: <>
       <p>{strategy.chosen_strategy}</p>
-      {strategy.theatrical_subtext.raw_text ? <SpoilerMask label={strategy.theatrical_subtext.masked_placeholder}>{strategy.theatrical_subtext.raw_text}</SpoilerMask> : null}
+      {strategy.theatrical_subtext?.raw_text ? <SpoilerMask label={strategy.theatrical_subtext.masked_placeholder}>{strategy.theatrical_subtext.raw_text}</SpoilerMask> : null}
     </> },
     { label: "工具授权", body: <p>{tool.external_tool_invoked?.tool_id ?? "本轮未调用外部工具"} · {tool.auth_decision}</p> },
     { label: "输出意图", body: <p>{intent.action_type} · {intent.extensions_attached.join("、") || "无表现扩展"}</p> },

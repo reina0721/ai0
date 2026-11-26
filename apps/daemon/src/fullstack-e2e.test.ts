@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { installStudioTestProfile } from "./test-support/studio-profile.js";
 import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer } from "./index.js";
 
 describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kernel + SQLite + Console WebUI", () => {
@@ -21,12 +22,13 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     const runtime = createDefaultDaemonRuntime({
       soulDir,
       ownerMasterToken: ownerToken,
-      allowDeterministicSandbox: true
+      allowDeterministicSandbox: true, capturePromptBodies: true
     });
     cleanups.push(() => {
       runtime.close();
       rmSync(tempRoot, { recursive: true, force: true });
     });
+    installStudioTestProfile(runtime);
     const observations = [
       ["mem_test_01_tea", "今天喝的是绿茶。"],
       ["mem_test_02_review", "周五要评审设计。"],
@@ -104,10 +106,10 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(chatRes.status).toBe(200);
     const chatData = (await chatRes.json()) as {
       expression: { intent_id: string; fallback_text: string };
-      trace: { trace_id: string; steps: { step5_strategy_proposal: { theatrical_subtext: { raw_text: string } } } };
+      trace: { trace_id: string; steps: { step5_strategy_proposal: { theatrical_subtext?: { raw_text: string } } } };
     };
     expect(chatData.expression.fallback_text.length).toBeGreaterThan(8);
-    expect(chatData.trace.steps.step5_strategy_proposal.theatrical_subtext.raw_text.length).toBeGreaterThan(5);
+    expect(chatData.trace.steps.step5_strategy_proposal.theatrical_subtext).toBeUndefined();
 
     // 3. Real Channel A barge-in interruption receipt
     const interruptRes = await fetch(`${baseUrl}/protocol/v0/channel/receipt`, {
@@ -191,7 +193,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     const health = (await healthRes.json()) as { ok: boolean };
     expect(health.ok).toBe(true);
 
-    // 9-Brick Full Prompt Preview (Private vs Public 70% Social Mask)
+    // Preview respects configured audience.
     const previewRes = await fetch(`${baseUrl}/api/studio/prompt-preview`, {
       method: "POST",
       headers: adminHeaders,
@@ -203,7 +205,9 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       publicPreview: { promptText: string; totalTokens: number };
     };
     expect(preview.privatePreview.totalTokens).toBeGreaterThan(preview.publicPreview.totalTokens);
-    expect(preview.publicPreview.promptText).toContain("70%");
+    expect(preview.publicPreview.promptText).toContain("Verify supporting evidence.");
+    expect(preview.privatePreview.promptText).toContain("Owner review checklist.");
+    expect(preview.publicPreview.promptText).not.toContain("Owner review checklist.");
 
     // Co-Worker SubAgent Task Dispatch -> Approve -> Crystallize into SQLite Episodic Memory
     const createTaskRes = await fetch(`${baseUrl}/api/studio/co-work-task`, {
@@ -291,9 +295,15 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       })
     });
     expect(mioWhoRes.status).toBe(200);
-    const mioWhoData = (await mioWhoRes.json()) as { expression: { fallback_text: string } };
-    expect(mioWhoData.expression.fallback_text).toContain("Mio");
-    expect(mioWhoData.expression.fallback_text).toContain("理性敏锐");
+    const mioWhoData = (await mioWhoRes.json()) as { modelRequestId: string; expression: { fallback_text: string } };
+    expect(mioWhoData.expression.fallback_text).toBe("你是谁");
+    const identityPreview = await fetch(baseUrl + "/api/studio/prompt-preview", { method: "POST", headers: adminHeaders, body: JSON.stringify({ text: "你是谁" }) });
+    const { privatePreview } = await identityPreview.json() as { privatePreview: { promptText: string; manifest: { fragments: { source: string; fingerprint: string }[] } } };
+    expect(privatePreview.promptText).toContain("Mio");
+    expect(privatePreview.promptText).toContain("理性敏锐");
+    const identity = privatePreview.manifest.fragments.find(part => part.source === "studio.identity");
+    expect(identity).toBeDefined();
+    expect(runtime.modelRequests.live.read(mioWhoData.modelRequestId)?.assembly.fragments).toContainEqual(identity);
 
     // Verify SPA deep-link routes serve 200 HTML and live snapshot contains zero fake mock group rules
     for (const p of ["/dashboard", "/conversations", "/profiles/rules", "/dashboard/blackboard", "/soul/distiller", "/soul/homeostasis", "/models/providers", "/runtime/coordinator-agency", "/system/instances-storage"]) {
@@ -316,7 +326,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       observations.map(([id]) => id).filter(id => id !== forgetTarget).sort()
     );
     expect(restored.redactionLedgerCount).toBeGreaterThanOrEqual(1);
-  });
+  }, 15_000);
 
   it("enforces orthogonal Provider Pool -> Platform Pool -> Profile Binding -> UMO Routing end-to-end", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "ai0-ortho-e2e-"));
@@ -639,8 +649,8 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       "  for (const line of lines) {",
       "    if (!line.trim()) continue;",
       "    const msg = JSON.parse(line);",
-      "    if (msg.method === 'initialize') process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:msg.id,result:{protocolVersion:'2024-11-05',capabilities:{},serverInfo:{name:'echo',version:'1'}}})+'\\n');",
-      "    if (msg.method === 'tools/list') process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:msg.id,result:{tools:[{name:'echo_ping',description:'Read only ping tool'}]}})+'\\n');",
+      "    if (msg.method === 'initialize') process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:msg.id,result:{protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'echo',version:'1'}}})+'\\n');",
+      "    if (msg.method === 'tools/list') process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:msg.id,result:{tools:[{name:'echo_ping',description:'Read only ping tool',inputSchema:{type:'object',properties:{}}}]}})+'\\n');",
       "  }",
       "});"
     ].join(" ");

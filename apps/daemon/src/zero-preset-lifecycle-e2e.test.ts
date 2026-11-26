@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import type { CharacterCardV3, ExpressionEnvelope, VerifiableTurnTrace } from "@ai0/protocol";
+import type { AgentStepManifest, CharacterCardV3, ExpressionEnvelope, VerifiableTurnTrace } from "@ai0/protocol";
 import { expect, it, type TestContext } from "vitest";
 import { lifecycleFixture } from "./test-support/lifecycle.js";
 
@@ -30,10 +30,7 @@ async function startChatUpstream(ctx: TestContext, expectedAuthorization?: strin
       res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" } }] }));
       return;
     }
-    const content = JSON.stringify({
-      surface_utterance: reply, theatrical_subtext: "回应问候", masked_placeholder: "", chosen_strategy: "answer",
-      interaction_frame: "serious_factual", vocal_emotion_tag: "neutral", facial_expression: "neutral", valence_impulse: "none"
-    });
+    const content = reply;
     res.writeHead(200, { "content-type": "text/event-stream" });
     for (const choice of [{ delta: { content }, finish_reason: null }, { delta: {}, finish_reason: "stop" }]) {
       res.write("data: " + JSON.stringify({ id: "lifecycle-turn", object: "chat.completion.chunk", created: 1,
@@ -102,12 +99,27 @@ it("progresses from an empty host to a live channel and exports only the sanitiz
   expect((await readiness("L5_LIVE_READY")).missing_prerequisites).toEqual([]);
 
   const text = "Private observing notes for this turn only.";
-  const turn = await request<{ expression: ExpressionEnvelope; trace: VerifiableTurnTrace; provider: { model: string } }>(
+  const preview = await request<{ privatePreview: { manifest: AgentStepManifest; promptText: string } }>(
+    "/api/studio/prompt-preview", "POST", { text, channelId });
+  expect(preview.privatePreview.manifest.responseContract).toBe("agent.standard_v1");
+  expect(preview.privatePreview.promptText).not.toMatch(/tsundere_irony|theatrical_subtext/);
+  expect(upstream.requests).toHaveLength(1);
+  const turn = await request<{ modelRequestId: string; expression: ExpressionEnvelope; trace: VerifiableTurnTrace; provider: { model: string } }>(
     "/protocol/v0/channel/perception", "POST", { text, channel_id: channelId, audience_scope: "only_owner", venue_type: "private_1on1" }
   );
   expect(upstream.requests).toEqual([{ model: modelId, stream: false }, { model: modelId, stream: true }]);
   expect(turn.provider.model).toBe(modelId);
-  expect(turn.expression).toMatchObject({ fallback_text: reply, attention_target: "interlocutor", delivery_constraints: { audienceScope: "only_owner" } });
+  expect(turn.expression).toMatchObject({ fallback_text: reply, delivery_constraints: { audienceScope: "only_owner" } });
+  expect(turn.expression.attention_target).toBeUndefined();
+  expect(turn.trace.steps.step5_strategy_proposal.interaction_frame).toBeUndefined();
+  const record = await request<{ assembly: AgentStepManifest; attempts: Array<{ fields: { pointer: string; sourceIds: string[] }[]; serializedFingerprint: string }> }>(
+    "/api/admin/v1/runtime/model-requests/" + encodeURIComponent(turn.modelRequestId));
+  expect(record.assembly.fingerprint).toBe(preview.privatePreview.manifest.fingerprint);
+  expect(record.attempts).toHaveLength(1);
+  expect(record.attempts[0]!.serializedFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  expect(record.attempts[0]!.fields.some(field => field.sourceIds.includes("channel/user"))).toBe(true);
+  expect(JSON.stringify(record)).not.toContain(text);
+  expect(JSON.stringify(record)).not.toContain(apiKey);
   const eventId = turn.trace.turn_event_id;
   expect(runtime.storage.getEventById(eventId)?.summary_text).toBe(text);
   const memoryId = "mem_private_export";

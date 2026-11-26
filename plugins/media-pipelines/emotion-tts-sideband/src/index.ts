@@ -4,6 +4,7 @@ const manifest = Ai0ExtensionManifestSchema.parse(manifestJson);
 
 import {
   ExtMediaSidebandV1Schema,
+  computeSpokenCharOffsetFromAudioMs,
   type ExpressionEnvelope,
   type ExtMediaSidebandV1,
   type VisemeFrame
@@ -58,6 +59,15 @@ export const emotionTtsSideband = defineExtensionPackage({
   manifest,
   activate(scope) {
     scope.contributeFacet(expressionMediaTranscoderFacet, {
+      cursor: {
+        extension: "ext.media.sideband.v1",
+        resolve(payload, { played_audio_ms }) {
+          if (played_audio_ms === undefined) return;
+          const sideband = ExtMediaSidebandV1Schema.safeParse(payload);
+          if (!sideband.success) return;
+          return played_audio_ms > 0 ? computeSpokenCharOffsetFromAudioMs(sideband.data.char_offset_timestamps_ms, played_audio_ms) : 0;
+        }
+      },
       getSupportedVocabulary: () => ({
         voice_emotion_tags: ["warm_neutral", "bright", "soft", "curious"],
         visual_semantic_cues: ["gentle_blink", "small_smile", "concerned_gaze"]

@@ -1,6 +1,7 @@
 import type {
   AgentSkillRecord,
   DeploymentReadinessReport,
+  ExtensionServiceRef,
   HostInfrastructureConfig,
   PluginConfigField,
   PluginOrigin,
@@ -113,6 +114,7 @@ export interface ConsoleStudioState {
   version: number;
   onboardingCompleted: boolean;
   soulStudio: {
+    responseContract?: string;
     displayName: string;
     avatarEmoji: string;
     tagline: string;
@@ -274,6 +276,7 @@ export interface ConsoleStudioState {
       modelProviderId: string;
       systemPrompt: string;
       allowedTools: string[];
+      executor?: ExtensionServiceRef & { provider: string };
       maxSteps: number;
       enabled: boolean;
     }>;
@@ -281,6 +284,7 @@ export interface ConsoleStudioState {
       id: string;
       title: string;
       subAgentId: string;
+      approvalCurrent?: boolean;
       status: "queued" | "running" | "waiting_approval" | "completed" | "paused";
       currentStep: number;
       totalSteps: number;
@@ -388,10 +392,10 @@ export interface ConsoleLiveSnapshot {
   memoriesCount: number;
   tracesCount: number;
   redactionLedgerCount: number;
-  metabolicEnergy: number;
-  circadianEnergy: number;
-  moodValence: number;
-  socialLonging: number;
+  metabolicEnergy?: number;
+  circadianEnergy?: number;
+  moodValence?: number;
+  socialLonging?: number;
   frictionTension: number;
   trustBond?: number;
   activeConnections?: number;

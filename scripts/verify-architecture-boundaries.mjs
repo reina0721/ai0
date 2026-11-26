@@ -1,10 +1,10 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const CORE_PACKAGES = ["agent-core", "cognition-core", "extension-core", "expression-core", "gateway", "perception-core", "protocol", "sdk", "storage"];
 const HEADLESS_CORES = ["agent-core", "perception-core", "expression-core", "cognition-core", "extension-core"];
 const INTERNAL_ALLOWLIST = {
   protocol: [],
@@ -14,9 +14,10 @@ const INTERNAL_ALLOWLIST = {
   "expression-core": ["protocol", "extension-core"],
   storage: ["protocol"],
   sdk: ["protocol", "extension-core"],
-  "cognition-core": ["protocol", "extension-core", "agent-core", "perception-core", "expression-core", "storage"],
+  "cognition-core": ["protocol", "extension-core", "agent-core"],
   gateway: ["protocol", "extension-core", "perception-core", "cognition-core", "expression-core", "storage"]
 };
+const WORKSPACE_PACKAGES = Object.keys(INTERNAL_ALLOWLIST);
 const PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES = new Set(["@ai0/protocol", "@ai0/sdk"]);
 const AGENT_DOMAIN_TERMS = /D2_HOMEOSTASIS_AFFECT|SoulArchive|Lorebook|blush_level|user_eyes|local-persona-synthesizer/u;
 const HOST_CONSOLE_FORBIDDEN_PLUGIN_DEPS = [
@@ -359,8 +360,8 @@ function moduleSpecifiers(source) {
   return [...specifiers];
 }
 
-async function verifyCorePackageLock() {
-  const rule = "Invariant 1: packages/ nine-package lock";
+async function verifyPackageLayout() {
+  const rule = "Invariant 1: declared workspace package layout";
   const packagesDirectory = path.join(repoRoot, "packages");
   const info = await pathInfo(packagesDirectory);
   if (!info?.isDirectory()) {
@@ -370,8 +371,8 @@ async function verifyCorePackageLock() {
 
   const entries = await readdir(packagesDirectory, { withFileTypes: true });
   const actualDirectories = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  const unexpectedDirectories = actualDirectories.filter((name) => !CORE_PACKAGES.includes(name));
-  const missingDirectories = CORE_PACKAGES.filter((name) => !actualDirectories.includes(name));
+  const unexpectedDirectories = actualDirectories.filter((name) => !WORKSPACE_PACKAGES.includes(name));
+  const missingDirectories = WORKSPACE_PACKAGES.filter((name) => !actualDirectories.includes(name));
   const unexpectedFiles = entries.filter((entry) => !entry.isDirectory()).map((entry) => entry.name).sort();
 
   if (unexpectedDirectories.length > 0) {
@@ -381,7 +382,7 @@ async function verifyCorePackageLock() {
     report(rule, `Missing core package directories: ${missingDirectories.join(", ")}.`);
   }
   if (unexpectedFiles.length > 0) {
-    report(rule, `packages/ may contain only the nine core package directories; unexpected entries: ${unexpectedFiles.join(", ")}.`);
+    report(rule, `Unexpected entries at the package root: ${unexpectedFiles.join(", ")}.`);
   }
 }
 
@@ -463,7 +464,7 @@ async function verifyPluginBoundaries() {
     include: (filePath) => SOURCE_EXTENSIONS.has(path.extname(filePath)),
   });
   const forbiddenHostDirectories = [
-    ...CORE_PACKAGES.filter(name => !PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES.has("@ai0/" + name))
+    ...WORKSPACE_PACKAGES.filter(name => !PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES.has("@ai0/" + name))
       .map(name => ({ packageName: "@ai0/" + name, directory: path.resolve(repoRoot, "packages", name) })),
     { packageName: "@ai0/console-webui", directory: path.resolve(repoRoot, "apps", "console") },
     { packageName: "@ai0/daemon", directory: path.resolve(repoRoot, "apps", "daemon") },
@@ -498,7 +499,7 @@ async function verifyPluginBoundaries() {
 async function verifyCoreDependencies() {
   const rule = "Invariant 4: core dependency direction and headless purity";
   const packagesRoot = path.join(repoRoot, "packages");
-  for (const name of CORE_PACKAGES) {
+  for (const name of WORKSPACE_PACKAGES) {
     const packageRoot = path.join(packagesRoot, name);
     const packageJsonPath = path.join(packageRoot, "package.json");
     const allowed = INTERNAL_ALLOWLIST[name];
@@ -525,7 +526,7 @@ async function verifyCoreDependencies() {
         if (!specifier.startsWith(".")) continue;
         const target = path.resolve(path.dirname(file), specifier.replace(/[?#].*$/, "").replaceAll("\\", path.sep));
         const [other] = path.relative(packagesRoot, target).split(path.sep);
-        if (CORE_PACKAGES.includes(other) && other !== name) check("@ai0/" + other, file);
+        if (WORKSPACE_PACKAGES.includes(other) && other !== name) check("@ai0/" + other, file);
       }
       if (name === "agent-core" && AGENT_DOMAIN_TERMS.test(stripComments(source))) {
         report(rule, relativePath(file) + " contains a cognition or persona domain term.");
@@ -666,15 +667,78 @@ async function verifyHostZeroPluginPollution() {
 }
 
 let verification;
+
+// Read descriptor declarations without loading plugin or application code. Shared contracts
+// are identified by their public symbol, inline descriptors by the same ID/version as the host.
+function facetDeclarations(file, source) {
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  const facets = [];
+  for (const statement of tree.statements) {
+    if (!ts.isVariableStatement(statement) || !statement.modifiers?.some(item => item.kind === ts.SyntaxKind.ExportKeyword)) continue;
+    for (const variable of statement.declarationList.declarations) {
+      const call = variable.initializer;
+      if (!call || !ts.isCallExpression(call) || call.expression.getText(tree) !== "defineFacetPoint") continue;
+      const spec = call.arguments[0];
+      if (!spec) continue;
+      let contract = spec.getText(tree);
+      if (ts.isObjectLiteralExpression(spec)) {
+        const fields = Object.fromEntries(spec.properties.filter(ts.isPropertyAssignment)
+          .map(property => [property.name.getText(tree), property.initializer.getText(tree)]));
+        contract = JSON.stringify([fields.owner, fields.name, fields.version]);
+      }
+      facets.push([variable.name.getText(tree), contract]);
+    }
+  }
+  return facets;
+}
+
+async function verifyDomainAndAuthorBoundaries() {
+  const rule = "Invariant 8: domain ownership and public author contracts";
+  const domainTerms = /COMPANION_HOMEOSTASIS_DESCRIPTORS|theatrical_subtext|D1_WORKING_TURN|W1FastDialogueWorker|LorebookMatcher|digitalLifeDialogueProfile|drive_social_longing|tsundere_irony|钻进被窝|builtin\.lorebook-contributor/;
+  const ownerFacets = new Map();
+  const sdkFacets = new Map();
+  const sdkExportsHost = /export\s+\*\s+from\s+["']@ai0\/extension-core["']/.test(
+    await readFile(path.join(repoRoot, "packages/sdk/src/index.ts"), "utf8"));
+  const productionTs = file => file.endsWith(".ts") && !file.endsWith(".test.ts");
+  for (const name of [...HEADLESS_CORES, "sdk"]) {
+    const directory = path.join(repoRoot, "packages", name, "src");
+    for (const file of await walkFiles(directory, { include: productionTs })) {
+      const source = await readFile(file, "utf8");
+      if (name !== "sdk" && domainTerms.test(stripComments(source))) {
+        report(rule, relativePath(file) + " embeds a digital-life strategy or data shape in a neutral core.");
+      }
+      for (const specifier of moduleSpecifiers(source)) {
+        if (!specifier.startsWith(".")) continue;
+        const target = relativePath(path.resolve(path.dirname(file), specifier));
+        if (target.startsWith("apps/") || target.startsWith("plugins/")) {
+          report(rule, relativePath(file) + " imports application or plugin code via " + specifier);
+        }
+      }
+      for (const [point, identity] of facetDeclarations(file, source)) {
+        (name === "sdk" ? sdkFacets : ownerFacets).set(point, identity);
+        if (name === "extension-core" && sdkExportsHost) sdkFacets.set(point, identity);
+      }
+    }
+  }
+  for (const [name, identity] of ownerFacets) {
+    if (sdkFacets.get(name) !== identity) report(rule, name + " must have the same SDK and core contract.");
+  }
+  for (const file of await walkFiles(path.join(repoRoot, "apps", "daemon", "src"), { include: productionTs })) {
+    if (/["']builtin\.lorebook-contributor["']/.test(stripComments(await readFile(file, "utf8")))) {
+      report(rule, relativePath(file) + " selects a context contributor by package ID.");
+    }
+  }
+}
 export function verifyArchitectureBoundaries() {
   verification ??= (async () => {
-    await verifyCorePackageLock();
+    await verifyPackageLayout();
     await verifyProtocolBoundaries();
     await verifyPluginBoundaries();
     await verifyCoreDependencies();
     await verifyDesignSystemModularity();
     await verifyNoStaticSchemas();
     await verifyHostZeroPluginPollution();
+    await verifyDomainAndAuthorBoundaries();
     return Object.freeze([...violations]);
   })();
   return verification;
@@ -687,6 +751,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     for (const violation of result) console.error(`  - ${violation}`);
     process.exitCode = 1;
   } else {
-    console.log("Architecture boundary verification passed: all 7 invariants hold.");
+    console.log("Architecture boundary verification passed: all 8 invariants hold.");
   }
 }

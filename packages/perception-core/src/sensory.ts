@@ -2,11 +2,6 @@ import type { AudienceScope, UniversalObservationFrame } from "@ai0/protocol";
 
 export interface PerceptionClockPort { nowMs(): number; effectiveElapsedMs?(fromMs: number, toMs?: number): number }
 
-export function computeSensoryHabituation(sRaw: number, unchangedElapsedMs: number,
-  gammaHabPerMinute = 0.35): number {
-  return sRaw * Math.exp(-gammaHabPerMinute * Math.max(0, unchangedElapsedMs) / 60_000);
-}
-
 export type SensoryCoverage = UniversalObservationFrame["channel"]["sensorCoverage"];
 export interface CompetingHypothesis { text: string; confidence: number }
 export interface SensoryCoverageBucket {
@@ -25,18 +20,20 @@ export interface SensoryCoverageUpdateResult {
 const scopedKey = (channel: string, modality: string, source: string): string =>
   JSON.stringify([channel, modality, source]);
 
+export type HypothesisRevisionPolicy = (update: Readonly<SensoryCoverageUpdate>,
+  hypotheses: readonly CompetingHypothesis[]) => CompetingHypothesis | undefined;
+
+
 export class SensoryCoverageBucketManager {
   private readonly blind = new Map<string, string>();
   private readonly buckets = new Map<string, SensoryCoverageBucket>();
-  constructor(private readonly clock: PerceptionClockPort) {}
+  constructor(private readonly clock: PerceptionClockPort, private readonly reviseHypothesis?: HypothesisRevisionPolicy) {}
   upsert(update: SensoryCoverageUpdate, formatRevisionDirective?: (actual: string) => string): SensoryCoverageUpdateResult {
     const key = scopedKey(update.channel_id, update.modality, update.source_key);
     const age = this.clock.nowMs() - update.updated_at_virtual_ts;
-    if (update.authorized && age >= 0 && age <= update.freshness_ttl_ms && !["blind", "stale", "disconnected"].includes(update.coverage)) this.blind.delete(key);
+    if (update.authorized && age >= 0 && age <= update.freshness_ttl_ms && !["unknown", "blind", "stale", "disconnected"].includes(update.coverage)) this.blind.delete(key);
     const previous = this.buckets.get(key);
-    const contradicted = update.perception_confidence !== undefined && update.perception_confidence >= 0.8
-      ? previous?.competing_hypotheses.find((h) =>
-          h.confidence < 0.5 && h.text.trim() !== update.summary_text.trim()) : undefined;
+    const contradicted = previous && this.reviseHypothesis?.(structuredClone(update), structuredClone(previous.competing_hypotheses));
     const fields = { ...update };
     delete fields.perception_confidence;
     delete fields.authorized;
@@ -45,7 +42,7 @@ export class SensoryCoverageBucketManager {
       static_frame_motion_lock: update.frame_span_ms === 0 };
     this.buckets.set(key, bucket);
     const refreshed = this.refresh(bucket);
-    if (!contradicted || ["blind", "stale", "disconnected"].includes(refreshed.coverage)) return { bucket: refreshed };
+    if (!contradicted || ["unknown", "blind", "stale", "disconnected"].includes(refreshed.coverage)) return { bucket: refreshed };
     return {
       bucket: refreshed,
       predictive_coding_revision: { previous_hypothesis: contradicted.text, actual_summary: update.summary_text },
@@ -66,7 +63,7 @@ export class SensoryCoverageBucketManager {
     const blind = this.blind.get(scopedKey(bucket.channel_id, bucket.modality, bucket.source_key));
     const age = this.clock.nowMs() - bucket.updated_at_virtual_ts;
     const coverage = blind !== undefined ? "blind" :
-      bucket.coverage !== "disconnected" && bucket.coverage !== "blind" && (age < 0 || age > bucket.freshness_ttl_ms) ? "stale" : bucket.coverage;
+      bucket.coverage !== "unknown" && bucket.coverage !== "disconnected" && bucket.coverage !== "blind" && (age < 0 || age > bucket.freshness_ttl_ms) ? "stale" : bucket.coverage;
     if (coverage === "blind" || coverage === "disconnected" || coverage === "stale") {
       return { ...bucket, coverage, summary_text: "", competing_hypotheses: [],
         anti_hallucination_lock: coverage === "blind" ? "sensor_blind: " + (blind ?? "permission unavailable") : "sensory_source_" + coverage };
@@ -74,63 +71,6 @@ export class SensoryCoverageBucketManager {
     return structuredClone(bucket);
   }
 }
-
-export interface EphemeralBiometricEntry {
-  channel_id: string; modality: string; source_key: string; summary_text: string;
-  virtual_ts_ms: number; value?: unknown;
-}
-export class EphemeralBiometricWindow {
-  static readonly WINDOW_MS = 15 * 60 * 1000;
-  private readonly entries: EphemeralBiometricEntry[] = [];
-  constructor(private readonly clock: PerceptionClockPort) {}
-  add(entry: Omit<EphemeralBiometricEntry, "virtual_ts_ms"> & { virtual_ts_ms?: number }): void {
-    this.prune();
-    this.entries.push({ ...entry, virtual_ts_ms: entry.virtual_ts_ms ?? this.clock.nowMs() });
-  }
-  list(): ReadonlyArray<Readonly<EphemeralBiometricEntry>> {
-    this.prune(); return [...this.entries];
-  }
-  prune(): void {
-    const cutoff = this.clock.nowMs() - EphemeralBiometricWindow.WINDOW_MS;
-    while (this.entries[0] !== undefined && this.entries[0].virtual_ts_ms < cutoff) this.entries.shift();
-  }
-}
-
-export interface ThalamicSignal {
-  channel_id: string; modality: string; source_key: string; summary_text: string;
-  raw_salience: number; confidence: number; sustained_ms: number;
-  persistence_hint?: "ephemeral_blackboard" | "durable"; value?: unknown;
-}
-export interface ThalamicSalienceResult {
-  effective_salience: number; unchanged_elapsed_ms: number; wake_w1: boolean;
-  route: "w1" | "ephemeral_blackboard" | "filtered";
-}
-export class ThalamicSalienceGate {
-  private readonly unchanged = new Map<string, { summary: string; since: number }>();
-  readonly ephemeralWindow: EphemeralBiometricWindow;
-  constructor(private readonly clock: PerceptionClockPort) {
-    this.ephemeralWindow = new EphemeralBiometricWindow(clock);
-  }
-  evaluate(signal: ThalamicSignal, minConfidence = 0.6,
-    minSustainedMs = 500): ThalamicSalienceResult {
-    const now = this.clock.nowMs();
-    const key = scopedKey(signal.channel_id, signal.modality, signal.source_key);
-    const prior = this.unchanged.get(key);
-    const since = prior?.summary === signal.summary_text ? prior.since : now;
-    this.unchanged.set(key, { summary: signal.summary_text, since });
-    const unchanged_elapsed_ms = Math.max(0, now - since);
-    const effective_salience = computeSensoryHabituation(signal.raw_salience, unchanged_elapsed_ms);
-    const weak = signal.confidence < minConfidence || signal.sustained_ms < minSustainedMs;
-    if (weak && signal.persistence_hint === "ephemeral_blackboard")
-      this.ephemeralWindow.add({ ...signal, virtual_ts_ms: now });
-    return { effective_salience, unchanged_elapsed_ms, wake_w1: !weak,
-      route: !weak ? "w1" : signal.persistence_hint === "ephemeral_blackboard"
-        ? "ephemeral_blackboard" : "filtered" };
-  }
-}
-export const evaluateThalamicSalience = (gate: ThalamicSalienceGate, signal: ThalamicSignal,
-  options: { minConfidence?: number; minSustainedMs?: number } = {}): ThalamicSalienceResult =>
-  gate.evaluate(signal, options.minConfidence ?? 0.6, options.minSustainedMs ?? 500);
 
 export type InputLifecycle = "activity" | "interim" | "commit" | "retract";
 export interface DebounceInputEvent {

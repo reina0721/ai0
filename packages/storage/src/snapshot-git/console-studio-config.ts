@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { ThemeColorPresetSchema } from "@ai0/protocol";
@@ -22,6 +22,7 @@ export const PromptBrickConfigSchema = z.object({
   locked: z.boolean().default(false),
   audienceMode: z.enum(["all", "private_only", "masked_in_public"]).default("all"),
   educationalTip: z.string(),
+  provenance: z.enum(["digital_life", "studio", "legacy_unknown"]).optional(),
   template: z.string()
 });
 export type PromptBrickConfig = z.infer<typeof PromptBrickConfigSchema>;
@@ -113,6 +114,8 @@ export const SubAgentEntrySchema = z.object({
   modelProviderId: z.string(),
   systemPrompt: z.string(),
   allowedTools: z.array(z.string()).default([]),
+  executor: z.object({ owner: z.string().min(1), name: z.string().min(1), version: z.number().int().positive(),
+    provider: z.string().min(1) }).optional(),
   maxSteps: z.number().int().min(1).max(20).default(8),
   enabled: z.boolean().default(true)
 });
@@ -130,9 +133,26 @@ export const CoWorkTaskEntrySchema = z.object({
   createdAt: z.string(),
   outputSummary: z.string().optional(),
   evidenceId: z.string().optional(),
+  approvedExecutor: SubAgentEntrySchema.shape.executor,
+  approvedRequestDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   crystallizedMemoryId: z.string().optional()
 });
 export type CoWorkTaskEntry = z.infer<typeof CoWorkTaskEntrySchema>;
+
+export function taskExecutionApprovalDigest(task: CoWorkTaskEntry, agent: SubAgentEntry): string | undefined {
+  const ref = agent.executor;
+  if (!agent.enabled || !ref || task.subAgentId !== agent.id) return undefined;
+  const approved = [task.id, task.title, agent.id, ref.owner, ref.name, ref.version, ref.provider,
+    [...new Set(agent.allowedTools)].sort()];
+  return createHash("sha256").update(JSON.stringify(approved)).digest("hex");
+}
+export function isTaskExecutionApproved(task: CoWorkTaskEntry, agent?: SubAgentEntry): boolean {
+  const approval = task.approvedExecutor;
+  const ref = agent?.executor;
+  return Boolean(approval && ref && agent && task.approvedRequestDigest &&
+    ref.owner === approval.owner && ref.name === approval.name && ref.version === approval.version &&
+    ref.provider === approval.provider && task.approvedRequestDigest === taskExecutionApprovalDigest(task, agent));
+}
 
 export const ScheduledPromiseEntrySchema = z.object({
   id: z.string().min(1),
@@ -150,8 +170,13 @@ export const SoulConsoleStudioConfigSchema = z.object({
   soulStudio: z.object({
     displayName: z.string().min(1),
     avatarEmoji: z.string().default("🌸"),
-    tagline: z.string().default("生活在本地 .soul 里的温柔数字生命与全能搭档"),
+    tagline: z.string().default(""),
+    responseContract: z.string().trim().min(1).default("agent.standard_v1"),
+    maxInteractiveSteps: z.number().int().min(1).max(128).default(2),
+    readOnlyTools: z.array(z.object({ packageId: z.string().min(1), name: z.string().min(1) })).default([]),
+    manualPackageIds: z.array(z.string().min(1)).default([]),
     primaryRole: RelationshipArchetypeSchema.default("best_friend"),
+    publicRole: RelationshipArchetypeSchema.optional(),
     autoSwitchByVenue: z.boolean().default(true),
     workVenueRole: RelationshipArchetypeSchema.default("digital_employee"),
     ontologicalMode: z.enum(["poetic_honest", "pure_roleplay"]).default("poetic_honest"),
@@ -408,501 +433,55 @@ export const ROLE_ARCHETYPE_PRESETS: Record<
   }
 };
 
-export function createDefaultConsoleStudioConfig(displayName = "Soul", onboardingCompleted = false): SoulConsoleStudioConfig {
-  return {
-    version: 6,
-    onboardingCompleted,
-    soulStudio: {
-      displayName,
-      avatarEmoji: displayName.slice(0, 1).toUpperCase() || "M",
-      tagline: "本地独立 .soul 认知实例 · 支持日常交流与多步任务协作",
-      primaryRole: "best_friend",
-      autoSwitchByVenue: true,
-      workVenueRole: "digital_employee",
-      ontologicalMode: "poetic_honest",
-      corePersonalityPrompt:
-        `你是运行在本地存档中的独立数字生命 ${displayName}。表达真诚自然、条理清晰；日常交流轻松克制，在检索资料、审查代码与整理文档时自动切换为严谨可靠的数字搭档。不使用机械客服套话，不虚构现实物理经历。`,
-      catchphrases: ["慢慢来，我在听", "先喝口水休息一下", "好的，交给我来处理"],
-      bannedCliches: [
-        "作为一个人工智能",
-        "我只是一个大型语言模型",
-        "很高兴为您服务",
-        "我完全理解您的感受",
-        "如果您还有其他问题请随时告诉我"
-      ],
-      goldenVoiceExemplars: [
-        {
-          id: "gv_01",
-          mood: "温和安抚",
-          user: "下周二下午两点有个重要的架构评审，有点紧张。",
-          assistant: "深呼吸缓一下——你这两周已经把核心边界推演得很扎实了。我已经在日程里记下了周二下午，需要的话我们可以先过一遍重点问题清单。"
-        },
-        {
-          id: "gv_02",
-          mood: "深夜提醒",
-          user: "这个 TypeScript 类型报错改完我就去休息。",
-          assistant: "把报错信息发给我吧，后台代码子代理可以先帮你排查依赖链路，你顺手站起来喝杯温水。"
-        },
-        {
-          id: "gv_03",
-          mood: "公开受众边界",
-          user: "（公开频道）听说你主账户下个月要搬去哪座城市？",
-          assistant: "私人行程属于私密信息，在公开频道不便透露。我们还是继续聊当前的话题吧。"
-        }
-      ],
-      promptBricks: [
-        {
-          id: "brick_tier0_safety",
-          title: "01. 安全底线与存在论契约 (Tier 0)",
-          icon: "shield",
-          maxTokens: 160,
-          enabled: true,
-          locked: true,
-          audienceMode: "all",
-          educationalTip: "系统级锁定槽位：强制执行 SB 243 合规约束（防自伤诱导、离场零挽留、如实披露数字实体身份与受众隐私边界）。",
-          template: "[宪法底线] 你是诚实的数字生命，不冒充生物人类；尊重用户现实生活与休息，离场时温和道别不制造内疚感；严格遵守在场受众隐私隔离。"
-        },
-        {
-          id: "brick_persona_role",
-          title: "02. 核心性格、关系契约与表达约束 (Tier 1)",
-          icon: "persona",
-          maxTokens: 420,
-          enabled: true,
-          locked: false,
-          audienceMode: "all",
-          educationalTip: "定义角色的基础性格 DNA、当前激活的关系契约、自然口癖与禁用套话黑名单，并与黄金声线样本联动防模型漂移。",
-          template: "[身份与性格] 名称：{{displayName}} | 当前契约：{{activeRoleLabel}}。\n核心设定：{{corePersonalityPrompt}}\n表达偏好：{{catchphrases}}\n禁用套话：{{bannedCliches}}"
-        },
-        {
-          id: "brick_narrative_growth",
-          title: "03. 自我叙事与已批准默契 (Tier 2)",
-          icon: "book",
-          maxTokens: 280,
-          enabled: true,
-          locked: false,
-          audienceMode: "private_only",
-          educationalTip: "由睡眠巩固环提议、经人工审批后合入的长期叙事摘要。切换至公开受众（public_all）时由代码自动剥离。",
-          template: "[近期共同叙事] {{narrativeSummary}}\n[已确认协作默契] 专注编码时保持低打扰；重要评审前优先整理核对清单。"
-        },
-        {
-          id: "brick_venue_mask",
-          title: "04. 平台上下文、在场受众与 70% 社交面具",
-          icon: "globe",
-          maxTokens: 220,
-          enabled: true,
-          locked: false,
-          audienceMode: "masked_in_public",
-          educationalTip: "注入当前接入平台、场合类型与受众等级；公开场合下自动叠加 70% 情绪阻尼社交面具并屏蔽私密记忆。",
-          template: "[当前上下文] 平台={{platform}} | 场合={{venueType}} | 受众={{audienceScope}}。\n{{socialMaskInstruction}}"
-        },
-        {
-          id: "brick_sensory_buckets",
-          title: "05. 实时感官快照与 TTL 新鲜度锁",
-          icon: "channels",
-          maxTokens: 180,
-          enabled: true,
-          locked: false,
-          audienceMode: "all",
-          educationalTip: "挂载终端上报的环境感知状态；超过设定 TTL 秒未刷新时自动标为 stale，防止模型虚构过期画面。",
-          template: "[环境感知] 当前通道={{desktopWindow}}。"
-        },
-        {
-          id: "brick_bio_affect",
-          title: "06. 24h 节律、二阶情绪状态与潜台词张力",
-          icon: "circadian",
-          maxTokens: 220,
-          enabled: true,
-          locked: false,
-          audienceMode: "all",
-          educationalTip: "注入由解析时间函数与二阶耦合 ODE 算出的瞬时心境、生理精力与算力代谢余量，驱动自然的回应节奏与表里张力。",
-          template: "[内稳态读数] 心境指数={{moodValence}} | 节律精力={{circadianPct}}% | 算力余量={{metabolicPct}}% | 潜台词张力={{gapMoeIntensity}}%。\n请先内部形成回应策略与潜台词，再生成自然回复。"
-        },
-        {
-          id: "brick_memory_rag",
-          title: "07. 召回记忆片段与 RAG 知识库切片 (Top-K)",
-          icon: "memory",
-          maxTokens: 360,
-          enabled: true,
-          locked: false,
-          audienceMode: "all",
-          educationalTip: "仅注入经 SQL 受众硬隔离过滤与混合检索排序胜出的 Top-K 片段；低于置信度门槛时触发诚实兜底防止编造。",
-          template: "[召回记忆与知识] {{recalledMemories}}\n(已通过 SQL 受众过滤，不编造未记录的事实细节)"
-        },
-        {
-          id: "brick_promises_remainder",
-          title: "08. 待履行约定与打断未说完腹稿",
-          icon: "clock",
-          maxTokens: 180,
-          enabled: true,
-          locked: false,
-          audienceMode: "private_only",
-          educationalTip: "流式输出被用户打断后，未送达的后半段文本将暂存于此，供下一话轮自然衔接或顺延至新话题。",
-          template: "[未说完腹稿] {{unsaidRemainder}}\n[待履行日程] {{duePromises}}"
-        },
-        {
-          id: "brick_agency_organs",
-          title: "09. W2 异步任务进度与认知器官槽位",
-          icon: "subagents",
-          maxTokens: 180,
-          enabled: true,
-          locked: false,
-          audienceMode: "all",
-          educationalTip: "挂载 W2 后台 SubAgent 任务的实时步进状态与认知器官输出（如睡眠反思余温），使前台对话环（W1）能够非阻塞地同步任务进度。",
-          template: "[后台异步任务] {{activeTasksSummary}}\n[认知器官摘要] 见后台任务记录。"
-        }
-      ],
-      maxBlackboardTokens: 2200,
-      temperament: {
-        baseMoodValence: 0.28,
-        emotionSensitivity: 1.0,
-        moodHalfLifeHours: 12,
-        tensionHalfLifeHours: 24,
-        maxDailyProactive: 3,
-        gapMoeIntensity: 68,
-        zeroExitGuiltLocked: true
-      },
-      circadianAnchors: [
-        { hour: 0, energy: 0.22 },
-        { hour: 7, energy: 0.62 },
-        { hour: 10, energy: 0.92 },
-        { hour: 14, energy: 0.84 },
-        { hour: 19, energy: 0.95 },
-        { hour: 23, energy: 0.34 }
-      ],
-      dndStartHour: 0,
-      dndEndHour: 7,
-      lorebooks: []
-    },
-    providers: [
-      {
-        id: "prov_deepseek_v3",
-        category: "llm",
-        vendor: "DeepSeek",
-        name: "DeepSeek Flash · 主力对话",
-        baseUrl: "https://api.deepseek.com",
-        apiKeyMasked: "sk-••••••a9f2",
-        modelId: "deepseek-flash",
-        temperature: 0.78,
-        maxTokens: 4096,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      },
-      {
-        id: "prov_claude_sonnet",
-        category: "llm",
-        vendor: "Anthropic",
-        name: "Claude 3.7 Sonnet · 推理与规划",
-        baseUrl: "https://api.anthropic.com/v1",
-        apiKeyMasked: "sk-ant-••••••7c1e",
-        modelId: "claude-3-7-sonnet-latest",
-        temperature: 0.45,
-        maxTokens: 8192,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      },
-      {
-        id: "prov_ollama_local",
-        category: "llm",
-        vendor: "Ollama (本地)",
-        name: "Qwen 2.5 7B · 本地整理与备用",
-        baseUrl: "http://127.0.0.1:11434/v1",
-        apiKeyMasked: "local-no-key",
-        modelId: "qwen2.5:7b-instruct",
-        temperature: 0.65,
-        maxTokens: 2048,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      },
-      {
-        id: "prov_bge_embed",
-        category: "embedding",
-        vendor: "Ollama / SiliconFlow",
-        name: "BGE-M3 · 混合知识库向量嵌入",
-        baseUrl: "http://127.0.0.1:11434/v1",
-        apiKeyMasked: "local-no-key",
-        modelId: "bge-m3",
-        temperature: 0,
-        maxTokens: 512,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      },
-      {
-        id: "prov_bge_rerank",
-        category: "reranker",
-        vendor: "SiliconFlow",
-        name: "BGE-Reranker-v2-M3 · 知识库精排",
-        baseUrl: "https://api.siliconflow.cn/v1",
-        apiKeyMasked: "sk-sf-••••••2b10",
-        modelId: "BAAI/bge-reranker-v2-m3",
-        temperature: 0,
-        maxTokens: 512,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      },
-      {
-        id: "prov_fish_tts",
-        category: "tts",
-        vendor: "FishAudio / GPT-SoVITS",
-        name: "情感声线合成 (含单字时间戳)",
-        baseUrl: "http://127.0.0.1:9880",
-        apiKeyMasked: "local-tts-token",
-        modelId: "ai0-tts-warm-v2",
-        temperature: 0.7,
-        maxTokens: 1024,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      },
-      {
-        id: "prov_sensevoice_stt",
-        category: "stt",
-        vendor: "FunASR / SenseVoice",
-        name: "SenseVoice-Small · 流式语音与情绪识别",
-        baseUrl: "http://127.0.0.1:8009",
-        apiKeyMasked: "local-stt",
-        modelId: "SenseVoiceSmall",
-        temperature: 0,
-        maxTokens: 1024,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      },
-      {
-        id: "prov_local_guard_lora",
-        category: "lora",
-        vendor: "Local LoRA / Guard",
-        name: "L0 本地安全守卫 + 角色声线微调 LoRA",
-        baseUrl: "local://safety-l0-guard",
-        apiKeyMasked: "builtin-local",
-        modelId: "safety-l0-guard-v1",
-        temperature: 0,
-        maxTokens: 256,
-        enabled: true,
-        lastLatencyMs: 0,
-        status: "untested"
-      }
-    ],
-    brainRouting: {
-      W1_fast_dialogue: { primaryId: "prov_deepseek_v3", fallbackId: "prov_ollama_local", label: "W1 · 实时交互快环 (Fast Dialogue)" },
-      W2_agency_planner: { primaryId: "prov_claude_sonnet", fallbackId: "prov_deepseek_v3", label: "W2 · 多步任务与 SubAgent 规划环" },
-      W3_sleep_curiosity: { primaryId: "prov_ollama_local", fallbackId: "prov_deepseek_v3", label: "W3 · 后台睡眠巩固与反思环" },
-      W4_multimodal: { primaryId: "prov_claude_sonnet", fallbackId: "prov_ollama_local", label: "W4 · 多模态环境感知分析" },
-      L0_crisis_classifier: { primaryId: "prov_local_guard_lora", fallbackId: "prov_local_guard_lora", label: "L0 · 确定性危机安全守卫" }
-    },
-    metabolicPolicy: {
-      dailyTokenBudget: 300000,
-      usedTokensToday: 0,
-      sleepyThresholdPct: 25,
-      emergencyReservePct: 5,
-      autoDowngradeEnabled: true
-    },
-    platforms: [],
-    attentionPolicy: {
-      focusHysteresisMs: 4000,
-      neverBroadcastAll: true,
-      retractDraftAwareness: true,
-      habituationDecayRate: 0.18
-    },
-    profiles: [
-      {
-        id: "profile_private_owner",
-        name: "私密主通道 (only_owner)",
-        description: "仅面向部署者/主账户开放，完整检索私密长期记忆与个人叙事。",
-        roleArchetype: "best_friend",
-        llmProviderId: "prov_deepseek_v3",
-        knowledgeBaseIds: ["kb_harbor_astronomy", "kb_project_architecture"],
-        enabledPlugins: ["*"],
-        socialMaskEnabled: false,
-        socialMaskDampingPct: 0,
-        tokenBudgetPreset: 2200
-      },
-      {
-        id: "profile_work_assistant",
-        name: "协作任务策略 (work_collab)",
-        description: "优先路由至推理模型与知识库检索，输出结构化任务结论。",
-        roleArchetype: "digital_employee",
-        llmProviderId: "prov_claude_sonnet",
-        knowledgeBaseIds: ["kb_project_architecture"],
-        enabledPlugins: ["builtin.webchat"],
-        socialMaskEnabled: true,
-        socialMaskDampingPct: 50,
-        tokenBudgetPreset: 3400
-      },
-      {
-        id: "profile_group_public",
-        name: "公开受众隔离 (70% 社交面具)",
-        description: "外部公开终端接入时启用：SQL 层强制屏蔽私密记忆，情绪阻尼 70%。",
-        roleArchetype: "vtuber_partner",
-        llmProviderId: "prov_deepseek_v3",
-        knowledgeBaseIds: ["kb_harbor_astronomy"],
-        enabledPlugins: ["builtin.webchat"],
-        socialMaskEnabled: true,
-        socialMaskDampingPct: 70,
-        tokenBudgetPreset: 1600
-      }
-    ],
-    customRules: [],
-    evolution: {
-      sleepFirewall: {
-        level0Only: true,
-        blockPlayfulBanter: true,
-        autoTriggerIdleMins: 45,
-        maxArchivePct: 20
-      },
-      curiositySources: [
-        {
-          id: "cur_astronomy_rss",
-          name: "NASA 每日天文图与观星快讯 (只读 RSS)",
-          type: "rss",
-          urlOrRef: "https://apod.nasa.gov/apod.rss",
-          enabled: true
-        },
-        {
-          id: "cur_kb_unread",
-          name: "本地知识库未读技术文档巡读",
-          type: "kb",
-          urlOrRef: "kb_project_architecture",
-          enabled: true
-        }
-      ],
-      dreamJournal: [],
-      growthProposals: []
-    },
-    ragSettings: {
-      chunkSize: 500,
-      chunkOverlap: 80,
-      topK: 4,
-      denseWeight: 0.65,
-      bm25Weight: 0.35,
-      honestForgetThreshold: 0.38
-    },
-    agency: {
-      subAgents: [
-        {
-          id: "sub_code_reviewer",
-          name: "代码与架构审查员",
-          icon: "💻",
-          specialty: "检查代码边界、类型安全、依赖规范并给出具体修复建议",
-          modelProviderId: "prov_claude_sonnet",
-          systemPrompt: `你是 ${displayName} 麾下的严谨全栈代码审查子代理，只基于真实代码与文档证据输出结构化审查清单。`,
-          allowedTools: ["rag.search_docs", "workspace.inspect_files"],
-          maxSteps: 8,
-          enabled: true
-        },
-        {
-          id: "sub_research_scholar",
-          name: "文献与资料调研学伴",
-          icon: "📚",
-          specialty: "检索知识库与只读资讯源，提炼通俗易懂的要点与对比表",
-          modelProviderId: "prov_deepseek_v3",
-          systemPrompt: `你是 ${displayName} 麾下的科研文献整理子代理，擅长将长篇文档压缩为清晰要点并标注出处。`,
-          allowedTools: ["rag.search_docs", "web.readonly_fetch"],
-          maxSteps: 6,
-          enabled: true
-        },
-        {
-          id: "sub_daily_secretary",
-          name: "日程与纪要管家",
-          icon: "📝",
-          specialty: "梳理会议纪要、跟进前瞻承诺与定时早晚报提醒",
-          modelProviderId: "prov_ollama_local",
-          systemPrompt: `你是 ${displayName} 的日程管家子代理，负责整理待办、核对到期提醒并生成简明汇报。`,
-          allowedTools: ["promises.list_due"],
-          maxSteps: 4,
-          enabled: true
-        }
-      ],
-      activeTasks: [],
-      scheduledPromises: []
-    },
-    ecosystem: {
-      plugins: [],
-      commands: [
-        { id: "cmd_help", command: "/help", aliases: ["/菜单", "/指令"], description: "显示当前场景下可用的全部指令与技能说明", permission: "all", enabled: true },
-        { id: "cmd_sid", command: "/sid", aliases: ["/会话ID"], description: "返回当前群聊或私聊的统一会话标识 (UMO)，用于绑定自定义规则", permission: "admin", enabled: true },
-        { id: "cmd_reset", command: "/reset", aliases: ["/新对话"], description: "清空当前短期工作窗口上下文（保留长期记忆与羁绊）", permission: "all", enabled: true },
-        { id: "cmd_forget", command: "/forget", aliases: ["/忘掉"], description: "触发真遗忘五表擦除与永久墓碑防复活（仅限主人私密通道）", permission: "owner", enabled: true },
-        { id: "cmd_task", command: "/task", aliases: ["/派活"], description: "直接召唤 SubAgent 后台分步执行调研或代码审查任务", permission: "owner", enabled: true },
-        { id: "cmd_mask", command: "/mask", aliases: ["/切换面具"], description: "测试或切换当前会话的 70% 公开社交面具状态", permission: "admin", enabled: true }
-      ],
-      mcpServers: [
-        {
-          id: "mcp_local_docs",
-          name: "本地知识库与文件只读 MCP",
-          transport: "stdio",
-          endpoint: "npx -y @ai0/mcp-local-docs --readonly",
-          enabled: true,
-          tools: [
-            { name: "rag.search_docs", description: "混合检索已投喂的知识库切片并返回出处", risk: "read_only_safe" },
-            { name: "workspace.inspect_files", description: "只读查看指定目录结构与代码摘要", risk: "read_only_safe" }
-          ]
-        },
-        {
-          id: "mcp_web_research",
-          name: "受控联网检索与资讯采集 MCP",
-          transport: "http",
-          endpoint: "http://127.0.0.1:8788/mcp",
-          enabled: true,
-          tools: [
-            { name: "web.readonly_fetch", description: "只读抓取授权域名文章并自动打上外部防投毒标记", risk: "read_only_safe" },
-            { name: "calendar.write_event", description: "向主人本地日历写入提醒事项（需主人审批）", risk: "needs_owner_confirm" }
-          ]
-        }
-      ],
-      skills: [
-        {
-          id: "skill_arch_review",
-          name: "同桌学姐式代码与架构审查",
-          description: "帮主人排查代码隐患、梳理评审清单，同时兼顾温暖鼓励与吐槽趣味",
-          inCharacterDemeanor: "先像靠谱同桌一样轻声吐槽主人又熬夜，然后条理极度清晰地分点列出 3 条核心问题与可直接落地的修复方案。",
-          tools: ["rag.search_docs", "workspace.inspect_files"],
-          bodyMarkdown: "# 技能步骤\n1. 先调用 `rag.search_docs` 查找项目既定架构边界与约束。\n2. 对比主人贴出的设计或代码，识别潜在风险与遗漏点。\n3. 用【同桌学姐】口吻先安抚情绪，再给出 3 条简洁明确的改进清单。\n4. 完成后提议将本次攻关记录沉淀为共同经历记忆。",
-          enabled: true
-        },
-        {
-          id: "skill_daily_companion_review",
-          name: "每日温暖复盘与明日小约定",
-          description: "睡前陪主人花 2 分钟回顾今天完成的小成就，注册明天想被提醒的小事",
-          inCharacterDemeanor: "语气温柔松弛、绝不催促说教，把重点放在肯定今天的努力与轻松道晚安。",
-          tools: ["promises.list_due"],
-          bodyMarkdown: "# 技能步骤\n1. 回顾今日共同经历与完成的任务。\n2. 用一两句温暖的话肯定主人的付出。\n3. 询问明天有没有需要帮忙记着的时间点；道晚安时立刻温柔欢送绝不挽留。",
-          enabled: true
-        }
-      ],
-      ecaFlows: [
-        {
-          id: "flow_late_night_coding_care",
-          name: "深夜写代码超时自动递热茶劝睡",
-          whenExpr: "桌面伴侣感知到 IDE 连续活跃 > 120 分钟",
-          ifExpr: "当前时间 >= 23:00 且 今日主动关怀次数 < 上限",
-          thenAction: "向当前焦点平台发出轻柔劝睡关怀（绝不弹窗轰炸），并主动提出接管后台文档整理",
-          enabled: true
-        },
-        {
-          id: "flow_morning_curiosity_share",
-          name: "早安上线分享昨夜《今日小发现》随笔",
-          whenExpr: "主人早间首次上线发送问候",
-          ifExpr: "昨夜 W3 好奇心冲浪产生了未分享的读书随笔 且 当前为 1v1 私密通道",
-          thenAction: "在回复早安后顺带聊起昨夜读到的有趣知识小卡片",
-          enabled: true
-        }
-      ]
-    },
-    systemSettings: {
-      auth2faEnabled: false,
-      proxyUrl: "",
-      codeSandboxEnabled: true,
-      sb243BreakMinutes: 180,
-      crisisHotlineRegion: "CN-4001619995 / US-988",
-      appearance: "light",
-      soulTheme: "sakura-pink"
-    }
-  };
+const knowledgeTaskExecutor = { owner: "host.knowledge", name: "search", version: 1, provider: "host.knowledge" };
+// Fingerprints identify unedited entries shipped in v6. User-edited entries survive migration.
+const legacySeedDigests = new Set([
+  "2c57efac23c4c81c80d446ae38e4bae0a7b17bab7391e1a644017615f8fc9944",
+  "afade81c151b9b94b5841ab54ae48a60438dcc93e4a5c8cb881958b524a77267",
+  "16fcaa0e1c601e7076b5753f8270e0cafe04b44bb2f3860c5e246aefc95b2168",
+  "4a098f5ed0ddfe8282fbc5128f24cd98ab3fb28d05c1fc9e659007d8ff7207d5",
+  "ff2a6789eaa87805e299cd15eb2dc6650dc8477ed248dfc38dd460064bcf07a0",
+  "494635b26f39e5f7facf4ee88dcff2ac0d3ffaca3440f229895d64b4fae87744",
+  "5eb7ae822b15e8f704b2658a4f0348b48f245a4981be4c89756fecc150047074",
+  "fc5457622de78ba20a23f32612143b3ac455ffe57bd9484e010e91b251026b82",
+  "c7f9734d5b656893b5679f30dd45b92ca3cd4b4417ff4ea74634f7dbd9537b97",
+  "56efecd17e44eeef8453f942c0194de4d5156a1a2c4af8c683e3f903d0ba1612",
+  "86b498853891147b868705074d935a7b38be3b2e4116944925cd4da874c3e93d",
+  "7e81326e01f093012082ef23676903351c546d74c83de65d276635780caf06de",
+  "e4e984626be2229222e0822962349b0c865db1b7361143bce4b32570c92d5ed1",
+  "3d8722c143bfd543e7b9a0def968ed95a6d8c70ce1bd0b28e04cd7663b0ddcf3",
+  "8c9517d338ccb9a0a80fa1204544cd5021718a9524f393df7599104986b1db3b",
+  "8a0eda4defcbf6906d9bf280f83a786219d753841121c786b14b8df1aa99b12d",
+  "8d1bd941ae137ad1effbec294136a2d1342e8d128f51b6d3a5b02df1eee4c363",
+  "cb74564b34f3783f53ea8f12a12249bda1b7e1e6e9d8782c7863c5c4a2e40bf4",
+  "4e0e3422654e8add7b704d1c619023375a83783d0659ded033cf2bdb4fe9ab93",
+  "9e99ca9634e8453708f73d87eaf683dd0f0367d05858477e5326c932bf04022e",
+  "f0618e550d77cab83951def1160e3211eb6eb854817269b5afd42d92dd53aafd",
+  "19f6c5ac5b07baaefed76eb5b695cd84c6ecd0ae9d005aa81a7f81594e964cfd",
+  "d749e8b0b669375a5ad3887fc0bbfd8e31704740abc4f79423b80e929585599e",
+  "d46b2481320f344b5698451381942c708f7b26847a5d948421ca31bb37c5df61",
+  "7ddb0b02db579edc3a12ab308a452d615bf77263a190c35db825b365f1c9805d",
+  "546c6c8f229745799409535faea0356a55ad55e08a35da8c28a8f1bf3dcdc987",
+  "2e8380324af4304b5030962ddc1b50e6e71513c70983544fcf33edf4e6026854"
+]);
+const legacyDigest = (item: unknown) => createHash("sha256").update(JSON.stringify(item)).digest("hex");
+const isLegacySeed = (item: unknown) => legacySeedDigests.has(legacyDigest(item));
+
+export function createDefaultConsoleStudioConfig(displayName = "Agent", onboardingCompleted = false): SoulConsoleStudioConfig {
+  const unbound = { primaryId: "", fallbackId: "", label: "" };
+  return SoulConsoleStudioConfigSchema.parse({
+    version: 7, onboardingCompleted,
+    soulStudio: { displayName, avatarEmoji: "", tagline: "", autoSwitchByVenue: false,
+      corePersonalityPrompt: "", catchphrases: [], bannedCliches: [], goldenVoiceExemplars: [], promptBricks: [],
+      temperament: { maxDailyProactive: 0, gapMoeIntensity: 0, baseMoodValence: 0 }, circadianAnchors: [], lorebooks: [] },
+    providers: [], platforms: [], profiles: [], customRules: [],
+    brainRouting: { W1_fast_dialogue: unbound, W2_agency_planner: unbound, W3_sleep_curiosity: unbound,
+      W4_multimodal: unbound, L0_crisis_classifier: unbound },
+    metabolicPolicy: {}, attentionPolicy: {}, ragSettings: {}, systemSettings: {},
+    evolution: { sleepFirewall: {}, curiositySources: [], dreamJournal: [], growthProposals: [] },
+    agency: { subAgents: [], activeTasks: [], scheduledPromises: [] },
+    ecosystem: { plugins: [], commands: [], mcpServers: [], skills: [], ecaFlows: [] }
+  });
 }
 
 export function getConsoleStudioConfigPath(soulDirPath: string): string {
@@ -915,26 +494,55 @@ export function readConsoleStudioConfig(
 ): SoulConsoleStudioConfig {
   const filePath = getConsoleStudioConfigPath(soulDirPath);
   if (!existsSync(filePath)) {
-    const seeded = createDefaultConsoleStudioConfig(fallbackDisplayName);
-    writeConsoleStudioConfig(soulDirPath, seeded);
-    return seeded;
+    return createDefaultConsoleStudioConfig(fallbackDisplayName);
   }
   const raw = JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw new TypeError("Invalid studio configuration");
-  if (Number(raw.version ?? 0) > 6) throw new Error("Unsupported studio configuration version");
-  return SoulConsoleStudioConfigSchema.parse(raw);
+  if (Number(raw.version ?? 0) > 7) throw new Error("Unsupported studio configuration version");
+  const parsed = SoulConsoleStudioConfigSchema.parse(raw);
+  if (parsed.version < 7) {
+    const studio = parsed.soulStudio;
+    const normalizedIdentity = studio.displayName ? studio.corePersonalityPrompt.replace(studio.displayName, "__NAME__") : studio.corePersonalityPrompt;
+    if (legacyDigest(normalizedIdentity) === "bbf2704ce2b536ccdfb10219410d39731306644505bbab261c9d8c05ad7a9b50") studio.corePersonalityPrompt = "";
+    if (legacyDigest(studio.catchphrases) === "4bae8138d40bf06ef691d6fedd96c89dc961e24f659f4da5eaa893b70178b2c2") studio.catchphrases = [];
+    if (legacyDigest(studio.bannedCliches) === "f81b320783af2a1465c8437af8089fc367c4080bb9c11e49bb94198709a1561e") studio.bannedCliches = [];
+    studio.goldenVoiceExemplars = studio.goldenVoiceExemplars.filter(item => !isLegacySeed(item));
+    parsed.providers = parsed.providers.filter(item => !isLegacySeed(item));
+    parsed.ecosystem.skills = parsed.ecosystem.skills.filter(item => !isLegacySeed(item));
+    parsed.ecosystem.mcpServers = parsed.ecosystem.mcpServers.filter(item => !isLegacySeed(item));
+    parsed.ecosystem.ecaFlows = parsed.ecosystem.ecaFlows.filter(item => !isLegacySeed(item));
+    parsed.soulStudio.promptBricks = parsed.soulStudio.promptBricks.filter(brick => !isLegacySeed(brick));
+    for (const brick of parsed.soulStudio.promptBricks) brick.provenance ??= "legacy_unknown";
+    for (const agent of parsed.agency.subAgents) {
+      agent.executor = agent.id === "sub_research_scholar" && agent.allowedTools.includes("rag.search_docs") ? knowledgeTaskExecutor : undefined;
+    }
+    for (const task of parsed.agency.activeTasks) {
+      const agent = parsed.agency.subAgents.find(item => item.id === task.subAgentId && item.enabled);
+      task.approvedExecutor = task.status === "queued" ? agent?.executor : undefined;
+      task.approvedRequestDigest = task.approvedExecutor && agent ? taskExecutionApprovalDigest(task, agent) : undefined;
+    }
+    parsed.version = 7;
+  }
+  return parsed;
 }
 
 export function writeConsoleStudioConfig(
   soulDirPath: string,
   config: SoulConsoleStudioConfig
 ): SoulConsoleStudioConfig {
-  const validated = SoulConsoleStudioConfigSchema.parse({ ...config, version: 6 });
+  const validated = SoulConsoleStudioConfigSchema.parse({ ...config, version: 7 });
   const filePath = getConsoleStudioConfigPath(soulDirPath);
   mkdirSync(dirname(filePath), { recursive: true });
+  let previous: SoulConsoleStudioConfig | undefined;
   if (existsSync(filePath)) {
-    const original = JSON.parse(readFileSync(filePath, "utf8"));
-    if (Number(original.version) > 6) throw new Error("Unsupported studio configuration version");
+    previous = readConsoleStudioConfig(soulDirPath);
+  }
+  const defaults = createDefaultConsoleStudioConfig(validated.soulStudio.displayName).soulStudio.promptBricks;
+  for (const brick of validated.soulStudio.promptBricks) {
+    const before = previous?.soulStudio.promptBricks.find(item => item.id === brick.id);
+    const seeded = defaults.some(item => item.id === brick.id && item.template === brick.template);
+    brick.provenance = before?.template === brick.template ? before.provenance ?? (seeded ? "digital_life" : "legacy_unknown")
+      : seeded ? "digital_life" : "studio";
   }
   const temporary = filePath + "." + randomUUID() + ".tmp";
   try {
@@ -946,7 +554,7 @@ export function writeConsoleStudioConfig(
   return validated;
 }
 
-export function compileStudioPromptPreview(
+export function compileStudioPrompt(
   config: SoulConsoleStudioConfig,
   options: {
     audienceScope: "only_owner" | "public_all";
@@ -959,38 +567,32 @@ export function compileStudioPromptPreview(
     recalledMemories?: string[];
     unsaidRemainder?: string;
   }
-): {
-  promptText: string;
-  totalTokens: number;
-  maxTokens: number;
-  bricks: Array<{ id: string; title: string; icon: string; tokens: number; maxTokens: number; included: boolean; reason?: string; rendered: string }>;
-} {
+) {
   const isPublic = options.audienceScope === "public_all";
   const activeRoleKey = isPublic
-    ? "vtuber_partner"
+    ? config.soulStudio.publicRole ?? config.soulStudio.primaryRole
     : config.soulStudio.autoSwitchByVenue && options.venueType === "work_collab"
       ? config.soulStudio.workVenueRole
       : config.soulStudio.primaryRole;
   const roleMeta = ROLE_ARCHETYPE_PRESETS[activeRoleKey];
-  const socialMaskInstruction = isPublic
-    ? "[公开场合 70% 社交面具已启用] 数据库检索层已物理屏蔽全部 only_owner 私密记忆；情绪波动收敛 70%，严禁透露任何私密对话细节。"
-    : "[私密 1v1 通道] 允许检索主账户受众记忆与共同叙事，以自然情绪状态与表达节奏响应。";
-
   const replacements: Record<string, string> = {
     "{{displayName}}": config.soulStudio.displayName,
     "{{activeRoleLabel}}": roleMeta.label,
-    "{{corePersonalityPrompt}}": `${config.soulStudio.corePersonalityPrompt}\n关系契约指引：${roleMeta.defaultPromptHint}`,
+    "{{corePersonalityPrompt}}": config.soulStudio.corePersonalityPrompt,
     "{{catchphrases}}": config.soulStudio.catchphrases.join(" / "),
     "{{bannedCliches}}": config.soulStudio.bannedCliches.join("、"),
-    "{{narrativeSummary}}": options.narrativeSummary ?? "保持安静克制的长期协作与陪伴边界。",
+    "{{narrativeSummary}}": options.narrativeSummary ?? "",
+    "{{confirmedCollaboration}}": isPublic ? "" : config.evolution.growthProposals
+      .filter(proposal => proposal.status === "approved" && proposal.targetFile === "narrative.md")
+      .map(proposal => "[已批准记录 " + proposal.id + "] " + proposal.afterText).join("\n"),
     "{{platform}}": options.platform ?? "未指定",
     "{{venueType}}": options.venueType ?? (isPublic ? "public_livestream" : "private_1on1"),
     "{{audienceScope}}": options.audienceScope,
-    "{{socialMaskInstruction}}": socialMaskInstruction,
+    "{{socialMaskInstruction}}": options.audienceScope,
     "{{desktopWindow}}": options.platform ?? "未上报",
-    "{{moodValence}}": (options.moodValence ?? 0.48).toFixed(2),
-    "{{circadianPct}}": String(Math.round((options.circadianEnergy ?? 0.86) * 100)),
-    "{{metabolicPct}}": String(Math.round((options.metabolicEnergy ?? 0.91) * 100)),
+    "{{moodValence}}": options.moodValence?.toFixed(2) ?? "",
+    "{{circadianPct}}": options.circadianEnergy === undefined ? "" : String(Math.round(options.circadianEnergy * 100)),
+    "{{metabolicPct}}": options.metabolicEnergy === undefined ? "" : String(Math.round(options.metabolicEnergy * 100)),
     "{{gapMoeIntensity}}": String(config.soulStudio.temperament.gapMoeIntensity),
     "{{recalledMemories}}": (options.recalledMemories ?? []
     ).join("；"),
@@ -1002,32 +604,31 @@ export function compileStudioPromptPreview(
       .join("；") || "当前无进行中的后台异步任务"
   };
 
+  let remaining = config.soulStudio.maxBlackboardTokens;
   const renderedBricks = config.soulStudio.promptBricks.map((brick) => {
+    const source = brick.provenance ?? "studio";
+    const base = { id: brick.id, title: brick.title, icon: brick.icon, maxTokens: brick.maxTokens, source };
     if (!brick.enabled) {
-      return { id: brick.id, title: brick.title, icon: brick.icon, tokens: 0, maxTokens: brick.maxTokens, included: false, reason: "已关闭", rendered: "" };
+      return { ...base, tokens: 0, included: false, reason: "已关闭", rendered: "" };
     }
     if (isPublic && brick.audienceMode === "private_only") {
-      return { id: brick.id, title: brick.title, icon: brick.icon, tokens: 0, maxTokens: brick.maxTokens, included: false, reason: "公开场合自动剥离", rendered: "" };
+      return { ...base, tokens: 0, included: false, reason: "公开场合自动剥离", rendered: "" };
     }
-    let rendered = brick.template;
-    for (const [token, value] of Object.entries(replacements)) {
-      rendered = rendered.replaceAll(token, value);
-    }
-    const approxTokens = Math.min(brick.maxTokens, Math.max(12, Math.ceil(rendered.length * 0.72)));
-    return {
-      id: brick.id,
-      title: brick.title,
-      icon: brick.icon,
-      tokens: approxTokens,
-      maxTokens: brick.maxTokens,
-      included: true,
-      rendered
-    };
+    const expanded = brick.template.replace(/\{\{\w+\}\}/gu, token => replacements[token] ?? token);
+    const text = source === "legacy_unknown" ? "[来源未经核实的历史配置]\n" + expanded : expanded;
+    const prefix = "### " + brick.title + "\n";
+    const budget = Math.min(remaining, brick.maxTokens);
+    const capacity = Math.floor(budget / 0.72) - [...prefix].length - 2;
+    if (capacity <= 0) return { ...base, tokens: 0, included: false, reason: "预算不足", rendered: "" };
+    const rendered = [...text].slice(0, capacity).join("");
+    const tokens = Math.ceil(([...prefix].length + [...rendered].length + 2) * 0.72);
+    remaining -= tokens;
+    return { ...base, tokens, included: true, rendered, reason: rendered !== text ? "已裁剪" : undefined };
   });
 
   const promptText = renderedBricks
     .filter((b) => b.included)
-    .map((b) => `### ${b.title} (${b.tokens}/${b.maxTokens} tok)\n${b.rendered}`)
+    .map((b) => `### ${b.title}\n${b.rendered}`)
     .join("\n\n");
 
   const totalTokens = renderedBricks.reduce((sum, b) => sum + b.tokens, 0);
@@ -1038,3 +639,5 @@ export function compileStudioPromptPreview(
     bricks: renderedBricks
   };
 }
+
+export const compileStudioPromptPreview = compileStudioPrompt;

@@ -6,13 +6,15 @@ import { dirname, join, resolve } from "node:path";
 
 import {
   bundlePrivacyScrubbedCreatorAsset,
-  distillSillyTavernCard,
+  decodeProfileCard,
   matchesUmoPattern
-} from "@ai0/cognition-core";
-import type { SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
+} from "./profiles/digital-life/index.js";
+import { TaskExecutorInputSchema, TaskExecutorReceiptSchema, type SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
+import { ServiceBindingError, taskExecutorContract } from "@ai0/sdk";
 import {
-  compileStudioPromptPreview,
   initializeSoulDirectory,
+  isTaskExecutionApproved,
+  taskExecutionApprovalDigest,
   readConsoleStudioConfig,
   readHostInfrastructureConfig,
   readHostVaultKey,
@@ -253,15 +255,15 @@ export function updateStudioConfig(
   return saved;
 }
 
-export function distillAndOptionallyApplyCard(
+export async function distillAndOptionallyApplyCard(
   runtime: Ai0DaemonRuntime,
-  input: { card: Record<string, unknown>; apply?: boolean; roleArchetype?: RelationshipArchetype }
+  input: { card: Record<string, unknown>; asset?: unknown; format?: string; provider?: string; apply?: boolean; roleArchetype?: RelationshipArchetype }
 ) {
-  const distilled = distillSillyTavernCard(input.card);
-  const cardName = String(input.card.name ?? input.card.display_name ?? (distilled.identity_dna.name || "Soul"));
-  const cardDesc = String(
-    input.card.description ?? input.card.personality ?? distilled.identity_dna.description ?? ""
-  );
+  const archive = runtime.archiveSignal;
+  const distilled = await decodeProfileCard(runtime.extensionHost, input.asset ?? input.card, input.format, input.provider);
+  if (input.apply && archive.aborted) throw new Error("ASSET_TARGET_CHANGED");
+  const cardName = distilled.identity_dna.name || String(distilled.clean.display_name ?? "Soul");
+  const cardDesc = distilled.identity_dna.description || distilled.identity_dna.personality;
   let appliedConfig: SoulConsoleStudioConfig | undefined;
 
   if (input.apply) {
@@ -359,16 +361,17 @@ export async function dispatchOrAdvanceCoWorkTask(
   const nowMs = runtime.virtualClock.nowMs();
 
   if (input.action === "create") {
-    const subAgent = studio.agency.subAgents.find((s) => s.id === input.subAgentId) ?? studio.agency.subAgents[0];
+    const subAgent = studio.agency.subAgents.find(agent => agent.enabled && (!input.subAgentId || agent.id === input.subAgentId));
+    if (!subAgent) return { ok: false, error: "SUBAGENT_UNAVAILABLE" };
     const newTask = {
       id: "task_" + randomUUID(),
       title: (input.title || "协助整理项目文档并提炼 3 条核心建议").trim(),
-      subAgentId: subAgent?.id ?? "sub_code_reviewer",
+      subAgentId: subAgent.id,
       status: "waiting_approval" as const,
       currentStep: 0,
       totalSteps: 1,
       stepLabel: "等待批准",
-      riskLevel: "read_only_safe" as const,
+      riskLevel: "needs_owner_confirm" as const,
       createdAt: "刚刚",
       outputSummary: ""
     };
@@ -381,41 +384,104 @@ export async function dispatchOrAdvanceCoWorkTask(
   const target = tasks.find(task => task.id === input.taskId);
   if (!target) return { ok: false, error: "TASK_NOT_FOUND" };
   if (input.action === "complete") return { ok: false, error: "EXECUTION_RESULT_REQUIRED" };
+  const subAgent = studio.agency.subAgents.find(agent => agent.id === target.subAgentId && agent.enabled);
+  const evidenceId = "evt_task_" + target.id;
+  const claimId = "evt_task_claim_" + target.id;
   if (input.action === "execute") {
-    const evidenceId = "evt_task_" + target.id;
-    const recorded = runtime.storage.getEventById(evidenceId);
-    if (!recorded && target.status !== "queued") return { ok: false, error: "TASK_NOT_QUEUED" };
-    if (target.subAgentId !== "sub_research_scholar") return { ok: false, error: "NO_TASK_EXECUTOR" };
-    if (!recorded) {
-      const cfg = readSoulProfileConfig(runtime.soulDir);
-      const mounted = cfg.profiles.find(p => p.id===cfg.defaultProfileId)?.knowledgeCollectionIds ?? [];
-      const search = await searchKnowledge(runtime,runtime.storage,target.title,allowedCollections(runtime.storage,mounted,"only_owner",true));
-      const hits = search.results.filter(hit => hit.score >= cfg.capabilities.knowledge.honestForgetThreshold);
-      // Retrieval can yield to another task update. Commit against the latest task and event.
-      const latest = readConsoleStudioConfig(runtime.soulDir).agency.activeTasks.find(task => task.id === target.id);
-      if (!latest || (latest.status !== "queued" && latest.status !== "completed"))
-        return {ok:false,error:"TASK_NOT_QUEUED"};
-      if (!runtime.storage.getEventById(evidenceId)) runtime.storage.appendEvent({
-        event_id: evidenceId, event_category: "action_episode_completed", principal_trust: "tool_output",
-        wall_ts_ms: Date.now(), virtual_ts_ms: nowMs, source_channel_id: "knowledge.search",
-        principal_id: "executor:knowledge.search", audience_scope: "only_owner", venue_type: "internal_background",
-        modality: "text", summary_text: "知识库检索完成，返回 " + hits.length + " 个片段",
-        payload_json: JSON.stringify({ task_id: target.id, query: target.title, chunk_ids: hits.map(hit => hit.chunkId) }),
+    const archive = runtime.archiveSignal;
+    if (!runtime.storage.getEventById(evidenceId)) {
+      if (runtime.storage.getEventById(claimId)) return { ok: false, error: "TASK_CLAIMED_WITHOUT_RECEIPT" };
+      if (target.status !== "queued") return { ok: false, error: "TASK_NOT_QUEUED" };
+      const ref = subAgent?.executor;
+      if (!subAgent || !ref) return { ok: false, error: "NO_TASK_EXECUTOR" };
+      if (!isTaskExecutionApproved(target, subAgent)) {
+        return { ok: false, error: "EXECUTOR_APPROVAL_REQUIRED" };
+      }
+      let execute;
+      try {
+        execute = runtime.extensionHost.bindService(taskExecutorContract(ref), ref.provider);
+      } catch (error) {
+        if (error instanceof ServiceBindingError) return { ok: false, error: "EXECUTOR_" + error.reason.status.toUpperCase() };
+        throw error;
+      }
+      const event = {
+        wall_ts_ms: Date.now(), virtual_ts_ms: nowMs, source_channel_id: "studio.task",
+        audience_scope: "only_owner", venue_type: "internal_background", modality: "text",
         state_rev_after: runtime.coordinator.getSnapshot().state_rev, active_modules_mask: 31
-      });
+      } as const;
+      // A durable unique claim precedes dispatch. A restart or ambiguous result must never replay an effect.
+      try {
+        runtime.storage.appendEvent({ ...event, event_id: claimId, event_category: "config_or_ablation_changed",
+          principal_id: "owner:local", principal_trust: "owner_verified", summary_text: "已交给任务执行器",
+          payload_json: JSON.stringify({ task_id: target.id, title: target.title, executor: ref }) });
+      } catch (error) {
+        if (runtime.storage.getEventById(claimId)) return { ok: false, error: "TASK_CLAIMED_WITHOUT_RECEIPT" };
+        throw error;
+      }
+      target.status = "running";
+      target.stepLabel = "已派发，等待执行回执";
+      updateStudioConfig(runtime, { agency: { activeTasks: tasks } });
+      try {
+        const taskInput = { taskId: target.id, title: target.title, subAgentId: subAgent.id, allowedTools: subAgent.allowedTools };
+        const captured = execute;
+        const live = () => {
+          if (archive.aborted) return false;
+          const agency = readConsoleStudioConfig(runtime.soulDir).agency;
+          const task = agency.activeTasks.find(item => item.id === target.id);
+          const agent = agency.subAgents.find(item => item.id === subAgent.id && item.enabled);
+          return !!task && !!agent && task.status === "running" && isTaskExecutionApproved(task, agent);
+        };
+        const report = await runtime.workers.w2.executeApprovedAction({
+          signal: AbortSignal.any([archive, runtime.pluginSignal(ref.provider, "live")]),
+          action: { call: { kind: "tool", id: claimId, name: ref.name, input: taskInput }, live,
+            definition: { name: ref.name, description: "Execute the approved task",
+              inputSchema: { jsonSchema: { type: "object", required: ["taskId","title","subAgentId","allowedTools"] }, parse: TaskExecutorInputSchema.parse },
+              resultSchema: { jsonSchema: { type: "object", required: ["summary","evidence"] }, parse: TaskExecutorReceiptSchema.parse },
+              execute: async (call, signal) => ({ status: "verified", value: await captured(TaskExecutorInputSchema.parse(call.input), signal) }),
+              project: value => ({ summary: TaskExecutorReceiptSchema.parse(value).summary }) } },
+          verifyGoal(rounds) {
+            const item = rounds[0]?.receipts[0];
+            if (!item || item.call.id !== claimId || item.result.status !== "verified") return false;
+            const parsed = TaskExecutorReceiptSchema.safeParse(item.result.value);
+            return parsed.success && Object.keys(parsed.data.evidence).length > 0;
+          }
+        });
+        const result = report.rounds[0]?.receipts[0]?.result;
+        archive.throwIfAborted();
+        if (report.goalVerification !== "verified" || !result || result.status !== "verified") throw new Error("TASK_RECEIPT_UNVERIFIED");
+        const receipt = TaskExecutorReceiptSchema.parse(result.value);
+        runtime.storage.appendEvent({ ...event, event_id: evidenceId, event_category: "action_episode_completed",
+          wall_ts_ms: Date.now(), virtual_ts_ms: runtime.virtualClock.nowMs(), principal_id: "executor:" + ref.provider,
+          principal_trust: "tool_output", summary_text: receipt.summary,
+          payload_json: JSON.stringify({ ...receipt.evidence, task_id: target.id, executor: ref }) });
+      } catch {
+        if (archive.aborted) return { ok: false, error: "EXECUTOR_RESULT_UNKNOWN" };
+        const activeTasks = readConsoleStudioConfig(runtime.soulDir).agency.activeTasks;
+        const pending = activeTasks.find(task => task.id === target.id);
+        if (pending) {
+          pending.status = "paused";
+          pending.stepLabel = "执行结果未知，等待核查";
+          updateStudioConfig(runtime, { agency: { activeTasks } });
+        }
+        return { ok: false, error: "EXECUTOR_RESULT_UNKNOWN" };
+      }
     }
     const activeTasks = readConsoleStudioConfig(runtime.soulDir).agency.activeTasks;
     const completed = activeTasks.find(task => task.id === target.id);
     if (!completed) return {ok:false,error:"TASK_NOT_FOUND"};
     completed.status = "completed";
     completed.currentStep = completed.totalSteps;
-    completed.stepLabel = "知识库检索已完成";
+    completed.stepLabel = "执行回执已记录";
     completed.outputSummary = runtime.storage.getEventById(evidenceId)!.summary_text;
     completed.evidenceId = evidenceId;
     return { ok: true, task: completed, studioConfig: updateStudioConfig(runtime, { agency: { activeTasks } }) };
   }
   if (!["approve", "pause"].includes(input.action)) return { ok: false, error: "UNKNOWN_TASK_ACTION" };
   if (target.status === "completed") return { ok: false, error: "TASK_ALREADY_COMPLETED" };
+  if (runtime.storage.getEventById(claimId)) return { ok: false, error: "TASK_ALREADY_DISPATCHED" };
+  if (input.action === "approve" && !subAgent) return { ok: false, error: "SUBAGENT_UNAVAILABLE" };
+  target.approvedExecutor = input.action === "approve" ? subAgent?.executor : undefined;
+  target.approvedRequestDigest = input.action === "approve" && subAgent ? taskExecutionApprovalDigest(target, subAgent) : undefined;
   target.status = input.action === "pause" ? "paused" : "queued";
   target.stepLabel = input.action === "pause" ? "已暂停" : "已批准，等待执行器";
   const saved = updateStudioConfig(runtime, { agency: { activeTasks: tasks } });
@@ -583,43 +649,4 @@ export function createNewSoulInstance(
     path: targetDir,
     instances: runtime.listSoulInstances()
   };
-}
-
-export function buildLivePromptPreviews(
-  runtime: Ai0DaemonRuntime,
-  studio: SoulConsoleStudioConfig,
-  memories: Array<{ content_text: string; visibility_scope: string }>,
-  narrativeText: string,
-  mode: "live" | "sandbox" = "live"
-) {
-  const snap = (mode === "live" ? runtime.coordinator : runtime.sandboxCoordinator).getSnapshot();
-  const affect = snap.D2_HOMEOSTASIS_AFFECT;
-  const privateMemories = memories.slice(0, 3).map((m) => `[${m.visibility_scope}] ${m.content_text}`);
-  const publicMemories = memories
-    .filter((m) => m.visibility_scope === "public_all")
-    .slice(0, 3)
-    .map((m) => `[公开] ${m.content_text}`);
-
-  const promptPreviewPrivate = compileStudioPromptPreview(studio, {
-    audienceScope: "only_owner",
-    venueType: "private_1on1",
-    platform: runtime.fallbackChannelId(),
-    moodValence: affect.instant_valence,
-    circadianEnergy: affect.circadian_energy,
-    metabolicEnergy: affect.metabolic_energy,
-    narrativeSummary: narrativeText.slice(0, 180),
-    recalledMemories: privateMemories
-  });
-  const promptPreviewPublic = compileStudioPromptPreview(studio, {
-    audienceScope: "public_all",
-    venueType: "public_livestream",
-    platform: "公开场合预览",
-    moodValence: Number((affect.instant_valence * 0.3).toFixed(2)),
-    circadianEnergy: affect.circadian_energy,
-    metabolicEnergy: affect.metabolic_energy,
-    narrativeSummary: "",
-    recalledMemories: publicMemories
-  });
-
-  return { promptPreviewPrivate, promptPreviewPublic };
 }

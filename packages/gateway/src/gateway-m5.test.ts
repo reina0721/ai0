@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { VirtualClock } from "@ai0/cognition-core";
 import { ExtensionCoreHost } from "@ai0/extension-core";
-import { perceptionFilterFacet } from "@ai0/perception-core";
+import { perceptionExtractorFacet, perceptionFilterFacet } from "@ai0/perception-core";
+import { expressionMediaTranscoderFacet } from "@ai0/expression-core";
+import { computeSpokenCharOffsetFromAudioMs, ExtMediaSidebandV1Schema } from "@ai0/protocol";
 import {
   CHANNEL_PROTOCOL_PATH,
   PrivilegedAdminServer,
@@ -19,13 +21,15 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Prot
       manifest: {
         manifest_version: "2.0.0", extension_id: "test-filter", display_name: "Test Filter",
         version: "1", author: "test", carrier_kind: "native_code_plugin",
-        facets: [perceptionFilterFacet.id],
+        facets: [perceptionFilterFacet.id, perceptionExtractorFacet.id],
         permissions: {
           read_blackboard_domains: [], propose_mutation_domains: [],
           max_audience_scope: "public_all", network_access: false
         }
       },
       activate(scope) {
+        scope.contributeFacet(perceptionExtractorFacet, { modality: "text", extension: "test.note",
+          extract: payload => ({ cue: "normalized note", data: String(payload).trim() }) });
         scope.contributeFacet(perceptionFilterFacet, {
           onEvent(event, channelId) {
             if (event.text === "suppress") return { kind: "suppress" };
@@ -53,13 +57,16 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Prot
     const perception = {
       event_id: "evt_filtered", timestamp: new Date().toISOString(), lifecycle: "commit",
       actor: { platform_uid: "viewer", display_name: "Viewer" },
-      modality: "text", summary_text: "hello", confidence: 1, persistence_hint: "permanent", extensions: {}
+      modality: "text", summary_text: "hello", confidence: 1, persistence_hint: "permanent", extensions: { "test.note": " label " }
     };
     const transformed = gateway.handlePerception(session_id, perception);
     expect(transformed.state).toBe("COMMITTED");
     expect(transformed.envelope.summary_text).toBe("test.text: HELLO");
     expect(transformed.committed?.text).toBe("test.text: HELLO");
     expect(transformed.committed?.frames[0]?.interpretation.primaryCue).toBe("test.text: HELLO");
+    expect(transformed.committed?.frames[0]?.interpretation.extractions).toEqual([
+      expect.objectContaining({ source: "test-filter", cue: "normalized note", data: "label" })
+    ]);
     expect(gateway.handlePerception(session_id, {
       ...perception, event_id: "evt_suppressed", summary_text: "suppress"
     }).committed).toBeUndefined();
@@ -74,9 +81,21 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Prot
     const clock = new VirtualClock({ targetInstance: "sandbox:m5", initialVirtualTsMs: 1_800_000_000_000 });
     expect(CHANNEL_PROTOCOL_PATH).toBe("/protocol/v0/channel");
     const capturedInterruptions: Array<{ spoken_char_offset: number; unsaid_remainder: string }> = [];
+    const extensionHost = new ExtensionCoreHost();
+    extensionHost.mountPackage({
+      manifest: { manifest_version: "2.0.0", extension_id: "test.audio", display_name: "Test audio", author: "test",
+        version: "1", carrier_kind: "native_code_plugin", facets: [expressionMediaTranscoderFacet.id],
+        permissions: { read_blackboard_domains: [], propose_mutation_domains: [], max_audience_scope: "public_all", network_access: false } },
+      activate(scope) { scope.contributeFacet(expressionMediaTranscoderFacet, { cursor: {
+        extension: "ext.media.sideband.v1",
+        resolve: (payload, progress) => computeSpokenCharOffsetFromAudioMs(
+          ExtMediaSidebandV1Schema.parse(payload).char_offset_timestamps_ms, progress.played_audio_ms ?? 0)
+      } }); }
+    });
 
     const options: ChannelProtocolGatewayOptions = {
       clock,
+      extensionHost,
       debounceWindowMs: 1200,
       formatRetractedObservation: () => "Draft withdrawn",
       w1: {
@@ -183,7 +202,7 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Prot
       chunk_seq: 0,
       is_final: true,
       action_type: "speak",
-      fallback_text: "ABCDEFGH",
+      fallback_text: "A🎬CDEFGH",
       extensions: {
         "ext.media.sideband.v1": {
           audio_stream_id: "tts_stream_01",

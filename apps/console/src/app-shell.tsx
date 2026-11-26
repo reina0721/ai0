@@ -349,10 +349,10 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
     label: s.name
   }));
   const vitalSummary = snapshot ? [
-    `心境 ${snapshot.moodValence >= 0 ? "+" : ""}${snapshot.moodValence.toFixed(2)}`,
-    `节律 ${Math.round(snapshot.circadianEnergy * 100)}%`,
-    `代谢精力 ${Math.round(snapshot.metabolicEnergy * 100)}%`
-  ].join(" · ") : undefined;
+    typeof snapshot.moodValence === "number" && `心境 ${snapshot.moodValence >= 0 ? "+" : ""}${snapshot.moodValence.toFixed(2)}`,
+    typeof snapshot.circadianEnergy === "number" && `节律 ${Math.round(snapshot.circadianEnergy * 100)}%`,
+    typeof snapshot.metabolicEnergy === "number" && `代谢精力 ${Math.round(snapshot.metabolicEnergy * 100)}%`
+  ].filter(Boolean).join(" · ") || undefined : undefined;
 
   const handleApproval = async (
     id: string,

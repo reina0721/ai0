@@ -1,5 +1,7 @@
 export * from "@ai0/extension-core";
+import { parse as parseYaml } from "yaml";
 export * from "./facets.js";
+export * from "./agent-facets.js";
 import type { ExtensionScope, ExtensionPackageDefinition } from "@ai0/extension-core";
 import {
   Ai0ExtensionManifestSchema,
@@ -149,8 +151,8 @@ export function parseSkillMarkdownDocument(
   }
   const raw = match[1] ?? "";
   let frontmatterObj: ManifestInput = {};
-  if (raw.trim().startsWith("{")) {
-    frontmatterObj = JSON.parse(raw) as ManifestInput;
+  if (raw.trim().startsWith("{") || /^projections\s*:/mu.test(raw)) {
+    frontmatterObj = parseYaml(raw);
   } else {
     for (const original of raw.split("\n")) {
       const line = original.replace(/\s+#.*$/, "").trim();

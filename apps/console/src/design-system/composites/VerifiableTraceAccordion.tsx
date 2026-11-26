@@ -47,7 +47,7 @@ export function VerifiableTraceAccordion(props: VerifiableTraceAccordionProps): 
       return <CompactDisclosure key={key} expanded={props.openStep === undefined ? undefined : open}
         onChange={props.onStepChange ? () => props.onStepChange?.(index + 1) : undefined}
         summary={<><StatusBadge tone="neutral">{index + 1}</StatusBadge>{STEP_LABELS[index]}</>}>
-        {key === "step5_strategy_proposal" ? <SpoilerMask revealed={props.revealedSubtext}
+        {key === "step5_strategy_proposal" && theatricalSubtext ? <SpoilerMask revealed={props.revealedSubtext}
           label={theatricalSubtext.masked_placeholder} onReveal={props.onRevealSubtext}>
           <p>{theatricalSubtext.raw_text}</p>
         </SpoilerMask> : <pre style={{ margin: "7px 0 0", whiteSpace: "pre-wrap" }}>{compact(step)}</pre>}

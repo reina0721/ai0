@@ -1,3 +1,4 @@
+import { projectDigitalLifeAffect } from "./profiles/digital-life/index.js";
 import type { ExtensionCoreHost } from "@ai0/sdk";
 import type { ChannelProtocolGateway } from "@ai0/gateway";
 import { randomUUID } from "node:crypto";
@@ -8,19 +9,40 @@ import type {
   AdminOperation, AdminRouteHandler, AdminTelemetryFrame, AdminTelemetryTrack
 } from "@ai0/gateway";
 import {
-  buildRegionBindingsFromProfile, bundlePrivacyScrubbedCreatorAsset, computeSecondOrderCoupledAffect,
-  distillSillyTavernCard, fetchUpstreamProviderModels, GOLDEN_REGRESSION_SCENARIO_V1,
-  probeUpstreamModelInstance, resolveSessionProfile, runScenarioPlaybook,
-  simulateLorebookActivation, toBrainRouterConfig, type AuthoritativeStateCoordinator,
-  type BlackboardCompiler, type BlackboardPolicy, type BrainRegion,
-  type BrainRegionRouter, type InteractionOpportunityPool,
+  buildRegionBindingsFromProfile,
+  bundlePrivacyScrubbedCreatorAsset,
+  computeSecondOrderCoupledAffect,
+  decodeProfileCard,
+  GOLDEN_REGRESSION_SCENARIO_V1,
+  resolveSessionProfile,
+  runScenarioPlaybook,
+  simulateLorebookActivation,
+  toBrainRouterConfig,
+  type AuthoritativeStateCoordinator,
+  type BlackboardCompiler,
+  type BlackboardPolicy,
+  type BrainRegion,
+  type DigitalLifeBrainRegionRouter as BrainRegionRouter,
+  type VerifiableTurnTrace as CoordinatorTrace,
+  type W1FastDialogueWorker
+} from "./profiles/digital-life/index.js";
+import {
+  fetchUpstreamProviderModels,
+  probeUpstreamModelInstance
+} from "@ai0/agent-core";
+import {
+  type InteractionOpportunityPool
+} from "@ai0/expression-core";
+import {
   type SensoryCoverageBucketManager,
-  type SensoryCoverageUpdate, type VerifiableTurnTrace as CoordinatorTrace,
-  type VirtualClock, type W1FastDialogueWorker
+  type SensoryCoverageUpdate
+} from "@ai0/perception-core";
+import {
+  type VirtualClock
 } from "@ai0/cognition-core";
 import {
   AgentConfigProfileSchema, AudienceScopeSchema, DaemonSystemSettingsSchema, getSupportedReasoningEfforts,
-  KnowledgeCapabilityConfigSchema, McpServerConfigSchema, ModelInstanceSchema,
+  KnowledgeCapabilityConfigSchema, McpServerConfigSchema, ModelInstanceSchema, CarrierProjectionSchema,
   MultimodalCapabilityConfigSchema, PlatformChannelInstanceSchema,
   ProviderInstanceSchema, ProviderSourceSchema, UmoRoutingRuleSchema,
   VenueTypeSchema,
@@ -33,7 +55,7 @@ import {
   findProviderReferences, getModelCatalogEntry, importMcpServersFromJson, importUserSkillMarkdown,
   inferModelCapabilities, listAgentSkills, makeDefaultModelInstanceId,
   prepareKnowledgeLibrary, PLATFORM_ADAPTER_TEMPLATES, PROVIDER_VENDOR_TEMPLATES,
-  readHostInfrastructureConfig, readSoulProfileConfig, removeSourceApiKey,
+  readConsoleStudioConfig, readHostInfrastructureConfig, readSoulProfileConfig, removeSourceApiKey,
   resolveEffectiveSourceApiKeys, sameProviderCatalogConnection, saveUserAgentSkill, setAgentSkillEnabled,
   updateModelInstanceHealth, updateSourceApiKey, upsertMcpServerConfig,
   upsertModelInstance, upsertPlatformChannelInstance, upsertProviderInstance,
@@ -43,7 +65,7 @@ import {
 import { knowledgeAdmin } from "./knowledge-admin.js";
 import type { Ai0DaemonRuntime } from "./index.js";
 import { createLifecycleAdminHandlers } from "./soul-lifecycle.js";
-import { probeMcpServer } from "./mcp-probe.js";
+import { probeMcpServer, sameMcpConnection, withCurrentMcpDiscovery } from "./mcp-probe.js";
 import type { DiscoveredPlugin, InstallExternalPluginInput, RuntimePluginLoader } from "./plugin-loader.js";
 
 type Json = Record<string, unknown>;
@@ -57,6 +79,7 @@ export interface DaemonHandlerContext {
   readonly runtime: Ai0DaemonRuntime;
   reloadExtension(id: string, mode: "live" | "sandbox", config: Json, expected?: number): Promise<number>;
   reloadSingleExtension(id: string, mode: "live" | "sandbox"): Promise<{ rev: number; generation?: string }>;
+  refreshCapabilities(changed?: boolean): Promise<void>;
   reloadAllExtensions(): Promise<{ count: number; revision: number }>;
   installExternalExtension(input: InstallExternalPluginInput): Promise<DiscoveredPlugin>;
   uninstallExternalExtension(id: string, keepConfig: boolean): Promise<void>;
@@ -155,7 +178,9 @@ function circadianAt(hour: number, anchors: CircadianAnchor[]): number {
 export function buildHomeostasisSamples(
   snapshot: ReturnType<AuthoritativeStateCoordinator["getSnapshot"]>, anchors: CircadianAnchor[]
 ) {
-  const affect = snapshot.D2_HOMEOSTASIS_AFFECT;
+  if (snapshot.D2_CONTINUOUS_STATES.values.instant_valence === undefined ||
+      snapshot.D2_CONTINUOUS_STATES.values.mood_baseline_val === undefined) return [];
+  const affect = projectDigitalLifeAffect(snapshot);
   return Array.from({ length: 24 }, (_, hour) => {
     const ode = computeSecondOrderCoupledAffect({ v_instant_0: affect.instant_valence,
       v_mood_0: affect.mood_baseline_val, v_base: 0,
@@ -195,19 +220,23 @@ export function createRealAdminHandlers(
     ...createLifecycleAdminHandlers(() => runtime.runtime),
     "blackboard.compilePreview": async (request, context) => {
       const body = bodyOf(request.body), backend = selected(runtime, context.target_instance);
+      const audience = body.audience_scope === "only_owner" ? "only_owner" : "public_all";
+      const requestPreview = await runtime.runtime.previewChannelRequest({ text: typeof body.text === "string" ? body.text : "",
+        principalId: "owner:local", audience_scope: audience, venue_type: audience === "only_owner" ? "private_1on1" : "public_livestream",
+        mode: context.target_instance === "live" ? "live" : "sandbox" }, readConsoleStudioConfig(runtime.runtime.soulDir));
       const source = isRecord(body.policy) ? body.policy : body;
       const policy: BlackboardPolicy = {
         max_total_tokens: finite(source.max_total_tokens, 2_200),
         tier0_safety_invariants: String(source.tier0_safety_invariants ??
-          "Tier 0 SB 243: honest companion, privacy boundaries, and zero exit-guilt."),
+          ""),
         ...(isRecord(source.slots) ? { slots: source.slots as BlackboardPolicy["slots"] } : {}),
         ...(typeof source.memory_projection_text === "string"
           ? { memory_projection_text: source.memory_projection_text } : {}),
         ...(typeof source.narrative_self_text === "string"
           ? { narrative_self_text: source.narrative_self_text } : {})
       };
-      const audience = body.audience_scope === "only_owner" ? "only_owner" : "public_all";
-      return backend.compiler.compile(backend.coordinator.getSnapshot(), policy, audience);
+      const snapshot = await backend.compiler.compile(backend.coordinator.getSnapshot(), policy, audience);
+      return { ...snapshot, ...requestPreview, compiled_prompt_text: requestPreview.promptText };
     },
     "channels.topology": (_request, context) => ({
       active_sessions: runtime.channelGateway.listConnections(context.target_instance),
@@ -228,9 +257,10 @@ export function createRealAdminHandlers(
       }
       return gateView(runtime);
     },
-    "soul.distill": (request) => {
+    "soul.distill": (request, context) => {
       const body = bodyOf(request.body);
-      return distillSillyTavernCard(bodyOf(body.card ?? body));
+      return decodeProfileCard(selected(runtime, context.target_instance).extensions, body.asset ?? body.card ?? body,
+        typeof body.format === "string" ? body.format : undefined, typeof body.provider === "string" ? body.provider : undefined);
     },
     "soul.lorebooks.simulate": (request) => {
       const body = bodyOf(request.body), entries = Array.isArray(body.entries) ? body.entries : [];
@@ -242,7 +272,7 @@ export function createRealAdminHandlers(
       if (request.method === "PATCH" && context.target_instance !== "live") {
         const snapshot = backend.coordinator.getSnapshot();
         mutation = backend.coordinator.submitProposal({ proposal_id: `admin:affect:${backend.clock.nowMs()}`,
-          domain: "D2_HOMEOSTASIS_AFFECT", base_rev: snapshot.domain_revs.D2_HOMEOSTASIS_AFFECT,
+          domain: "D2_CONTINUOUS_STATES", base_rev: snapshot.domain_revs.D2_CONTINUOUS_STATES,
           payload: bodyOf(body.impulse ?? body) });
       } else if (request.method === "PATCH" && Array.isArray(body.circadian_anchors)) {
         runtime.state.circadianAnchors = body.circadian_anchors.filter(isRecord).map((item) => ({
@@ -250,7 +280,7 @@ export function createRealAdminHandlers(
           energy: Math.max(0, Math.min(1, finite(item.energy, 1))) }));
       }
       const snapshot = backend.coordinator.getSnapshot();
-      return { current: snapshot.D2_HOMEOSTASIS_AFFECT,
+      return { current: snapshot.D2_CONTINUOUS_STATES.values,
         samples: buildHomeostasisSamples(snapshot, runtime.state.circadianAnchors),
         circadian_anchors: runtime.state.circadianAnchors, mutation };
     },
@@ -269,6 +299,7 @@ export function createRealAdminHandlers(
       const result = await backend.engine.execute({ target_event_ids: strings(body.target_event_ids),
         target_memory_ids: strings(body.target_memory_ids), virtualTsMs: now, redactedAtTsMs: now,
         ...(context.target_instance === "live" ? { soulDirPath: runtime.soulDir } : {}) });
+      runtime.runtime.modelRequests[context.target_instance === "live" ? "live" : "sandbox"].clear();
       backend.coordinator.restoreCheckpoint();
       return result;
     },
@@ -278,6 +309,7 @@ export function createRealAdminHandlers(
         target_event_ids: strings(body.target_event_ids), target_memory_ids: strings(body.target_memory_ids),
         virtualTsMs: now, redactedAtTsMs: now, created_virtual_ts: now,
         ...(context.target_instance === "live" ? { soulDirPath: runtime.soulDir } : {}) });
+      runtime.runtime.modelRequests[context.target_instance === "live" ? "live" : "sandbox"].clear();
       backend.coordinator.restoreCheckpoint();
       return result;
     },
@@ -304,8 +336,7 @@ export function createRealAdminHandlers(
       return { released, tension_id: tensionId ?? null, audit };
     },
     "models.routing": (request, context) => {
-      const body = bodyOf(request.body), affect = selected(runtime, context.target_instance).coordinator
-        .getSnapshot().D2_HOMEOSTASIS_AFFECT;
+      const body = bodyOf(request.body), affect = projectDigitalLifeAffect(selected(runtime, context.target_instance).coordinator.getSnapshot());
       const metabolic = finite(body.metabolic_energy, affect.metabolic_energy);
       const circadian = finite(body.circadian_energy, affect.circadian_energy);
       return { regions: REGIONS.map((region) => ({ region,
@@ -435,7 +466,7 @@ export function createRealAdminHandlers(
         return { status, body: { error: status === 409 ? "BUILTIN_PLUGIN_PROTECTED" : "UNINSTALL_FAILED", message } };
       }
     },
-    "extensions.mcp": (request, context) => {
+    "extensions.mcp": async (request, context) => {
       const infra = readHostInfrastructureConfig(runtime.hostDir);
       if (request.method === "GET") {
         return { mcpServers: infra.mcpServers };
@@ -453,11 +484,13 @@ export function createRealAdminHandlers(
       if (!parsed.success) {
         return { status: 400, body: { error: "INVALID_MCP_SERVER", issues: parsed.error.issues } };
       }
-      const saved = upsertMcpServerConfig(runtime.hostDir, parsed.data);
+      const saved = upsertMcpServerConfig(runtime.hostDir,
+        withCurrentMcpDiscovery(parsed.data, infra.mcpServers.find(server => server.id === parsed.data.id)));
+      await runtime.refreshCapabilities(true);
       runtime.emitTelemetry("[SYS]", { action: "mcp_server_upserted", serverId: parsed.data.id }, "live");
       return { status: 201, body: { server: saved.mcpServers.find((s) => s.id === parsed.data.id), mcpServers: saved.mcpServers } };
     },
-    "extensions.mcpImportJson": (request, context) => {
+    "extensions.mcpImportJson": async (request, context) => {
       if (context.target_instance !== "live") {
         return { status: 403, body: { error: "LIVE_SOVEREIGNTY_FENCE_VIOLATION" } };
       }
@@ -465,13 +498,14 @@ export function createRealAdminHandlers(
       const payload = body.json ?? body.raw ?? request.body;
       try {
         const result = importMcpServersFromJson(runtime.hostDir, payload);
+        await runtime.refreshCapabilities(true);
         runtime.emitTelemetry("[SYS]", { action: "mcp_servers_imported", count: result.imported.length }, "live");
         return { status: 201, body: { imported: result.imported, mcpServers: result.config.mcpServers } };
       } catch (err) {
         return { status: 400, body: { error: "MCP_JSON_IMPORT_FAILED", message: err instanceof Error ? err.message : String(err) } };
       }
     },
-    "extensions.mcpItem": (request, context) => {
+    "extensions.mcpItem": async (request, context) => {
       if (context.target_instance !== "live") {
         return { status: 403, body: { error: "LIVE_SOVEREIGNTY_FENCE_VIOLATION" } };
       }
@@ -482,6 +516,7 @@ export function createRealAdminHandlers(
 
       if (request.method === "DELETE") {
         const saved = deleteMcpServerConfig(runtime.hostDir, serverId);
+        await runtime.refreshCapabilities(true);
         runtime.emitTelemetry("[SYS]", { action: "mcp_server_deleted", serverId }, "live");
         return { deleted: serverId, mcpServers: saved.mcpServers };
       }
@@ -490,31 +525,34 @@ export function createRealAdminHandlers(
       if (!parsed.success) {
         return { status: 400, body: { error: "INVALID_MCP_PATCH", issues: parsed.error.issues } };
       }
-      const saved = upsertMcpServerConfig(runtime.hostDir, parsed.data);
+      const saved = upsertMcpServerConfig(runtime.hostDir, withCurrentMcpDiscovery(parsed.data, existing));
+      await runtime.refreshCapabilities(true);
       runtime.emitTelemetry("[SYS]", { action: "mcp_server_updated", serverId }, "live");
       return { server: saved.mcpServers.find((s) => s.id === serverId), mcpServers: saved.mcpServers };
     },
     "extensions.mcpProbe": async (_request, context) => {
+      if (context.target_instance !== "live") return { status: 403, body: { error: "LIVE_SOVEREIGNTY_FENCE_VIOLATION" } };
       const serverId = context.params.serverId ?? "";
       const infra = readHostInfrastructureConfig(runtime.hostDir);
       const existing = infra.mcpServers.find((s) => s.id === serverId);
       if (!existing) return { status: 404, body: { error: "MCP_SERVER_NOT_FOUND" } };
       const probe = await probeMcpServer(existing);
+      const current = readHostInfrastructureConfig(runtime.hostDir).mcpServers.find(server => server.id === serverId);
+      if (!current || !sameMcpConnection(existing, current)) return { status: 409, body: { error: "MCP_CONFIGURATION_CHANGED" } };
       const nextServer = McpServerConfigSchema.parse({
-        ...existing,
+        ...current,
         status: probe.status,
         lastLatencyMs: probe.latencyMs,
         lastError: probe.ok ? undefined : probe.detail,
         lastProbedAt: new Date().toISOString(),
         discoveredTools: probe.ok ? probe.tools : existing.discoveredTools
       });
-      if (context.target_instance === "live") {
-        upsertMcpServerConfig(runtime.hostDir, nextServer);
-      }
+      upsertMcpServerConfig(runtime.hostDir, nextServer);
+      await runtime.refreshCapabilities(true);
       runtime.emitTelemetry("[SYS]", { action: "mcp_server_probed", serverId, ok: probe.ok, toolCount: probe.tools.length }, context.target_instance);
       return { ...probe, server: nextServer };
     },
-    "extensions.skills": (request, context) => {
+    "extensions.skills": async (request, context) => {
       if (request.method === "GET") {
         return { skills: listAgentSkills(runtime.soulDir, runtime.bundledSkillsDir) };
       }
@@ -529,6 +567,7 @@ export function createRealAdminHandlers(
             body.rawMarkdown,
             typeof body.slug === "string" ? body.slug : undefined
           );
+          await runtime.refreshCapabilities(true);
           runtime.emitTelemetry("[SYS]", { action: "skill_imported", skillId: imported.id }, "live");
           return { status: 201, body: { skill: imported, skills: listAgentSkills(runtime.soulDir, runtime.bundledSkillsDir) } };
         }
@@ -542,6 +581,7 @@ export function createRealAdminHandlers(
             : "read_only_safe";
         const scopeParsed = AudienceScopeSchema.safeParse(body.maxAudienceScope ?? "only_owner");
         const created = saveUserAgentSkill(runtime.soulDir, {
+          projections: CarrierProjectionSchema.array().optional().parse(body.projections),
           ...(typeof body.slug === "string" && body.slug.trim() ? { slug: body.slug.trim() } : {}),
           ...(typeof body.id === "string" && body.id.trim() ? { id: body.id.trim() } : {}),
           displayName,
@@ -555,13 +595,14 @@ export function createRealAdminHandlers(
           bodyMarkdown: typeof body.bodyMarkdown === "string" ? body.bodyMarkdown : "",
           enabled: body.enabled !== false
         });
+        await runtime.refreshCapabilities(true);
         runtime.emitTelemetry("[SYS]", { action: "skill_created", skillId: created.id }, "live");
         return { status: 201, body: { skill: created, skills: listAgentSkills(runtime.soulDir, runtime.bundledSkillsDir) } };
       } catch (err) {
         return { status: 400, body: { error: "SKILL_SAVE_FAILED", message: err instanceof Error ? err.message : String(err) } };
       }
     },
-    "extensions.skillItem": (request, context) => {
+    "extensions.skillItem": async (request, context) => {
       if (context.target_instance !== "live") {
         return { status: 403, body: { error: "LIVE_SOVEREIGNTY_FENCE_VIOLATION" } };
       }
@@ -573,6 +614,7 @@ export function createRealAdminHandlers(
       if (request.method === "DELETE") {
         try {
           deleteUserAgentSkill(runtime.soulDir, existing.id, runtime.bundledSkillsDir);
+          await runtime.refreshCapabilities(true);
           runtime.emitTelemetry("[SYS]", { action: "skill_deleted", skillId: existing.id }, "live");
           return { deleted: existing.id, skills: listAgentSkills(runtime.soulDir, runtime.bundledSkillsDir) };
         } catch (err) {
@@ -583,6 +625,7 @@ export function createRealAdminHandlers(
       const body = bodyOf(request.body);
       if (request.method === "PATCH" && typeof body.enabled === "boolean" && Object.keys(body).length === 1) {
         setAgentSkillEnabled(runtime.soulDir, existing.id, body.enabled);
+        await runtime.refreshCapabilities(true);
         const skills = listAgentSkills(runtime.soulDir, runtime.bundledSkillsDir);
         return { skill: skills.find((s) => s.id === existing.id), skills };
       }
@@ -590,6 +633,7 @@ export function createRealAdminHandlers(
       if (existing.readonly) {
         if (typeof body.enabled === "boolean") {
           setAgentSkillEnabled(runtime.soulDir, existing.id, body.enabled);
+          await runtime.refreshCapabilities(true);
           const skills = listAgentSkills(runtime.soulDir, runtime.bundledSkillsDir);
           return { skill: skills.find((s) => s.id === existing.id), skills };
         }
@@ -601,7 +645,10 @@ export function createRealAdminHandlers(
           ? (body.capabilityRisk as CapabilityRisk)
           : existing.capabilityRisk;
       const scopeParsed = AudienceScopeSchema.safeParse(body.maxAudienceScope ?? existing.maxAudienceScope);
+      const projections = CarrierProjectionSchema.array().optional().safeParse(body.projections);
+      if (!projections.success) return { status: 400, body: { error: "INVALID_SKILL_PROJECTIONS" } };
       const updated = saveUserAgentSkill(runtime.soulDir, {
+        projections: projections.data ?? existing.projections,
         slug: existing.slug,
         id: existing.id,
         displayName: typeof body.displayName === "string" && body.displayName.trim() ? body.displayName : existing.displayName,
@@ -619,11 +666,32 @@ export function createRealAdminHandlers(
         enabled: typeof body.enabled === "boolean" ? body.enabled : existing.enabled
       });
       runtime.emitTelemetry("[SYS]", { action: "skill_updated", skillId: updated.id }, "live");
+      await runtime.refreshCapabilities(true);
       return { skill: updated, skills: listAgentSkills(runtime.soulDir, runtime.bundledSkillsDir) };
     },
     "extensions.bundleExport": (request) => {
       const bundle = bundlePrivacyScrubbedCreatorAsset(bodyOf(request.body).asset ?? request.body);
       return { filename: bundle.filename, sha256: bundle.sha256, excluded_keys: bundle.excluded_keys };
+    },
+    "runtime.agent": async (request, context) => {
+      if (context.target_instance !== "live" && context.target_instance !== "sandbox:console")
+        return { status: 404, body: { error: "UNKNOWN_AGENT_HOST" } };
+      const body = bodyOf(request.body);
+      if (typeof body.text !== "string" || !body.text.trim() ||
+          (body.modelPackageId !== undefined && (typeof body.modelPackageId !== "string" || !body.modelPackageId)))
+        return { status: 400, body: { error: "INVALID_AGENT_REQUEST" } };
+      return runtime.runtime.runAgent({
+        mode: context.target_instance === "live" ? "live" : "sandbox",
+        inputs: [{ source: "admin.owner", role: "user", content: body.text }],
+        signal: request.signal ?? new AbortController().signal,
+        bindings: { modelPackageId: body.modelPackageId as string | undefined }
+      });
+    },
+    "runtime.modelRequest": (_request, context) => {
+      if (context.target_instance !== "live" && context.target_instance !== "sandbox:console")
+        return { status: 404, body: { error: "UNKNOWN_AGENT_HOST" } };
+      return runtime.runtime.modelRequests[context.target_instance === "live" ? "live" : "sandbox"].read(context.params.stepId!)
+        ?? { status: 404, body: { error: "MODEL_REQUEST_NOT_FOUND" } };
     },
     "runtime.traces": (request, context) => {
       const storage = selected(runtime, context.target_instance).storage;

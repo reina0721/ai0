@@ -11,7 +11,7 @@ import type { ChatTurn } from "./useWebChatSession.js";
 
 const STATUS_LABELS: Record<WebChatStatus, string> = {
   accepted: "已接收", generating: "生成中", delivering: "传送中", completed: "已完成",
-  interrupted: "已打断", cancelled: "已取消", failed: "回复失败"
+  held_pending_compliant_channel: "等待可交付的渠道", interrupted: "已打断", cancelled: "已取消", failed: "回复失败"
 };
 
 interface WebChatInspectorProps {

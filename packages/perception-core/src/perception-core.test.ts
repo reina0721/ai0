@@ -7,14 +7,18 @@ import {
   PerceptionFilterPipeline,
   ReflexGate,
   ScopedContextRegistry,
+  type HypothesisRevisionPolicy,
   SensoryCoverageBucketManager,
   TurnDebounceAggregator,
   TurnLifecycleGate
 } from "./index.js";
 
+const revise: HypothesisRevisionPolicy = (update, hypotheses) =>
+  update.perception_confidence === 0.9 ? hypotheses.find(item => item.text !== update.summary_text) : undefined;
+
 describe("@ai0/perception-core universal observation & sensory self-knowledge", () => {
   it("returns structured revisions and formats a directive only when configured", () => {
-    const buckets = new SensoryCoverageBucketManager({ nowMs: () => 100 });
+    const buckets = new SensoryCoverageBucketManager({ nowMs: () => 100 }, revise);
     const observation = {
       channel_id: "channel.camera", modality: "visual_semantic", source_key: "cam.0",
       coverage: "live_foveal", summary_text: "open door", frame_span_ms: 100,
@@ -102,10 +106,12 @@ describe("@ai0/perception-core universal observation & sensory self-knowledge", 
       }),
       { channelId: "channel.iot.desk", principalId: "owner:local", audienceScope: "only_owner" }
     );
+    expect(frame.channel.sensorCoverage).toBe("unknown");
+    expect(frame.chronology.freshnessTtlMs).toBe(0);
     expect(frame.provenance).toEqual({ epistemicTier: "untrusted_utterance", trustedGrant: false });
     expect(frame.channel.channelId).toBe("channel.iot.desk");
 
-    const buckets = new SensoryCoverageBucketManager(clock);
+    const buckets = new SensoryCoverageBucketManager(clock, revise);
     buckets.lockBlindness("channel.iot.desk", "visual_semantic", "cam.0", "camera permission denied");
     buckets.upsert({
       channel_id: "channel.iot.desk",

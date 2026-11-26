@@ -36,7 +36,7 @@ const SAMPLE_MANIFEST_JSON = JSON.stringify(
     carrier_kind: "declarative_soul_asset",
     facets: ["extension.asset_codec"],
     permissions: {
-      read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT"],
+      read_blackboard_domains: ["D2_CONTINUOUS_STATES"],
       propose_mutation_domains: [],
       max_audience_scope: "only_owner",
       network_access: false

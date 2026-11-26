@@ -30,10 +30,6 @@ export class InteractionOpportunityPool {
   list(): ReadonlyArray<Readonly<InteractionOpportunity>> {
     this.expireStale(); return [...this.items.values()];
   }
-  withdrawOnTopicShift(activeTopic?: string): number {
-    return this.withdraw((item) => item.topic_key !== activeTopic);
-  }
-  withdrawForL0Crisis(): number { return this.withdraw(() => true); }
   expireStale(): number {
     const now = this.clock.nowMs(); let count = 0;
     for (const item of this.items.values())
@@ -45,7 +41,7 @@ export class InteractionOpportunityPool {
   private active(): InteractionOpportunity[] {
     return [...this.items.values()].filter((item) => !terminal(item.lifecycle));
   }
-  private withdraw(predicate: (item: InteractionOpportunity) => boolean): number {
+  withdrawWhere(predicate: (item: InteractionOpportunity) => boolean): number {
     this.expireStale(); let count = 0;
     for (const item of this.active()) if (predicate(item)) {
       item.lifecycle = "withdrawn"; count += 1;

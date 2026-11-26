@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@ai0/protocol": "workspace:*",
-    "@ai0/sdk": "workspace:*"
+    "@ai0/sdk": "workspace:*",
+    "zod": "^3.24.0"
   }
 }

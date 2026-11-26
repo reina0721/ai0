@@ -8,9 +8,12 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer, createUnifiedDaemonHttpApp } from "./index.js";
 import { CharacterCardV3Schema } from "@ai0/protocol";
-import { getHostInfrastructureFilePath, readConsoleStudioConfig, readHostInfrastructureConfig,
+import { getConsoleStudioConfigPath, getHostInfrastructureFilePath, readConsoleStudioConfig, readHostInfrastructureConfig,
   readHostOwnerClaim, readSoulArchiveConfig, resolveEffectiveSourceApiKeys } from "@ai0/storage";
 import { lifecycleFixture } from "./test-support/lifecycle.js";
+import { cognitionProposalPolicyFacet, defineExtensionPackage, extensionAssetCodecFacet, taskExecutorContract } from "@ai0/sdk";
+import { installStudioTestProfile } from "./test-support/studio-profile.js";
+import { updateStudioConfig } from "./studio-service.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -33,6 +36,37 @@ function fixture() {
     restart() { runtime.close(); runtime = start(); app = createUnifiedDaemonHttpApp(runtime); }
   };
 }
+
+it("uses mounted author codecs and state guards in Studio and the live profile", async () => {
+  const f = fixture();
+  const domain = "D1_WORKING_TURN";
+  const pkg = "author.card-and-focus";
+  const host = f.runtime.extensionHost;
+  host.mountPackage(defineExtensionPackage({ manifest: {
+    extension_id: pkg, version: "1", author: "fixture", display_name: "Card and focus", carrier_kind: "native_code_plugin",
+    facets: [extensionAssetCodecFacet.id, cognitionProposalPolicyFacet.id],
+    permissions: { read_blackboard_domains: [domain], propose_mutation_domains: [domain], max_audience_scope: "only_owner", network_access: false }
+  }, activate(scope) {
+    scope.contributeFacet(extensionAssetCodecFacet, { format: "author.title", target: "ai0.distilled-card.v1",
+      decode: title => ({ identity_dna: { name: String(title), description: "Imported", personality: "" },
+        voice_exemplars: [], lore_entries: [], stripped_jailbreak_lines: [], stripped_pua_lines: [], clean: {} }) });
+    scope.contributeFacet(cognitionProposalPolicyFacet, { domain, review: () => ({ action: "reject", reason: "FOCUS_LOCKED" }) });
+  } }));
+  const source = { format: "author.title", provider: pkg, asset: "Atlas" };
+  const preview = await f.request("/api/admin/v1/soul/distill", "POST", source);
+  expect(preview.status).toBe(200);
+  expect(await preview.json()).toMatchObject({ identity_dna: { name: "Atlas" } });
+  const applied = await f.request("/api/studio/distill-apply", "POST", { ...source, apply: true });
+  expect(applied.status).toBe(200);
+  expect(await applied.json()).toMatchObject({ applied: true, studioConfig: { soulStudio: { displayName: "Atlas" } } });
+  const coordinator = f.runtime.coordinator;
+  const proposal = { proposal_id: "set-focus", domain, base_rev: coordinator.getSnapshot().domain_revs[domain],
+    payload: { active_focus_channel_id: "calendar" } } as const;
+  expect(coordinator.submitProposal(proposal)).toMatchObject({ accepted: false, reason: "FOCUS_LOCKED" });
+  host.setPackageEnabled(pkg, false);
+  expect(coordinator.submitProposal(proposal).accepted).toBe(true);
+  expect(coordinator.getSnapshot().D1_WORKING_TURN.active_focus_channel_id).toBe("calendar");
+});
 
 it("keeps discovery, presence, confirmed messages and identity independent across removal and restart", async () => {
   const f = fixture();
@@ -58,7 +92,7 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
   expect(await f.runtime.reloadExtension("test.view", "sandbox", { theme: "blue" }, 0)).toBe(1);
   expect((await f.request("/protocol/v0/channel/history?mode=sandbox", "GET", undefined, sandboxToken)).status).toBe(401);
   expect((await f.request("/protocol/v0/channel/history?mode=live", "GET", undefined, token)).status).toBe(200);
-  expect(f.runtime.sandboxExtensionHost.listPackages()[0]?.config).toMatchObject({ theme: "blue" });
+  expect(f.runtime.sandboxExtensionHost.getPackage("test.view")?.config).toMatchObject({ theme: "blue" });
   expect((await snapshot()).activeConnections).toBe(0);
 
   const grant = async (channelId: string, audience: string) => {
@@ -103,7 +137,7 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
   const privateTurn = { id: randomUUID() };
   const qqTurn = send(qq, "今天群内公开讨论。");
   const stream = await f.request("/protocol/v0/channel/runs", "POST", {
-    requestId: privateTurn.id, mode: "live", text: "昨天网页上的私密交谈。"
+    requestId: privateTurn.id, mode: "live", text: "昨天网页上的私密交谈。".repeat(32)
   }, token);
   const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
   let frames = "";
@@ -318,6 +352,7 @@ it("persists console preferences across daemon restarts and keeps legacy patches
 
 it("links task completion to a real executor and W3 memory to its source", async () => {
   const f = fixture();
+  installStudioTestProfile(f.runtime);
   async function task(action: string, taskId?: string) {
     return (await f.request("/api/studio/co-work-task", "POST", { action, taskId, title: "research", subAgentId: "sub_research_scholar" })).json();
   }
@@ -333,4 +368,85 @@ it("links task completion to a real executor and W3 memory to its source", async
   expect(f.runtime.workers.w3.runSleepMemoryConsolidation()).toBe(0);
   expect(f.runtime.storage.sqlite.prepare("SELECT visibility_scope FROM memories WHERE memory_id=?")
     .get("mem_consolidated_" + turn.trace.turn_event_id)?.visibility_scope).toBe("only_owner");
+});
+
+it("pins approval to a configured service and never repeats a claimed external action", async () => {
+  const f = fixture();
+  installStudioTestProfile(f.runtime);
+  const ref = { owner: "thirdparty.task", name: "count", version: 1 };
+  const contract = taskExecutorContract(ref);
+  let acknowledge!: () => void;
+  let finish!: () => void;
+  const started = new Promise<void>(resolve => { acknowledge = resolve; });
+  const release = new Promise<void>(resolve => { finish = resolve; });
+  let calls = 0;
+  f.runtime.extensionHost.mountPackage({
+    manifest: { manifest_version: "2.0.0", extension_id: ref.owner, version: "1", author: "fixture",
+      display_name: "Counter", carrier_kind: "native_code_plugin", facets: [],
+      permissions: { read_blackboard_domains: [], propose_mutation_domains: [], max_audience_scope: "only_owner", network_access: false },
+      services: { defines: [ref], provides: [ref] } },
+    activate(scope) {
+      scope.defineService(contract);
+      scope.provideService(contract, async () => {
+        calls++;
+        acknowledge();
+        await release;
+        return { summary: "Counted", evidence: { count: calls } };
+      });
+    }
+  });
+  const current = readConsoleStudioConfig(f.soulDir);
+  const agent = { ...current.agency.subAgents[0]!, id: "counter", executor: { ...ref, provider: ref.owner } };
+  updateStudioConfig(f.runtime, { agency: { subAgents: [agent] } });
+  const task = async (action: string, taskId?: string) => (await f.request("/api/studio/co-work-task", "POST",
+    { action, taskId, title: "Count", subAgentId: "counter" })).json();
+  const id = (await task("create")).task.id;
+  await task("approve", id);
+  const approvedTasks = readConsoleStudioConfig(f.soulDir).agency.activeTasks;
+  updateStudioConfig(f.runtime, { agency: { activeTasks: approvedTasks.map(item => ({ ...item, title: "Different operation" })) } });
+  expect(await task("execute", id)).toMatchObject({ error: "EXECUTOR_APPROVAL_REQUIRED" });
+  updateStudioConfig(f.runtime, { agency: { activeTasks: approvedTasks } });
+  updateStudioConfig(f.runtime, { agency: { subAgents: [{ ...agent, allowedTools: [...agent.allowedTools, "new.permission"] }] } });
+  expect(await task("execute", id)).toMatchObject({ error: "EXECUTOR_APPROVAL_REQUIRED" });
+  updateStudioConfig(f.runtime, { agency: { subAgents: [{ ...agent, executor: { ...agent.executor, version: 2 } }] } });
+  expect(await task("execute", id)).toMatchObject({ error: "EXECUTOR_APPROVAL_REQUIRED" });
+  updateStudioConfig(f.runtime, { agency: { subAgents: [agent] } });
+  const first = task("execute", id);
+  await started;
+  expect(await task("execute", id)).toMatchObject({ error: "TASK_CLAIMED_WITHOUT_RECEIPT" });
+  f.runtime.extensionHost.unmountPackage(ref.owner);
+  finish();
+  expect(await first).toMatchObject({ error: "EXECUTOR_RESULT_UNKNOWN" });
+  expect(await task("approve", id)).toMatchObject({ error: "TASK_ALREADY_DISPATCHED" });
+  f.restart();
+  expect(await task("execute", id)).toMatchObject({ error: "TASK_CLAIMED_WITHOUT_RECEIPT" });
+  expect(calls).toBe(1);
+});
+
+it("recovers only historically supported queued approvals and never mints a missing current approval", async () => {
+  const f = fixture();
+  async function task(action: string, subAgentId: string, taskId?: string) {
+    return (await f.request("/api/studio/co-work-task", "POST", { action, title: "Research", subAgentId, taskId })).json();
+  }
+  installStudioTestProfile(f.runtime);
+  const research = "sub_research_scholar", review = "sub_code_reviewer";
+  for (const id of [research, review]) {
+    const created = await task("create", id);
+    await task("approve", id, created.task.id);
+  }
+  const config = readConsoleStudioConfig(f.soulDir);
+  const researcher = config.agency.subAgents.find(agent => agent.id === research)!;
+  config.agency.subAgents.find(agent => agent.id === review)!.executor = researcher.executor;
+  for (const item of config.agency.activeTasks) {
+    delete item.approvedRequestDigest;
+    delete item.approvedExecutor;
+  }
+  const location = getConsoleStudioConfigPath(f.soulDir);
+  writeFileSync(location, JSON.stringify(config));
+  expect(readConsoleStudioConfig(f.soulDir).agency.activeTasks.every(item => !item.approvedRequestDigest)).toBe(true);
+  writeFileSync(location, JSON.stringify({ ...config, version: 6 }));
+  const migrated = readConsoleStudioConfig(f.soulDir).agency;
+  expect(migrated.activeTasks.find(item => item.subAgentId === research)?.approvedRequestDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(migrated.activeTasks.find(item => item.subAgentId === review)?.approvedExecutor).toBeUndefined();
+  expect(migrated.subAgents.find(agent => agent.id === review)?.executor).toBeUndefined();
 });

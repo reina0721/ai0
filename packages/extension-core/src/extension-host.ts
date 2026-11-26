@@ -1,8 +1,9 @@
-import { Ai0ExtensionManifestSchema, type Ai0ExtensionManifest, type AudienceScope, type StateDomain } from "@ai0/protocol";
+import { Ai0ExtensionManifestSchema, type Ai0ExtensionManifest, type AudienceScope, type StateDomain, type ExtensionServiceRef } from "@ai0/protocol";
 import type { FacetPoint } from "./facet-point.js";
+import { ServiceBindingError, ServiceDirectory, type ServiceActivation, type ServiceActivationScope, type ServiceContract, type ServiceStatus } from "./services.js";
 
 export type PackageConfig = Readonly<Record<string, unknown>>;
-export interface ExtensionActivationScope {
+export interface ExtensionActivationScope extends ServiceActivationScope {
   contributeFacet<T>(point: FacetPoint<T>, implementation: T): void;
   onDispose(dispose: () => void): void;
 }
@@ -12,6 +13,7 @@ export interface ExtensionPackageDefinition {
 }
 export interface FacetRegistration<T> {
   readonly packageId: string;
+  readonly facetId: string;
   readonly generation: number;
   readonly implementation: T;
 }
@@ -20,12 +22,17 @@ export interface ExtensionPackageState {
   config: PackageConfig;
   enabled: boolean;
   rev: number;
-  status: "active" | "disabled" | "faulted_isolated";
+  status: "active" | "disabled" | "waiting_dependencies" | "faulted_isolated";
   lastError?: string;
+  serviceBindings?: (ServiceStatus & { service: ExtensionServiceRef })[];
 }
 interface MountedPackage extends ExtensionPackageState {
   activate: ExtensionPackageDefinition["activate"];
-  registrations: { point: FacetPoint<unknown>; entry: FacetRegistration<unknown> }[];
+  services?: ServiceActivation;
+  registrations: {
+    point: FacetPoint<unknown>; raw: unknown; declared: unknown; generation: number; binding?: string;
+    views: WeakMap<FacetPoint<unknown>, FacetRegistration<unknown>>;
+  }[];
   disposers: (() => void)[];
 }
 
@@ -38,6 +45,9 @@ export class ExtensionCoreHost {
   private readonly packages = new Map<string, MountedPackage>();
   private readonly transitioning = new Set<string>();
   private readonly revisions = new Map<string, number>();
+  private readonly services = new ServiceDirectory();
+  private readonly issued = new WeakMap<FacetRegistration<unknown>, { registration: MountedPackage["registrations"][number]; binding: string }>();
+  private readonly revoked = new Set<() => void>();
   private generation = 0;
 
   registerPackage(definition: ExtensionPackageDefinition, config: PackageConfig = {}) {
@@ -106,10 +116,67 @@ export class ExtensionCoreHost {
     return pkg && this.snapshot(pkg);
   }
 
+  setServiceAccess(consumer: string, ref: ExtensionServiceRef, allowed: boolean): void {
+    this.services.setAccess(consumer, ref, allowed);
+    this.notifyRevocations();
+  }
+
+  selectServiceProvider(ref: ExtensionServiceRef, packageId?: string): void {
+    this.services.select(ref, packageId);
+    this.notifyRevocations();
+  }
+
+  bindService<I, O>(contract: ServiceContract<I, O>, providerPackageId: string, audience: AudienceScope = "only_owner") {
+    return this.services.bindForHost(contract, providerPackageId, audience);
+  }
+
+  /** End pending work immediately when this exact registration or one of its declared bindings expires. */
+  leaseFacet<T>(entry: FacetRegistration<T>): { signal: AbortSignal; dispose(): void } {
+    const controller = new AbortController();
+    const check = () => {
+      if (this.livePackage(entry)) return;
+      this.revoked.delete(check);
+      controller.abort(new Error("Extension registration revoked: " + entry.packageId));
+    };
+    this.revoked.add(check);
+    check();
+    return { signal: controller.signal, dispose: () => { this.revoked.delete(check); } };
+  }
+
+  private notifyRevocations() {
+    for (const check of [...this.revoked]) check();
+  }
+
   listFacets<T>(point: FacetPoint<T>): readonly FacetRegistration<T>[] {
-    return [...this.packages.values()].filter(pkg => pkg.status === "active")
-      .flatMap(pkg => pkg.registrations.filter(item => item.point.id === point.id && item.point.version === point.version)
-        .map(item => item.entry as FacetRegistration<T>));
+    const result: FacetRegistration<T>[] = [];
+    for (const pkg of this.packages.values()) {
+      if (pkg.status !== "active") continue;
+      const binding = pkg.services?.facetBinding(point.id);
+      if (binding === undefined) continue;
+      for (const registration of pkg.registrations) {
+        if (registration.point.id !== point.id || registration.point.version !== point.version) continue;
+        if (registration.binding !== binding) {
+          registration.binding = binding;
+          registration.generation = ++this.generation;
+          registration.views = new WeakMap();
+        }
+        let entry = registration.views.get(point) as FacetRegistration<T> | undefined;
+        if (!entry) {
+          try {
+            // The consuming domain's parser is authoritative even for independently bundled SDKs.
+            entry = Object.freeze({ packageId: pkg.manifest.extension_id, facetId: point.id, generation: registration.generation,
+              implementation: point === registration.point ? registration.declared as T : point.parse(registration.raw) });
+          } catch (error) {
+            this.isolate(pkg, error);
+            break;
+          }
+          registration.views.set(point, entry);
+          this.issued.set(entry, { registration, binding });
+        }
+        result.push(entry);
+      }
+    }
+    return result.filter(entry => this.livePackage(entry));
   }
 
   invokeFacet<T, R>(entry: FacetRegistration<T>, invoke: (implementation: T) => R): R | undefined {
@@ -119,7 +186,7 @@ export class ExtensionCoreHost {
       const result = invoke(entry.implementation);
       return this.livePackage(entry) ? result : undefined;
     } catch (error) {
-      if (this.livePackage(entry)) this.transition(entry.packageId, () => this.isolate(pkg, error));
+      if (!(error instanceof ServiceBindingError) && this.livePackage(entry)) this.transition(entry.packageId, () => this.isolate(pkg, error));
       return undefined;
     }
   }
@@ -131,7 +198,7 @@ export class ExtensionCoreHost {
       const result = await invoke(entry.implementation);
       return this.livePackage(entry) ? result : undefined;
     } catch (error) {
-      if (this.livePackage(entry)) this.isolate(pkg, error);
+      if (!(error instanceof ServiceBindingError) && this.livePackage(entry)) this.isolate(pkg, error);
       return undefined;
     }
   }
@@ -144,9 +211,10 @@ export class ExtensionCoreHost {
     return this.permissions(id)?.propose_mutation_domains.includes(domain) === true;
   }
 
-  allowsAudienceScope(id: string, audience: AudienceScope): boolean {
+  allowsAudienceScope(id: string, audience: AudienceScope, facet?: string): boolean {
     const ceiling = this.permissions(id)?.max_audience_scope;
-    return ceiling !== undefined && (audience === "only_owner" || audience === ceiling || ceiling === "public_all");
+    return ceiling !== undefined && (audience === "only_owner" || audience === ceiling || ceiling === "public_all") &&
+      this.packages.get(id)?.services?.allowsAudience(audience, facet) === true;
   }
 
   allowsNetworkAccess(id: string): boolean {
@@ -160,6 +228,7 @@ export class ExtensionCoreHost {
       update();
     } finally {
       this.transitioning.delete(id);
+      this.notifyRevocations();
     }
   }
 
@@ -168,8 +237,10 @@ export class ExtensionCoreHost {
     return pkg?.status === "active" ? pkg.manifest.permissions : undefined;
   }
 
-  private snapshot({ manifest, config, status, enabled, rev, lastError }: MountedPackage): ExtensionPackageState {
-    return structuredClone({ manifest, config, status, enabled, rev, ...(lastError === undefined ? {} : { lastError }) });
+  private snapshot({ manifest, config, status, enabled, rev, lastError, services }: MountedPackage): ExtensionPackageState {
+    lastError ??= services?.effectError;
+    return structuredClone({ manifest, config, status: status === "active" && services?.waiting() ? "waiting_dependencies" : status, enabled, rev, ...(lastError === undefined ? {} : { lastError }),
+      ...(services?.dependencies.size ? { serviceBindings: services.diagnostics() } : {}) });
   }
 
   private require(id: string): MountedPackage {
@@ -180,12 +251,15 @@ export class ExtensionCoreHost {
 
   private livePackage(entry: FacetRegistration<unknown>) {
     const pkg = this.packages.get(entry.packageId);
-    return pkg?.status === "active" && pkg.registrations.some(item => item.entry === entry) ? pkg : undefined;
+    const view = this.issued.get(entry);
+    return pkg?.status === "active" && view && pkg.registrations.includes(view.registration) &&
+      pkg.services?.facetBinding(view.registration.point.id) === view.binding ? pkg : undefined;
   }
 
   private start(pkg: MountedPackage): void {
     const packageId = pkg.manifest.extension_id;
     const generation = ++this.generation;
+    const services = this.services.prepare(pkg.manifest, generation);
     const registrations: MountedPackage["registrations"] = [];
     const disposers: MountedPackage["disposers"] = [];
     let activating = true;
@@ -196,11 +270,15 @@ export class ExtensionCoreHost {
     pkg.lastError = undefined;
     try {
       const cleanup = pkg.activate?.({
+        defineService: services.defineService.bind(services),
+        provideService: services.provideService.bind(services),
+        consumeService: services.consumeService.bind(services),
+        whenServiceAvailable: services.whenServiceAvailable.bind(services),
         contributeFacet(point, implementation) {
           if (!activating || !pkg.manifest.facets.includes(point.id)) {
             throw new Error(`Facet contribution denied: ${point.id}`);
           }
-          registrations.push({ point, entry: Object.freeze({ packageId, generation, implementation: point.parse(implementation) }) });
+          registrations.push({ point, raw: implementation, declared: point.parse(implementation), generation, views: new WeakMap() });
         },
         onDispose: dispose
       }, structuredClone(pkg.config));
@@ -208,16 +286,21 @@ export class ExtensionCoreHost {
       pkg.registrations = registrations;
       pkg.disposers = disposers;
       pkg.status = "active";
+      pkg.services = services;
+      this.services.publish(services);
     } catch (error) {
       pkg.disposers = disposers;
       this.isolate(pkg, error);
     } finally {
       activating = false;
+      services.seal();
     }
   }
 
   private stop(pkg: MountedPackage, status: MountedPackage["status"]): void {
     pkg.status = status;
+    this.services.withdraw(pkg.manifest.extension_id);
+    pkg.services = undefined;
     pkg.registrations = [];
     for (const dispose of pkg.disposers.splice(0).reverse()) {
       try {
@@ -231,5 +314,6 @@ export class ExtensionCoreHost {
   private isolate(pkg: MountedPackage, error: unknown): void {
     pkg.lastError = error instanceof Error ? error.message : String(error);
     this.stop(pkg, "faulted_isolated");
+    this.notifyRevocations();
   }
 }

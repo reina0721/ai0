@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
 >
-> 本文档定义 `@ai0/cognition-core` 的核心运行时状态机。它解决了**“如何既保持单一认知主体的人格与记忆一致性，又不让长耗时工具任务或睡眠整理阻塞实时对话、且彻底消灭并发状态脏覆盖（Write Skew / Lost Update）”**的核心工程挑战。
+> 本文描述 daemon 数字生命配置如何使用公共运行层。五域协调器、黑板和 W1–W4 的源码在 `apps/daemon/src/profiles/digital-life/`。其他 Agent 可单独使用认知核的状态裁决、连续状态和结构化响应机制。
 
 ---
 
@@ -16,7 +16,7 @@
 | :--- | :--- |
 | **`@ai0/agent-core`** | 通用机械 `Turn / Round` 执行引擎，负责流式模型轮次、多步工具调用、轮次预算与传输。陪伴、情绪、记忆与化身均在引擎边界之外。 |
 | **`@ai0/perception-core`** | 接纳并解释结构化观测，维护来源级能力、可用性与新鲜度，输出 `UniversalObservationFrame` 和 `system_chronoception`。 |
-| **`@ai0/cognition-core`** | 持有单一认知主体、五域 MVCC `AuthoritativeStateCoordinator` 与 `BlackboardCompiler`。`W1` 负责实时对话，`W2` 运行八步行动认知环，`W3` 执行睡眠巩固、有界好奇心探索与里程碑检定，`W4` 异步分析多模态输入并提交带来源的提案。 |
+| **`@ai0/cognition-core`** | `StateDomainArbiter` 为宿主注册的域检查版本与权限。daemon 的数字生命配置在此基础上组合五域、黑板与四路工作者。 |
 | **`@ai0/expression-core`** | 将认知意图协商为合规端侧表达，管理交付、打断与共同默契所需的回执证据。 |
 | **`@ai0/extension-core`** | `ExtensionCoreHost` 负责扩展包级治理，`defineFacetPoint` 定义并校验切面契约，`ExtensionComposition` 管理 Fiber 生命周期并在故障时以 `faulted_isolated` 熔断隔离。 |
 
@@ -80,7 +80,7 @@ sequenceDiagram
 | 状态域标识 (`StateDomain`) | 包含的核心状态 | 并发冲突与合并裁决规则（MVCC Resolution Rule） |
 | :--- | :--- | :--- |
 | **`D1_WORKING_TURN`** | 当前话轮上下文窗口、被打断未说完的腹稿（`unsaid_remainder`）、当前注意力焦点 `active_focus_channel_id`、有界发言机会池（`pending_opportunities[]`）、按来源刷新的瞬态感官覆盖桶（`sensory_coverage_buckets`） | **强排他最新优先与机会气口仲裁（Last-Turn-Wins with Barge-in Cancel & Opportunity Expiration）**：仅允许前台 `W1`、感官门控（含经校验的 `W4` 提案）与播放回执修改；若新话轮打断旧话轮，旧 `W1` 提案直接通过 `CancellationToken` 作废；池中过期的 `InteractionOpportunity` 或因急事/话题切换失效的旧包袱在提交前自动标记为 `expired / withdrawn`。 |
-| **`D2_HOMEOSTASIS_AFFECT`** | `ContinuousStateMetaEngine` 注册状态与 `continuous_states_json` 检查点 | 按状态 ID 合并带唯一 ID 和有效时刻的潜空间冲量，使用第 3 节的解析演化规则。 |
+| **`D2_CONTINUOUS_STATES`** | 已挂载描述符注册的状态与检查点 | 域按状态 ID 和有效时刻合并冲量。旧 `D2_HOMEOSTASIS_AFFECT` 读许可只能获取原有字段的投影。 |
 | **`D3_MEMORY_PROJECTION`** | `memories` 表、`memory_lineage_edges` 血缘与更替图 | **基于源事件血缘与双时态更替的乐观校验（Lineage & Bitemporal OCC）**：后台 `W3`（睡眠整理）提交新记忆或双时态更替（`supersedes`）提案时，协调器检查其引用的 `source_event_ids[]` 在 `W3` 运行期间是否被主人在前台执行了 `Hard Forget`（真遗忘擦除）。若源事件完好无损，则直接安全合入；若源事件已被擦除，则拒绝该条记忆提案！ |
 | **`D4_COMMITMENTS_TASKS`** | 前瞻承诺状态机、正在运行的 8 步行动任务状态树 | **按对象 ID 细粒度乐观锁（Entity-Level Revision Lock）**：只要前台没有取消该 `task_id` / `commitment_id`，后台 `W2` 的步骤进度更新直接合入。 |
 | **`D5_IDENTITY_NARRATIVE`** | `identity.yaml` (Tier 1)、`narrative.md` (Tier 2) 与 `soul_milestones_ledger`（已解锁关系里程碑与仪式账本） | **双轨分级演化与审批门控（Dual-Track Narrative Evolution & Approval Queue）**：<br/>• **Tier 1（`identity.yaml` 核心身份与长期价值观）**：100% 强制挂起至控制台 `PendingApproval` 队列，必须由主人显式批准方可合入；<br/>• **Tier 2（`narrative.md` 可演化自我叙事）与里程碑解锁（`soul_milestones_ledger`）**：由协调器统一按冲突等级分流——① **常规日常演进与正向里程碑达成（`routine_append / milestone_unlocked`）**（新增日常经历形成的内部梗、近期话题兴趣、达成正向关系里程碑，且无价值观冲突）自动生效并写入版本审计记录（支持在控制台一键回退）；② **高影响/冲突变更（`high_impact_shift`）**（涉及改写或删除既有自我叙事观点、对主人关系定性发生极性反转、或与 Tier 1 存在边缘张力）自动升级进入控制台 `PendingApproval` 队列并展示升级理由，待主人批准后生效。 |
@@ -101,7 +101,7 @@ sequenceDiagram
 
 ### 2.3 声明式可插拔认知黑板槽位积木编译器（Declarative Slot-Based Blackboard Compiler — `blackboard_policy.yaml`）
 
-为彻底打破硬编码上下文拼装的黑盒局限、赋予研究者与高阶玩家调配注意力结构的自由，`@ai0/cognition-core` 采用声明式槽位积木架构：
+数字生命配置的黑板编译器按以下声明式槽位组织模型上下文。
 1. **标准黑板槽位（Standard & Custom Blackboard Slots）**：
    * `slot.tier0_safety_invariants`（**强制置顶锁死，物理不可关闭或缩减**）；
    * `slot.tier1_core_dna`（核心性格、存在论契约、声线签名与 Few-Shot 黄金样本锚点）；

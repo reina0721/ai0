@@ -143,6 +143,7 @@ function MessageRow() {
           {!isUser && turn.sources?.filter(s=>text.includes("[K"+s.marker+"]")).map(s=>(
             <details key={s.chunkId}><summary>[K{s.marker}] {s.title} · {s.location}</summary><blockquote>{s.excerpt}</blockquote></details>
           ))}
+          {!isUser && turn.status === "held_pending_compliant_channel" ? <small className="ai0-chat-message__result">等待符合交付条件的渠道</small> : null}
           {!isUser && (turn.status === "interrupted" || turn.status === "cancelled" || turn.status === "failed") ? (
             <small className="ai0-chat-message__result">
               {turn.status === "interrupted" ? "回复已打断" : turn.status === "failed" ? "未完成回复" : "已取消请求"}

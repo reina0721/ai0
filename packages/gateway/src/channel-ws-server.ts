@@ -22,8 +22,8 @@ import {
 } from "@ai0/cognition-core";
 
 import { EmbodimentAffordanceRegistry, ObservationNormalizer, PerceptionFilterPipeline, TurnDebounceAggregator,
-  perceptionFilterFacet, type DebounceBatch, type DebounceInputEvent } from "@ai0/perception-core";
-import { GroundingReceiptTracker, RealizerVocabularyNegotiator } from "@ai0/expression-core";
+  perceptionFilterFacet, type ObservationSourceDefaults, type DebounceBatch, type DebounceInputEvent } from "@ai0/perception-core";
+import { GroundingReceiptTracker, RealizerVocabularyNegotiator, type EmbodiedPresentationStyle, type PresentationRenderer } from "@ai0/expression-core";
 
 export const CHANNEL_PROTOCOL_PATH = "/protocol/v0/channel";
 
@@ -121,6 +121,9 @@ export interface W1InterruptionSink {
   recordInterruption(record: InterruptionRecord): void;
 }
 export interface ChannelProtocolGatewayOptions {
+  renderPresentation?: PresentationRenderer;
+  presentationStyle?: Readonly<EmbodiedPresentationStyle>;
+  sourceDefaults?: Readonly<ObservationSourceDefaults>;
   extensionHost?: ExtensionCoreHost;
   debounceWindowMs?: number;
   formatRetractedObservation?: () => string | undefined;
@@ -154,7 +157,7 @@ export class ChannelProtocolGateway {
   readonly clock: IVirtualClock;
   readonly affordances = new EmbodimentAffordanceRegistry();
   readonly negotiator: RealizerVocabularyNegotiator;
-  readonly grounding = new GroundingReceiptTracker();
+  readonly grounding: GroundingReceiptTracker;
   private readonly normalizer: ObservationNormalizer;
   private readonly perceptionFilters: PerceptionFilterPipeline;
   private readonly sessions = new Map<string, ChannelSession>();
@@ -162,9 +165,10 @@ export class ChannelProtocolGateway {
 
   constructor(private readonly options: ChannelProtocolGatewayOptions = {}) {
     this.clock = options.clock ?? new VirtualClock({ targetInstance: "live" });
-    this.normalizer = new ObservationNormalizer(this.clock);
+    this.grounding = new GroundingReceiptTracker(options.extensionHost);
+    this.normalizer = new ObservationNormalizer(this.clock, options.extensionHost);
     this.perceptionFilters = new PerceptionFilterPipeline(options.extensionHost);
-    this.negotiator = new RealizerVocabularyNegotiator(options.extensionHost);
+    this.negotiator = new RealizerVocabularyNegotiator(options.extensionHost, options.presentationStyle, options.renderPresentation);
   }
 
   issueScopedCapabilityToken(claims: ScopedCapabilityClaims, secretKey: string): string {
@@ -285,8 +289,14 @@ export class ChannelProtocolGateway {
       original.audience_scope ?? extension.audience_scope ?? session.manifest.current_audience.scope);
     const claimedTrust = session.claims.principal_id === "owner:local" ? "owner_verified" : "stranger";
     const audience = enforceAudienceScope(claimedAudience, session.claims.max_audience_privacy_ceiling);
+    const declared = envelope.extensions["ext.perception.v1"];
+    const sourceKey = envelope.frame?.channel.sourceKey ?? (isRecord(declared) ? declared.source_key : undefined);
+    const sources = session.manifest.capabilities.sensor_affordances?.filter(item => item.modality === envelope.modality);
+    const source = sourceKey === undefined && sources?.length === 1 ? sources[0] : sources?.find(item => item.source_key === sourceKey);
     const frame = this.normalizer.normalize(envelope, { channelId: session.manifest.channel_id,
-      principalId: session.claims.principal_id ?? "unknown", audienceScope: audience });
+      principalId: session.claims.principal_id ?? "unknown", audienceScope: audience,
+      sourceDefaults: { coverage: source?.coverage ?? this.options.sourceDefaults?.coverage,
+        freshnessTtlMs: source?.freshness_ttl_ms ?? this.options.sourceDefaults?.freshnessTtlMs } });
     const sanitized: GatewayPerceptionEnvelope = { ...envelope, frame, audience_scope: audience,
       principal_trust: audience === claimedAudience ? claimedTrust : "stranger" };
     const now = this.clock.nowMs();

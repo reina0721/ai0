@@ -9,6 +9,7 @@ import {
 /** The five independently-versioned domains of cognitive state. */
 export const StateDomainSchema = z.enum([
   "D1_WORKING_TURN",
+  "D2_CONTINUOUS_STATES",
   "D2_HOMEOSTASIS_AFFECT",
   "D3_MEMORY_PROJECTION",
   "D4_COMMITMENTS_TASKS",
@@ -22,8 +23,11 @@ export const WellKnownExtensionFacetIdSchema = z.enum([
   "agent.skill_manual",
   "agent.model_adapter",
   "perception.ingress",
+  "perception.extractor",
   "perception.filter",
   "cognition.state_dynamics",
+  "cognition.proposal_policy",
+  "cognition.response_contract",
   "cognition.attention_arbitrator",
   "cognition.context_contributor",
   "cognition.sleep_organ",
@@ -42,6 +46,30 @@ export const ExtensionFacetIdSchema = z.union([
   z.string().regex(/^(?:channel|agent|perception|cognition|expression|console|extension)\.[a-z][a-z0-9_]*$/)
 ]);
 export type ExtensionFacetId = z.infer<typeof ExtensionFacetIdSchema>;
+
+/** Each mapping opts one carrier source into a versioned domain interface. */
+export const CarrierProjectionSchema = z.object({
+  source: z.string().min(1), facet: ExtensionFacetIdSchema, version: z.number().int().positive(),
+  options: z.record(z.unknown()).optional()
+});
+export type CarrierProjection = z.infer<typeof CarrierProjectionSchema>;
+
+
+/** An exact version is a contract. Providers from other versions are never substituted. */
+export const ExtensionServiceRefSchema = z.object({
+  owner: z.string().min(1), name: z.string().min(1), version: z.number().int().positive().safe()
+});
+export type ExtensionServiceRef = z.infer<typeof ExtensionServiceRefSchema>;
+const ServiceDependencySchema = ExtensionServiceRefSchema.extend({
+  facet: ExtensionFacetIdSchema.optional(),
+  service: ExtensionServiceRefSchema.optional()
+});
+export const ExtensionServicesSchema = z.object({
+  defines: z.array(ExtensionServiceRefSchema).optional(),
+  provides: z.array(ExtensionServiceRefSchema).optional(),
+  requires: z.array(ServiceDependencySchema).optional(),
+  optional: z.array(ServiceDependencySchema).optional()
+});
 
 export const ExtensionCarrierKindSchema = z.enum([
   "declarative_soul_asset",
@@ -144,7 +172,9 @@ export const RuntimePluginDescriptorSchema = z.object({
   author: z.string(),
   tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
-  facets: z.array(ExtensionFacetIdSchema).min(1),
+  facets: z.array(ExtensionFacetIdSchema),
+  services: ExtensionServicesSchema.optional(),
+  projections: z.array(CarrierProjectionSchema).optional(),
   origin: PluginOriginSchema,
   enabled: z.boolean(),
   permissions: ExtensionPermissionsSchema.optional(),
@@ -182,10 +212,35 @@ export const Ai0ExtensionManifestSchema = z.object({
   homepage: z.string().optional(),
   tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
-  facets: z.array(ExtensionFacetIdSchema).min(1),
+  facets: z.array(ExtensionFacetIdSchema),
+  services: ExtensionServicesSchema.optional(),
+  projections: z.array(CarrierProjectionSchema).optional(),
+  values: z.record(z.unknown()).optional(),
+  flows: z.record(z.array(ExtensionServiceRefSchema).min(1)).optional(),
   entry: z.string().optional(),
   permissions: ExtensionPermissionsSchema,
   console_contributions: ConsoleContributionsSchema.optional()
+}).superRefine((manifest, ctx) => {
+  const services = manifest.services;
+  if (manifest.projections?.some(item => !manifest.facets.includes(item.facet))) {
+    ctx.addIssue({ code: "custom", path: ["projections"], message: "Projection targets an undeclared facet" });
+  }
+  if (!manifest.facets.length && !Object.values(services ?? {}).some(entries => entries?.length)) {
+    ctx.addIssue({ code: "custom", path: ["facets"], message: "Declare a facet or a service" });
+  }
+  if (services?.defines?.some(ref => ref.owner !== manifest.extension_id)) {
+    ctx.addIssue({ code: "custom", path: ["services", "defines"], message: "Only the owner can define a service contract" });
+  }
+  for (const edge of [...services?.requires ?? [], ...services?.optional ?? []]) {
+    if (edge.facet && !manifest.facets.includes(edge.facet)) {
+      ctx.addIssue({ code: "custom", path: ["services"], message: "Dependency targets an undeclared facet" });
+    }
+    const target = edge.service;
+    if (target && (edge.facet || !services?.provides?.some(ref =>
+      ref.owner === target.owner && ref.name === target.name && ref.version === target.version))) {
+      ctx.addIssue({ code: "custom", path: ["services"], message: "Dependency must target a single declared service or facet" });
+    }
+  }
 });
 export type Ai0ExtensionManifest = z.infer<typeof Ai0ExtensionManifestSchema>;
 
@@ -198,6 +253,7 @@ export type CapabilityRisk = z.infer<typeof CapabilityRiskSchema>;
 
 /** Carrier II: YAML frontmatter parsed from SKILL.md. */
 export const SkillMarkdownFrontmatterSchema = z.object({
+  projections: z.array(CarrierProjectionSchema).optional(),
   skill_id: z.string(),
   display_name: z.string(),
   description: z.string(),
@@ -483,9 +539,9 @@ export type ScopedCapabilityToken = z.infer<typeof ScopedCapabilityTokenSchema>;
 export const ExtensionPersistentStateSchema = z.object({
   extension_id: z.string(),
   carrier_kind: ExtensionCarrierKindSchema,
-  facets: z.array(ExtensionFacetIdSchema).min(1),
+  facets: z.array(ExtensionFacetIdSchema),
   enabled: z.boolean(),
-  status: z.enum(["active", "disabled", "faulted_isolated"]),
+  status: z.enum(["active", "disabled", "waiting_dependencies", "faulted_isolated"]),
   active_profile: z.string().optional(),
   config_values: z.record(z.unknown()),
   permission_overrides: ExtensionPermissionsSchema,

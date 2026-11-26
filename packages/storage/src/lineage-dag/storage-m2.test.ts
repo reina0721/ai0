@@ -363,6 +363,17 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         }),
         hibernation_intervals_json: "[]"
       });
+      const attribution = { sourceEventIds: ["evt_101"], audienceScope: "only_owner", text: "Referenced event" };
+      const continuous = { values: { review_count: 0.7, unaffected: 0.3 }, attributions: { review_count: attribution } };
+      storage.saveCheckpoint({
+        state_rev: 3, virtual_ts_ms: ts + 2000, caused_by_event_id: "evt_101",
+        continuous_states_json: JSON.stringify(continuous.values), state_attributions_json: JSON.stringify(continuous.attributions),
+        relationship_json: "{}", user_model_json: "{}", hibernation_intervals_json: "[]",
+        working_memory_json: JSON.stringify({ format: "ai0.coordinator.v2", snapshot: {
+          D1_WORKING_TURN: { recent_turns: [{ event_id: "evt_101", text: "private" }], unsaid_remainder: "private" },
+          D2_CONTINUOUS_STATES: continuous, D5_IDENTITY_NARRATIVE: { pending_approvals: [], active_tensions: [] }
+        } })
+      });
       storage.saveTurnDecisionTrace({
         trace_id: "trc_101",
         target_instance: "live",
@@ -498,6 +509,11 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
       const checkpoint = storage.getLatestCheckpoint();
       expect(checkpoint?.working_memory_json).not.toContain("Seattle");
       expect(checkpoint?.state_attributions_json).not.toContain("Seattle");
+      expect(JSON.parse(checkpoint!.state_attributions_json)).toEqual({});
+      expect(JSON.parse(checkpoint!.continuous_states_json)).toEqual({ unaffected: 0.3 });
+      expect(JSON.parse(checkpoint!.working_memory_json).snapshot.D1_WORKING_TURN).toEqual({
+        recent_turns: [], unsaid_remainder: null
+      });
 
       // Topic Seal
       const sealResult = await executeTopicSeal(storage, {

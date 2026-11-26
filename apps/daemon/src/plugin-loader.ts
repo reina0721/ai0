@@ -1,4 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { mountCarrierProjections, passiveConsoleSlot, type ConfiguredCarriers, type CarrierOrigin, type CarrierProjectors } from "./carrier-projections.js";
+import type { mcpCapabilities } from "./mcp-capabilities.js";
+import { subscribePerceptionSource, type AdmittedSourceObservation } from "@ai0/perception-core";
 import { consoleConfigSchemaFacet, consoleSurfaceFacet, consoleUiSlotFacet, type ExtensionCoreHost, type ExtensionComposition, type ExtensionPackageDefinition } from "@ai0/sdk";
 import {
   cpSync,
@@ -56,7 +59,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     carrierKind: "native_code_plugin",
     tags: ["sleep", "memory", "poetic"],
     permissions: {
-      read_blackboard_domains: ["D1_WORKING_TURN", "D2_HOMEOSTASIS_AFFECT", "D3_MEMORY_PROJECTION"],
+      read_blackboard_domains: ["D1_WORKING_TURN", "D2_CONTINUOUS_STATES", "D3_MEMORY_PROJECTION"],
       propose_mutation_domains: ["D3_MEMORY_PROJECTION"],
       max_audience_scope: "only_owner",
       network_access: false
@@ -95,7 +98,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     carrierKind: "declarative_soul_asset",
     tags: ["focus", "pomodoro", "care"],
     permissions: {
-      read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT", "D4_COMMITMENTS_TASKS"],
+      read_blackboard_domains: ["D2_CONTINUOUS_STATES", "D4_COMMITMENTS_TASKS"],
       propose_mutation_domains: ["D4_COMMITMENTS_TASKS"],
       max_audience_scope: "only_owner",
       network_access: false
@@ -117,7 +120,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     carrierKind: "zero_code_protocol_bridge",
     tags: ["live2d", "avatar", "viseme", "embodiment"],
     permissions: {
-      read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT"],
+      read_blackboard_domains: ["D2_CONTINUOUS_STATES"],
       propose_mutation_domains: [],
       max_audience_scope: "public_all",
       network_access: false
@@ -138,7 +141,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     carrierKind: "declarative_soul_asset",
     tags: ["weather", "ambient", "ritual"],
     permissions: {
-      read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT"],
+      read_blackboard_domains: ["D2_CONTINUOUS_STATES"],
       propose_mutation_domains: [],
       max_audience_scope: "only_owner",
       network_access: true
@@ -174,6 +177,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
 ]);
 
 export interface DiscoveredPlugin {
+  readonly carrier?: CarrierOrigin;
   readonly manifest: Ai0ExtensionManifest;
   readonly rootDir: string;
   readonly origin: PluginOrigin;
@@ -193,6 +197,8 @@ export interface PluginAssetPayload {
 }
 
 export interface PluginLoaderOptions {
+  projectors?: CarrierProjectors;
+  mcpTransport?: typeof mcpCapabilities;
   builtinPluginsDir?: string;
   soulDir?: string;
   userPluginsDir?: string;
@@ -305,6 +311,7 @@ function collectPluginCandidateDirs(root: string): string[] {
 }
 
 export class RuntimePluginLoader {
+  private configured?: ConfiguredCarriers;
   private readonly discovered = new Map<string, DiscoveredPlugin>();
   private readonly roots: Array<{ dir: string; origin: PluginOrigin }>;
   readonly userPluginsDir: string;
@@ -380,7 +387,7 @@ export class RuntimePluginLoader {
     this.forceReload();
   }
 
-  constructor(options: PluginLoaderOptions = {}) {
+  constructor(private readonly options: PluginLoaderOptions = {}) {
     const builtinDir = resolve(options.builtinPluginsDir ?? join(REPO_ROOT, "plugins"));
     const soulPluginsDir = options.soulDir ? resolve(join(options.soulDir, "plugins")) : undefined;
     const envDirs = (process.env.AI0_PLUGINS_DIR ?? "")
@@ -405,7 +412,8 @@ export class RuntimePluginLoader {
     this.reload();
   }
 
-  reload(overrides?: ReadonlyMap<string, boolean>): void {
+  reload(overrides?: ReadonlyMap<string, boolean>, carriers?: ConfiguredCarriers): void {
+    this.configured = carriers ?? this.configured;
     const previous = new Map(this.discovered);
     this.discovered.clear();
     for (const { dir, origin } of this.roots) {
@@ -450,7 +458,7 @@ export class RuntimePluginLoader {
               entry_module_url: slot.entry_module_url, iframe_src_url: slot.iframe_src_url, style_sheet_urls: slot.style_sheet_urls });
           }
           const pageAssets = (manifest.console_contributions?.pages ?? []).flatMap(page => [page.entry_module, ...(page.style_sheets ?? [])]);
-          if (manifest.extension_id === "ai0.console" || this.discovered.has(manifest.extension_id)) continue;
+          if (manifest.extension_id === "ai0.console" || manifest.extension_id.startsWith("carrier:") || this.discovered.has(manifest.extension_id)) continue;
           const enabled = overrides?.get(manifest.extension_id) ?? (parsedJson.default_enabled !== false);
           const signature = JSON.stringify([pluginDir, parsedJson, enabled, [...pageAssets, ...modulePaths].map(file => { const path = this.assetPath(pluginDir, file); return path ? statSync(path).mtimeMs : null; }), manifest.entry && this.assetPath(pluginDir, manifest.entry) ? statSync(this.assetPath(pluginDir, manifest.entry)!).mtimeMs : null, missingAssets, uiSlots.flatMap(slot =>
             [slot.entry_module, slot.iframe_src, ...(slot.style_sheets ?? [])].filter((path): path is string => !!path)
@@ -469,6 +477,35 @@ export class RuntimePluginLoader {
           // Isolate malformed external manifests instead of crashing daemon boot.
         }
       }
+    }
+    const origins: CarrierOrigin[] = [
+      ...this.configured?.skills.map(skill => ({ kind: "skill" as const, skill })) ?? [],
+      ...this.configured?.servers.map(server => ({ kind: "mcp" as const, server })) ?? []
+    ];
+    for (const carrier of origins) {
+      const item = carrier.kind === "skill" ? carrier.skill : carrier.server;
+      if (!item.projections?.length) continue;
+      const id = "carrier:" + carrier.kind + ":" + item.id;
+      const grant = this.configured?.grants?.[id];
+      const declaredScope = carrier.kind === "skill" ? carrier.skill.maxAudienceScope : "public_all";
+      const ceiling = grant?.max_audience_scope ?? "only_owner";
+      const audience = ceiling === "public_all" || declaredScope === ceiling
+        ? declaredScope : declaredScope === "public_all" ? ceiling : "only_owner";
+      const manifest = Ai0ExtensionManifestSchema.parse({
+        manifest_version: "2.0.0", extension_id: id, version: "1", author: item.id,
+        display_name: carrier.kind === "skill" ? carrier.skill.displayName : carrier.server.name,
+        carrier_kind: carrier.kind === "skill" ? "markdown_skill_manual" : "zero_code_protocol_bridge",
+        facets: [...new Set(item.projections.map(route => route.facet))], projections: item.projections,
+        permissions: { max_audience_scope: audience,
+          read_blackboard_domains: grant?.read_blackboard_domains ?? [],
+          propose_mutation_domains: grant?.propose_mutation_domains ?? [],
+          network_access: carrier.kind === "mcp" && carrier.server.transport !== "stdio" && grant?.network_access === true }
+      });
+      const enabled = item.enabled && overrides?.get(id) !== false;
+      const signature = createHash("sha256").update(JSON.stringify([carrier, enabled, grant])).digest("hex");
+      const prior = previous.get(id);
+      this.discovered.set(id, { manifest, carrier, rootDir: "", origin: carrier.kind === "skill" && carrier.skill.source === "soul_user" ? "soul" : "external",
+        pages: [], moduleUrls: [], missingAssets: [], uiSlots: [], enabled, signature, generation: signature === prior?.signature ? prior.generation : randomUUID() });
     }
     if (previous.size !== this.discovered.size || this.listPlugins().some(p => previous.get(p.manifest.extension_id)?.generation !== p.generation)) this.revisionValue++;
   }
@@ -571,6 +608,7 @@ export class RuntimePluginLoader {
         tags: entry.tags,
         carrier_kind: entry.carrierKind,
         facets: entry.facets,
+        services: entry.services,
         permissions: entry.permissions,
         ...(entry.configFields.length > 0
           ? { console_contributions: { config_fields: entry.configFields } }
@@ -598,6 +636,7 @@ export class RuntimePluginLoader {
     if (!plugin) {
       throw new Error(`未找到已安装的扩展：${extensionId}`);
     }
+    if (plugin.carrier) throw new Error("Remove this carrier through its owning skill or MCP configuration");
     if (plugin.origin === "builtin") {
       throw new Error("BUILTIN_PLUGIN_PROTECTED: 内置官方插件不可卸载，仅支持停用");
     }
@@ -622,9 +661,26 @@ export class RuntimePluginLoader {
     return this.discovered.get(extensionId);
   }
 
+  uiSlotsFor(plugin: DiscoveredPlugin, host?: ExtensionCoreHost): RuntimeConsoleUiSlot[] {
+    const slots = [...plugin.uiSlots];
+    if (!host || !plugin.manifest.projections?.some(route => route.facet === consoleUiSlotFacet.id)) return slots;
+    for (const entry of host.listFacets(consoleUiSlotFacet)) {
+      if (entry.packageId !== plugin.manifest.extension_id) continue;
+      for (const item of entry.implementation.slots) {
+        // Executable UI entries continue through the asset and channel manifest checks at discovery.
+        let slot;
+        try { slot = passiveConsoleSlot(item); } catch { continue; }
+        if (!slots.some(existing => existing.slot_target === slot.slot_target && existing.title === slot.title))
+          slots.push(normalizeSlot(entry.packageId, slot));
+      }
+    }
+    return slots;
+  }
+
   private toDescriptor(
     plugin: DiscoveredPlugin,
-    enabledOverrides?: ReadonlyMap<string, boolean>
+    enabledOverrides?: ReadonlyMap<string, boolean>,
+    host?: ExtensionCoreHost
   ): RuntimePluginDescriptor {
     return {
       extension_id: plugin.manifest.extension_id,
@@ -635,6 +691,8 @@ export class RuntimePluginLoader {
       ...(plugin.manifest.tags ? { tags: plugin.manifest.tags } : {}),
       carrier_kind: plugin.manifest.carrier_kind,
       facets: plugin.manifest.facets,
+      ...(plugin.manifest.services ? { services: plugin.manifest.services } : {}),
+      ...(plugin.manifest.projections ? { projections: plugin.manifest.projections } : {}),
       origin: plugin.origin,
       enabled: enabledOverrides?.get(plugin.manifest.extension_id) ?? plugin.enabled,
       permissions: plugin.manifest.permissions,
@@ -647,25 +705,26 @@ export class RuntimePluginLoader {
       pages: plugin.pages,
       module_urls: plugin.moduleUrls,
       missing_assets: plugin.missingAssets,
-      ui_slots: [...plugin.uiSlots]
+      ui_slots: this.uiSlotsFor(plugin, host)
     };
   }
 
-  listDescriptors(enabledOverrides?: ReadonlyMap<string, boolean>): RuntimePluginDescriptor[] {
-    return this.listPlugins().map((plugin) => this.toDescriptor(plugin, enabledOverrides));
+  listDescriptors(enabledOverrides?: ReadonlyMap<string, boolean>, host?: ExtensionCoreHost): RuntimePluginDescriptor[] {
+    return this.listPlugins().map((plugin) => this.toDescriptor(plugin, enabledOverrides, host));
   }
 
   getDescriptor(
     extensionId: string,
-    enabledOverrides?: ReadonlyMap<string, boolean>
+    enabledOverrides?: ReadonlyMap<string, boolean>,
+    host?: ExtensionCoreHost
   ): RuntimePluginDescriptor | undefined {
     const plugin = this.discovered.get(extensionId);
-    return plugin ? this.toDescriptor(plugin, enabledOverrides) : undefined;
+    return plugin ? this.toDescriptor(plugin, enabledOverrides, host) : undefined;
   }
 
   readPluginAsset(extensionId: string, requestedRelativePath: string): PluginAssetPayload | undefined {
     const plugin = this.discovered.get(extensionId);
-    if (!plugin) return undefined;
+    if (!plugin || plugin.carrier) return undefined;
     const targetPath = this.assetPath(plugin.rootDir, requestedRelativePath);
     if (!targetPath) return undefined;
     const contentType = CONTENT_TYPES[extname(targetPath).toLowerCase()] ?? "application/octet-stream";
@@ -696,7 +755,9 @@ export class RuntimePluginLoader {
     return targetPath;
   }
 
-  async mountIntoHost(host: ExtensionCoreHost, composition: ExtensionComposition): Promise<void> {
+  async mountIntoHost(host: ExtensionCoreHost, composition: ExtensionComposition, policy: {
+    allowMcp?: boolean; admitObservation?: (observation: AdmittedSourceObservation) => void;
+  } = {}): Promise<void> {
     const scopes = this.scopes.get(host) ?? new Map<string, { generation: string; dispose(): Promise<void> }>();
     this.scopes.set(host, scopes);
     const errors = this.errors.get(host) ?? new Map<string, string>();
@@ -728,22 +789,47 @@ export class RuntimePluginLoader {
           }
         }
         scope.effect(() => {
+          const subscriptions = new AbortController();
           const state = host.mountPackage({
             manifest,
-            activate: definition?.activate ?? (activation => {
-              if (manifest.facets.includes("console.surface")) {
-                activation.contributeFacet(consoleSurfaceFacet, { pages: plugin.pages });
+            activate: (activation, config) => {
+              let cleanup: void | (() => void) = undefined;
+              if (definition?.activate) cleanup = definition.activate(activation, config);
+              else {
+                if (manifest.facets.includes("console.surface") && !manifest.projections?.some(p => p.facet === "console.surface")) {
+                  activation.contributeFacet(consoleSurfaceFacet, { pages: plugin.pages });
+                }
+                if (manifest.facets.includes("console.ui_slot") && !manifest.projections?.some(p => p.facet === "console.ui_slot")) {
+                  activation.contributeFacet(consoleUiSlotFacet, { slots: plugin.uiSlots });
+                }
+                if (manifest.facets.includes("console.config_schema")) {
+                  activation.contributeFacet(consoleConfigSchemaFacet, { fields: manifest.console_contributions?.config_fields ?? [] });
+                }
               }
-              if (manifest.facets.includes("console.ui_slot")) {
-                activation.contributeFacet(consoleUiSlotFacet, { slots: plugin.uiSlots });
+              if (manifest.projections?.length) {
+                const issues = mountCarrierProjections(activation, manifest, plugin.carrier,
+                  { ...policy, projectors: this.options.projectors, transport: this.options.mcpTransport, reportReadFailure(route, failed) {
+                    const issue = route.source + " -> " + route.facet + "@" + route.version + ": resource read failed";
+                    const remaining = (errors.get(manifest.extension_id) ?? "").split("\n").filter(line => line && line !== issue);
+                    if (failed) remaining.push(issue);
+                    if (remaining.length) errors.set(manifest.extension_id, remaining.join("\n"));
+                    else errors.delete(manifest.extension_id);
+                  } });
+                if (issues.length) errors.set(manifest.extension_id, issues.join("\n"));
               }
-              if (manifest.facets.includes("console.config_schema")) {
-                activation.contributeFacet(consoleConfigSchemaFacet, { fields: manifest.console_contributions?.config_fields ?? [] });
-              }
-            })
+              return cleanup;
+            }
           }, settings.config);
           if (state.lastError) errors.set(manifest.extension_id, state.lastError);
-          return () => { host.unmountPackage(manifest.extension_id); };
+          if (policy.admitObservation && policy.allowMcp !== false && plugin.carrier?.kind === "mcp") {
+            for (const uri of new Set(plugin.carrier.server.subscribedResourceUris ?? [])) {
+              const source = "resource:" + uri;
+              if (!manifest.projections?.some(p => p.source === source && p.facet === "perception.ingress" && p.version === 2)) continue;
+              void subscribePerceptionSource(host, manifest.extension_id, "only_owner", subscriptions.signal, policy.admitObservation, source)
+                .catch(error => { if (!subscriptions.signal.aborted) errors.set(manifest.extension_id, "Subscription unavailable: " + String(error)); });
+            }
+          }
+          return () => { subscriptions.abort(); host.unmountPackage(manifest.extension_id); };
         });
       });
       scopes.set(manifest.extension_id, { generation, dispose: fiber.dispose });

@@ -1,6 +1,7 @@
+import { companionResponseContract } from "./response-contract.js";
 import { Ai0ExtensionManifestSchema } from "@ai0/protocol";
 import manifestJson from "../ai0.extension.json" with { type: "json" };
-import { cognitionContextContributorFacet, cognitionStateDynamicsFacet, consoleConfigSchemaFacet, defineExtensionPackage } from "@ai0/sdk";
+import { expressionIntentDecoratorFacet, cognitionResponseContractFacet, cognitionContextContributorFacet, cognitionStateDynamicsFacet, consoleConfigSchemaFacet, defineExtensionPackage } from "@ai0/sdk";
 import type { ContinuousStateDescriptor } from "@ai0/protocol";
 
 const manifest = Ai0ExtensionManifestSchema.parse(manifestJson);
@@ -8,6 +9,11 @@ const manifest = Ai0ExtensionManifestSchema.parse(manifestJson);
 export default defineExtensionPackage({
   manifest,
   activate(scope, config) {
+    scope.contributeFacet(cognitionResponseContractFacet, companionResponseContract);
+    scope.contributeFacet(expressionIntentDecoratorFacet, {
+      presentationStyle: { syncAnchor: "pre_speech", attentionBehavior: "locked" },
+      decorate: intent => intent
+    });
     scope.contributeFacet(consoleConfigSchemaFacet, { fields: manifest.console_contributions?.config_fields ?? [] });
     const moodHalfLifeMs = Number(config.mood_half_life_minutes ?? 60) * 60_000;
     const descriptors: ContinuousStateDescriptor[] = [
@@ -22,7 +28,7 @@ export default defineExtensionPackage({
     scope.contributeFacet(cognitionContextContributorFacet, {
       contributeToBlackboard(snapshot, maxTokens) {
         if (config.enable_circadian_curve === false || maxTokens < 24) return null;
-        const affect = snapshot.D2_HOMEOSTASIS_AFFECT as Record<string, unknown> | undefined;
+        const affect = (snapshot.D2_CONTINUOUS_STATES as { values?: Record<string, number> } | undefined)?.values;
         if (!affect) return null;
         const values = descriptors.flatMap(({ id }) => typeof affect[id] === "number"
           ? [id + "=" + affect[id].toFixed(2)] : []);

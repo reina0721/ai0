@@ -78,6 +78,13 @@ export const EmbodiedKeyframeSchema = z.object({
   linger_ms: z.number().optional()
 });
 
+/** Presentation chosen by a host profile or by an installed endpoint. */
+export const EmbodiedPresentationStyleSchema = z.object({
+  syncAnchor: EmbodiedSyncAnchorSchema,
+  attentionBehavior: EmbodiedKeyframeSchema.shape.attention.unwrap().shape.behavior.optional()
+});
+export type EmbodiedPresentationStyle = z.infer<typeof EmbodiedPresentationStyleSchema>;
+
 export type EmbodiedKeyframe = z.infer<typeof EmbodiedKeyframeSchema>;
 
 /** Embodied expression instructions, including up to three timed keyframes. */

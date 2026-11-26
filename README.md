@@ -4,6 +4,8 @@
 
 ai0 以九个工作区包构成正交微内核。五个无头核心负责扩展治理、通用话轮执行、结构化感知、状态化认知与可验证表达。宿主持有算力与凭据，`.soul` 持有角色运行状态，`InteractionChannel` 经标准协议接入，可独立声明 `EmbodimentSurface`。
 
+通用能力的所有权、作者接入路径和冻结条件见[通用 Agent 的扩展边界与验证方案](docs/architecture/09-universal-agent-contracts.md)。
+
 ## 快速启动与零预设上线
 
 需要 Node.js 24+ 和 pnpm 10+。
@@ -36,7 +38,7 @@ pnpm dev
 
 1. **Level 1 · 四层物理实体分离**。宿主基础设施落在 `souls/host/`，管理 Vault、Provider Pool 和卡片注册表。静态 CCv3 角色卡负责角色定义，唤醒后的 `*.soul` 实例拥有独立运行状态，InteractionChannel 与扩展在运行时按权限挂载。
 2. **Level 2 · 跨场景能力消去与五核正交分立**。逐项移除特定场景的感官、媒介和执行能力，提取跨场景稳定的协议与职责边界。
-3. **Level 3 · 渐进证伪与主仓收敛**。`labs/stage0-paper-traces` → `labs/stage1-agent-core` → `labs/stage2-airi-dissection` → `labs/stage3-perception-expression` → `labs/stage4-universal-derivation` → `labs/stage5-composite-channel-facets` → `labs/stage6-mechanism-policy-ablation`。
+3. **Level 3 · 渐进证伪与主仓收敛**。`labs/stage0-paper-traces` → `labs/stage1-agent-core` → `labs/stage2-airi-dissection` → `labs/stage3-perception-expression` → `labs/stage4-universal-derivation` → `labs/stage5-composite-channel-facets` → `labs/stage6-mechanism-policy-ablation` → `labs/stage7-public-contracts`。
 
 ## 五个正交无头核心
 
@@ -45,7 +47,7 @@ pnpm dev
 | `@ai0/extension-core` | `ExtensionCoreHost` 按包启停、配置、热重载与故障隔离，`defineFacetPoint` 声明能力接点，`ExtensionComposition` 管理 Cordis Fiber 贡献生命周期。 |
 | `@ai0/agent-core` | 机械式 `Turn/Round` 执行、工具调度和多 Provider 传输。以 `system_invariant`、`developer_frame`、`untrusted_observation` 三层分离指令权威与数据。缺乏目标证据时结算为 `unverified`，与数字生命领域零耦合。 |
 | `@ai0/perception-core` | 通过 `EmbodimentAffordanceRegistry` 注册具身能力，以 `UniversalObservationFrame` 六元组元语法归一观察。TTL 和 `"blind"` 锁约束推断，`TurnLifecycleGate` 处理 `activity\|interim\|commit\|retract`，`ReflexGate` 拦截例行信号，`ChronoceptiveSignalSynthesizer` 从经过时间扣除冬眠区间。 |
-| `@ai0/cognition-core` | `VirtualClock` 管理时间语义，声明式 `ContinuousStateMetaEngine` 以 `continuous_states_json` 保存检查点，`AuthoritativeStateCoordinator` 执行五域 MVCC 裁决。Tier 0 SB 243 守卫执行安全约束。四级 `EpistemicMemoryFirewall` 结合玩笑语用防火墙和 `CommonGround` 状态机约束记忆的证据等级。`BlackboardCompiler` 低于 2500 token，通过 `Social Mask Damper` 将非 Owner 专属受众可见的情绪偏离幅值衰减 70%。`W1`～`W4` 分别承担对话、行动、睡眠整理和多模态分析。 |
+| `@ai0/cognition-core` | `VirtualClock` 管理时间，`ContinuousStateMetaEngine` 推进已声明的连续状态，`StateDomainArbiter` 按权限、证据和版本裁决状态提案。daemon 在此基础上装配五域协调器、黑板、守卫和 W1～W4。[认知核](packages/cognition-core/README.md) · [数字生命配置](apps/daemon/src/profiles/digital-life/README.md) |
 | `@ai0/expression-core` | 零人形假设的 `CommunicativeIntentEnvelope` 描述表达意图。`RealizerVocabularyNegotiator` 在缺少合规 InteractionChannel 时将表达置为 `held_pending_compliant_channel`，`InteractionOpportunityPool` 管理表达机会。四态真值链为 `generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`。基于 `silenced` 和 `done` 双边界回执恢复 `unsaid_remainder`。 |
 
 `@ai0/protocol` 提供零内部依赖的 Zod 机器契约（含 `HandshakeManifest`、`Ai0ExtensionManifest` 与协议帧）。`@ai0/storage` 管理宿主基础设施及 Local-First `.soul`，以 SQLite WAL、FTS5 和向量索引支撑持久化与检索，并执行受众过滤和跨快照真遗忘。`@ai0/gateway` 以 `ChannelProtocolGateway` 提供 `/protocol/v0/channel`，以 `PrivilegedAdminServer` 提供 Owner 管理。`@ai0/sdk` 以 `defineExtensionPackage` 与标准 `FacetPoint` 提供一包多切面接入，参考插件与社区插件同受零后门边界约束，仅可依赖 `@ai0/protocol` 与 `@ai0/sdk`。
@@ -73,7 +75,8 @@ ai0/
 │   ├── stage3-perception-expression/
 │   ├── stage4-universal-derivation/
 │   ├── stage5-composite-channel-facets/
-│   └── stage6-mechanism-policy-ablation/
+│   ├── stage6-mechanism-policy-ablation/
+│   └── stage7-public-contracts/
 ├── plugins/
 │   ├── channels/              # WebChat、Terminal 等交互通道
 │   ├── perception-filters/    # 感知策略
@@ -128,6 +131,15 @@ flowchart TB
 ```
 
 ## 文档导航
+
+### 通用层开发入口
+
+| 开发任务 | 对应 README |
+| --- | --- |
+| 修改跨包契约、编写或装载扩展 | [协议](packages/protocol/README.md) · [插件 SDK](packages/sdk/README.md) · [扩展宿主](packages/extension-core/README.md) · [参考插件](plugins/README.md) |
+| 追踪一次输入如何成为话轮并交付 | [感知](packages/perception-core/README.md) · [Agent 执行](packages/agent-core/README.md) · [认知状态](packages/cognition-core/README.md) · [表达与回执](packages/expression-core/README.md) |
+| 接入存储、通道或宿主策略 | [持久化](packages/storage/README.md) · [网关](packages/gateway/README.md) · [daemon 装配](apps/daemon/README.md) · [数字生命配置](apps/daemon/src/profiles/digital-life/README.md) |
+| 开发控制台页面或共享组件 | [控制台入口](apps/console/README.md) · [请求客户端](apps/console/src/api/README.md) · [共享上下文](apps/console/src/context/README.md) · [路由](apps/console/src/router/README.md) · [工作区](apps/console/src/pages/README.md) · [设计系统](apps/console/src/design-system/README.md) |
 
 ### 愿景与问题域
 

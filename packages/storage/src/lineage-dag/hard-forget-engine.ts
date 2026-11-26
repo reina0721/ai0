@@ -820,14 +820,26 @@ function mutateFromPlan(
   const checkpointSensitiveValues = [...plan.root_event_ids, ...plan.original_event_summaries];
   for (const checkpoint of plan.checkpoints) {
     let working = checkpoint.working_memory_json;
+    let attributes = checkpoint.state_attributions_json;
     const saved = JSON.parse(working);
-    if (saved?.format === "ai0.coordinator.v1") {
+    if (saved?.format === "ai0.coordinator.v1" || saved?.format === "ai0.coordinator.v2") {
       const snapshot = saved.snapshot;
       const sensitive = (value: unknown) => checkpointSensitiveValues.some(part => part && JSON.stringify(value).includes(part));
       snapshot.D1_WORKING_TURN.recent_turns = snapshot.D1_WORKING_TURN.recent_turns.filter((turn: unknown) => !sensitive(turn));
       snapshot.D1_WORKING_TURN.unsaid_remainder = null;
       snapshot.D5_IDENTITY_NARRATIVE.pending_approvals = snapshot.D5_IDENTITY_NARRATIVE.pending_approvals.filter((item: unknown) => !sensitive(item));
       snapshot.D5_IDENTITY_NARRATIVE.active_tensions = snapshot.D5_IDENTITY_NARRATIVE.active_tensions.filter((item: unknown) => !sensitive(item));
+      const continuous = snapshot.D2_CONTINUOUS_STATES;
+      if (continuous?.attributions && continuous.values) {
+        for (const [id, attribution] of Object.entries(continuous.attributions)) {
+          if (!sensitive(attribution)) continue;
+          delete continuous.attributions[id];
+          delete continuous.values[id];
+        }
+        attributes = JSON.stringify(continuous.attributions);
+        sql.run("UPDATE cognitive_state_checkpoints SET continuous_states_json=? WHERE state_rev=?",
+          [JSON.stringify(continuous.values), checkpoint.state_rev]);
+      }
       working = JSON.stringify(saved);
     }
     sql.run(
@@ -836,7 +848,7 @@ function mutateFromPlan(
        WHERE state_rev = ?`,
       [
         replaceSensitiveOccurrences(working, checkpointSensitiveValues),
-        replaceSensitiveOccurrences(checkpoint.state_attributions_json, checkpointSensitiveValues),
+        replaceSensitiveOccurrences(attributes, checkpointSensitiveValues),
         checkpoint.state_rev,
       ],
     );

@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ai0/extension-core": "workspace:*",
     "@ai0/protocol": "workspace:*",
-    "@ai0/extension-core": "workspace:*"
+    "yaml": "^2.9.1"
   }
 }

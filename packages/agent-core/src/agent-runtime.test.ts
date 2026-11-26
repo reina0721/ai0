@@ -23,6 +23,9 @@ describe("@ai0/agent-core universal execution runtime", () => {
         { role: "untrusted_observation", content: "Check status and confirm." }
       ],
       goalRequiresVerification: true,
+      verifyGoal: rounds => rounds.some(round => round.receipts.some(({ call, result }) =>
+        call.name === "probe_health" && result.status === "verified" &&
+        (result.value as { ok?: boolean })?.ok === true)),
       signal: new AbortController().signal,
       onDelta: (t) => deltas.push(t),
       retryDelayMs: 1,
@@ -38,7 +41,7 @@ describe("@ai0/agent-core universal execution runtime", () => {
         yield { kind: "delta", text: "Health verified." };
       },
       async executeTool(call) {
-        return { status: "verified", output: { tool: call.name, ok: true } };
+        return { status: "verified", value: { tool: call.name, ok: true } };
       }
     });
 

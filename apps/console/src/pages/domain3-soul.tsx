@@ -315,7 +315,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
               <WorkspaceField as="label">结束小时<CompactInput type="number" min={0} max={23} value={dndEndHour}
                 disabled={!bioForm.canWrite} onInput={(value) => setBio("dndEndHour", Math.max(0, Math.min(23, Number(value))))} /></WorkspaceField>
             </WorkspaceGrid>
-            <small>{snap ? `心境 ${snap.moodValence.toFixed(2)} · 活力 ${Math.round(snap.circadianEnergy * 100)}%` : "等待实例状态。"}</small>
+            <small>{typeof snap?.moodValence === "number" && typeof snap.circadianEnergy === "number" ? `心境 ${snap.moodValence.toFixed(2)} · 活力 ${Math.round(snap.circadianEnergy * 100)}%` : "暂无心境与节律数据。"}</small>
           </WorkspaceSection>
         </WorkspacePage>
       </MainRoundedCardOutlet>

@@ -1,3 +1,4 @@
+import { PendingExpressionDelivery } from "@ai0/expression-core";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -116,6 +117,19 @@ it("streams persisted generic channel turns via /protocol/v0/channel/* and enfor
         requestId, assistantText: "", targetInstance: "sandbox:console"
       })])
     });
+    const heldId = "6f3d4cde-0773-48a0-884d-ea2b547e9967";
+    vi.spyOn(runtime.workers.w1, "runTurnAsync").mockImplementationOnce(async input => {
+      throw new PendingExpressionDelivery({ intentId: "pending", correlationEventId: input.event_id,
+        intent: "communicate", utterance: "undelivered private body",
+        deliveryConstraints: { audienceScope: input.audience_scope } }, channelId);
+    });
+    const heldFrames = await (await post("/runs", { requestId: heldId, mode: "live", text: "wait" })).text();
+    expect(heldFrames).toContain('"status":"held_pending_compliant_channel"');
+    expect(heldFrames).not.toContain("undelivered private body");
+    const held = await fetch(url + "/runs/" + heldId + "?mode=live", { headers: scopedHeaders });
+    expect(await held.json()).toMatchObject({ status: "held_pending_compliant_channel" });
+    expect(await (await post("/runs/" + heldId + "/stop", { mode: "live" })).json()).toMatchObject({ status: "cancelled" });
+
     await post("/clear", { mode: "live" });
     expect(runtime.storage.listDecisionTraces()).toHaveLength(traceCount);
 

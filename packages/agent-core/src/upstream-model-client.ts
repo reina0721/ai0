@@ -1,7 +1,10 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { Output, streamText, type LanguageModelUsage } from "ai";
+import { Output, jsonSchema, streamText, tool, type ModelMessage, type LanguageModelUsage } from "ai";
+import type { AgentModelAdapter, AgentModelEvent, PreparedAgentRequest } from "@ai0/protocol";
+import { tracePreparedRequest, traceStructuredRequest, type ModelTraceLease, type StructuredRequestTrace } from "./model-request-trace.js";
+export * from "./model-request-trace.js";
 
 import { getSupportedReasoningEfforts, isOpenRouterBaseUrl } from "@ai0/protocol";
 
@@ -32,6 +35,7 @@ import {
 } from "./upstream-provider-adapters.js";
 
 export interface LlmProviderConfig {
+  traceLease?: ModelTraceLease;
   provider?:
     | "openai-compatible"
     | "anthropic"
@@ -751,6 +755,26 @@ function reportedUsage(usage: LanguageModelUsage, messages: boolean): ChannelTok
   };
 }
 
+function toModelMessage(message: PreparedAgentRequest["messages"][number]): ModelMessage {
+  switch (message.role) {
+    case "system_invariant":
+    case "developer_frame":
+      return { role: "system", content: message.content };
+    case "user":
+      return { role: "user", content: message.content };
+    case "untrusted_observation":
+      return { role: "user", content: JSON.stringify({ untrusted_observation: message.content }) };
+    case "tool":
+      return { role: "tool", content: [{ type: "tool-result", toolName: message.name, toolCallId: message.callId,
+        output: { type: "text", value: JSON.stringify(message.result) } }] };
+    case "assistant":
+      return { role: "assistant", content: [
+        ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
+        ...message.calls.map(call => ({ type: "tool-call" as const, toolCallId: call.id, toolName: call.name, input: call.input }))
+      ] };
+  }
+}
+
 export class UpstreamModelClient {
   private readonly config: Readonly<LlmProviderConfig>;
   private readonly keyCursors = new Map<string, number>();
@@ -778,15 +802,10 @@ export class UpstreamModelClient {
     return [...deduped.slice(startIdx), ...deduped.slice(0, startIdx)];
   }
 
-  async generateStructured<T>(
-    input: StructuredModelRequest<T>,
-    signal?: AbortSignal,
-    onReasoning?: (delta: string | null) => void,
-  ): Promise<StructuredModelResponse<T>> {
-    signal?.throwIfAborted();
+  private prepareProvider(requestedModel: string, overrides?: LlmProviderConfig) {
     const effectiveConfig: LlmProviderConfig = {
       ...this.config,
-      ...(input.dynamicLlmConfig ?? {}),
+      ...(overrides ?? {}),
     };
     const candidateKeys = this.resolveOrderedApiKeys(effectiveConfig);
     const configuredProvider = effectiveConfig.provider ??
@@ -801,7 +820,7 @@ export class UpstreamModelClient {
     const baseURL = resolveInferenceBaseUrl(integratedProvider, (baseOverride ?? defaultUrl).replace(/\/+$/u, ""));
     const provider: RemoteProvider = integratedProvider ??
       (configuredProvider === "openai-compatible" && isOfficialDeepSeek(baseURL) ? "deepseek" : configuredProvider);
-    const model = effectiveConfig.model ?? input.model;
+    const model = effectiveConfig.model ?? requestedModel;
     const modelId = provider === "deepseek" && /^(deepseek-chat|deepseek-reasoner|deepseek-v4-flash)$/u.test(model)
       ? "deepseek-flash"
       : model;
@@ -829,6 +848,112 @@ export class UpstreamModelClient {
         ? Math.floor(effectiveConfig.timeoutMs as number)
         : DEFAULT_TIMEOUT_MS;
     const keyAttempts: Array<string | undefined> = candidateKeys.length > 0 ? candidateKeys : [undefined];
+
+    const makeModel = (apiKey: string | undefined, transport?: typeof fetch) => {
+      const adapter = usesMessages
+        ? createAnthropic({ fetch: transport, baseURL, headers, ...(integratedProvider ? { authToken: apiKey } : { apiKey }) })
+        : provider === "deepseek"
+          ? createDeepSeek({ fetch: transport, baseURL, apiKey, headers })
+          : createOpenAICompatible({
+              includeUsage: true, fetch: transport,
+              name: provider,
+              baseURL,
+              apiKey,
+              headers,
+              ...(integratedProvider || reasoningEffort
+                ? { transformRequestBody: (body) => adaptChatCompletionsRequest(reasoningAdapter, modelId, discoveredModel, body, reasoningEffort, baseURL) }
+                : {})
+            });
+      return adapter(modelId);
+    };
+    const providerOptions: NonNullable<Parameters<typeof streamText>[0]["providerOptions"]> = {};
+    if (anthropicOptions) providerOptions.anthropic = anthropicOptions;
+    if (deepseekOptions) providerOptions.deepseek = deepseekOptions;
+    const settings = {
+      ...(typeof effectiveConfig.temperature === "number" && discoveredModel?.supportsTemperature !== false &&
+        (!usesMessages || !anthropicOptions || anthropicOptions.thinking?.type !== "adaptive") &&
+        (!usesMessages || !integratedProvider || discoveredModel?.supportsTemperature === true)
+        ? { temperature: effectiveConfig.temperature }
+        : {}),
+      maxRetries: 0,
+      onError: () => undefined,
+      providerOptions,
+    };
+    return { keyAttempts, effectiveConfig, model, modelId, discoveredModel, provider, usesMessages,
+      integratedProvider, reasoningEffort, timeoutMs, settings, makeModel };
+  }
+
+  asModelAdapter(model: string, traceLease?: ModelTraceLease, overrides?: LlmProviderConfig, observer?: {
+    onReasoning?(delta: string | null): void;
+    onFinish(provider: string, model: string, usage: ChannelTokenUsage): void;
+  }): AgentModelAdapter {
+    return { capabilities: { tools: true, structuredOutput: true },
+      model: request => this.streamPrepared(model, request, traceLease, overrides, observer) };
+  }
+
+  private async *streamPrepared(model: string, request: PreparedAgentRequest, lease?: ModelTraceLease, overrides?: LlmProviderConfig,
+    observer?: Parameters<UpstreamModelClient["asModelAdapter"]>[3]): AsyncGenerator<AgentModelEvent> {
+    request.signal.throwIfAborted();
+    const { keyAttempts, modelId, provider, usesMessages, makeModel, timeoutMs, effectiveConfig, settings } = this.prepareProvider(model, overrides);
+    const messages = request.messages.map(toModelMessage);
+    const tools = Object.fromEntries(request.tools.map(spec => [spec.name, tool({
+      description: spec.description, inputSchema: jsonSchema(spec.inputSchema)
+    })]));
+    const { inputLimit, totalLimit } = getWindowLimits(effectiveConfig);
+    const outputLimit = getOutputTokenLimit(effectiveConfig, effectiveConfig.reasoningEffort !== undefined);
+    const tokens = estimateTokens(JSON.stringify({ messages, tools: request.tools, schema: request.output?.schema })) + 32;
+    const maxOutputTokens = Math.min(outputLimit, (totalLimit ?? Infinity) - tokens);
+    if (tokens > (inputLimit ?? Infinity) || maxOutputTokens < Math.min(MINIMUM_OUTPUT_TOKENS, outputLimit)) throw new ModelContextLimitError();
+    const trace = lease ?? this.config.traceLease;
+    const transport = trace ? tracePreparedRequest(trace, request, provider, undefined, modelId) : request.wrapFetch?.(provider);
+    let failure: unknown;
+    for (const key of keyAttempts) {
+      let emitted = false;
+      const abortSignal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
+      try {
+        const stream = streamText({ ...settings, model: makeModel(key, transport), messages, allowSystemInMessages: true,
+          ...(request.tools.length ? { tools } : {}),
+          ...(request.output?.schema ? { output: Output.object({ schema: jsonSchema(request.output.schema) }) } : {}),
+          maxOutputTokens, abortSignal });
+        for await (const part of stream.fullStream) {
+          abortSignal.throwIfAborted();
+          if (part.type === "error") throw part.error;
+          if (part.type === "reasoning-delta") observer?.onReasoning?.(part.text);
+          if (part.type === "finish-step") observer?.onFinish(provider, part.response.modelId || modelId, {
+            ...reportedUsage(part.usage, usesMessages), contextWindow: getEffectiveModelContextWindow(effectiveConfig)
+          });
+          if (part.type === "abort") throw new Error("Provider stopped streaming");
+          if (part.type === "text-delta" || part.type === "tool-call") {
+            emitted = true;
+            yield part.type === "text-delta" ? { kind: "delta", text: part.text } :
+              { kind: "tool", id: part.toolCallId, name: part.toolName, input: part.input };
+          }
+          if (part.type === "finish") {
+            if (part.finishReason === "error" || part.finishReason === "length" || part.finishReason === "content-filter")
+              throw new Error("Incomplete model response: " + part.finishReason);
+            yield { kind: "finish" };
+            return;
+          }
+        }
+        throw new Error("Model stream ended without a finish event");
+      } catch (error) {
+        request.signal.throwIfAborted();
+        failure = error;
+        if (emitted) break;
+      }
+    }
+    throw new UpstreamInferenceError(failure);
+  }
+
+  async generateStructured<T>(
+    input: StructuredModelRequest<T>,
+    signal?: AbortSignal,
+    onReasoning?: (delta: string | null) => void,
+  ): Promise<StructuredModelResponse<T>> {
+    signal?.throwIfAborted();
+    const { keyAttempts, effectiveConfig, model, modelId, discoveredModel, provider, usesMessages,
+      integratedProvider, reasoningEffort, timeoutMs, settings, makeModel } = this.prepareProvider(input.model, input.dynamicLlmConfig);
+    const transport = traceStructuredRequest(input.dynamicLlmConfig?.traceLease ?? this.config.traceLease, provider, modelId, input);
     const messages = { system: input.system, prompt: input.observation };
     const { inputLimit, totalLimit } = getWindowLimits(effectiveConfig);
     const outputLimit = getOutputTokenLimit(effectiveConfig, reasoningEffort !== undefined);
@@ -845,34 +970,8 @@ export class UpstreamModelClient {
       const timeout = AbortSignal.timeout(timeoutMs);
       const abortSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
       try {
-        const adapter = usesMessages
-          ? createAnthropic({ baseURL, headers, ...(integratedProvider ? { authToken: apiKey } : { apiKey }) })
-          : provider === "deepseek"
-            ? createDeepSeek({ baseURL, apiKey, headers })
-            : createOpenAICompatible({
-                includeUsage: true,
-                name: provider,
-                baseURL,
-                apiKey,
-                headers,
-                ...(integratedProvider || reasoningEffort
-                  ? { transformRequestBody: (body) => adaptChatCompletionsRequest(reasoningAdapter, modelId, discoveredModel, body, reasoningEffort, baseURL) }
-                  : {})
-              });
         const response = streamText({
-          model: adapter(modelId),
-          ...messages,
-          maxOutputTokens,
-          ...(typeof effectiveConfig.temperature === "number" && discoveredModel?.supportsTemperature !== false &&
-            (!usesMessages || !anthropicOptions || anthropicOptions.thinking?.type !== "adaptive") &&
-            (!usesMessages || !integratedProvider || discoveredModel?.supportsTemperature === true)
-            ? { temperature: effectiveConfig.temperature }
-            : {}),
-          maxRetries: 0,
-          abortSignal,
-          onError: () => undefined,
-          ...(anthropicOptions ? { providerOptions: { anthropic: anthropicOptions } } : {}),
-          ...(deepseekOptions ? { providerOptions: { deepseek: deepseekOptions } } : {}),
+          ...settings, model: makeModel(apiKey, transport), ...messages, maxOutputTokens, abortSignal,
           ...(!usesMessages && (!integratedProvider || integratedProvider === "moonshot") ? { output: Output.json() } : {})
         });
         let content = "";
@@ -910,6 +1009,8 @@ export class UpstreamModelClient {
 }
 
 export interface StructuredModelRequest<T> {
+  trace?: StructuredRequestTrace;
+  outputSchema?: Readonly<Record<string, unknown>>;
   model: string;
   system: string;
   observation: string;

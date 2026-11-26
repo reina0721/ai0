@@ -1,10 +1,10 @@
 # 01. 系统总体架构与 Monorepo 目标工程拓扑规范
 
-> **Clean-Slate V1** · 始终保持第一版，零历史沉积、零预设默认角色卡、三级渐进派生、五核正交分立。
+> 仓库有九个公共包。运行、能力绑定、观察、状态和表达分别有责任所有者。数字生命配置由 daemon 装配。
 
 ## 一、五核架构与三级渐进派生
 
-三级派生先划分宿主、角色卡、运行实例和挂载，再消去设备与场景策略，最后以七阶段实验检验不变量。`labs/stage0-paper-traces` → `labs/stage1-agent-core` → `labs/stage2-airi-dissection` → `labs/stage3-perception-expression` → `labs/stage4-universal-derivation` → `labs/stage5-composite-channel-facets` → `labs/stage6-mechanism-policy-ablation`。图中实线从依赖方指向依赖项，虚线表示网络通道。
+Stage 0–6 通过单步问答、设备交互与策略消融划分职责。Stage 7 从发布给插件作者的 SDK 和各核公开入口运行替换实验。图中实线从依赖方指向依赖项，虚线表示网络通道。
 
 ```mermaid
 flowchart TB
@@ -28,7 +28,8 @@ flowchart TB
     Extension --> Protocol
     Agent & Perception & Expression --> Extension
     Gateway --> Protocol & Extension & Perception & Cognition & Expression & Storage
-    Cognition --> Protocol & Extension & Agent & Perception & Expression & Storage
+    Cognition --> Protocol & Extension & Agent
+    Profile["daemon 数字生命配置"] --> Cognition & Agent & Perception & Expression & Storage & SDK
     Agent & Perception & Expression & Storage --> Protocol
 ```
 
@@ -38,7 +39,7 @@ flowchart TB
 - **`@ai0/extension-core`** 是扩展机制核心。以 `defineFacetPoint` 定义切面契约，`ExtensionCoreHost` 执行包级权限、`rev` 热重载及 `faulted_isolated` 熔断，`ExtensionComposition` 管理 Cordis Fiber 生命周期。详见[05 多切面扩展规范](05-eight-dimension-extension-system.md)。
 - **`@ai0/agent-core`** 是通用 LLM 与工具 `Turn / Round` 执行引擎。以 `system_invariant`、`developer_frame`、`untrusted_observation` 三层分离指令权威与数据。支持多步并发工具调度、`maxSteps` 到限结算和 `goalVerification` 缺少证据时的 `unverified` 守卫。HTTP 408、429 和 5xx 瞬态故障仅在副作用发生前重试。上游传输支持 `opencode_go` 的 `deepseek-v4.1-flash`、OpenAI-compatible、Anthropic、DeepSeek 与 Ollama。领域边界为零陪伴、情绪、记忆与 Avatar 知识。
 - **`@ai0/perception-core`** 拥有上行 `EmbodimentAffordanceRegistry` 与 `UniversalObservationFrame` 六元组元语法。`ScopedContextRegistry` 使用 `freshnessTtlMs` 和 `blind | disconnected | stale` 锁约束感知推断。`TurnLifecycleGate` 处理 `activity | interim | commit | retract`。`PerceptionFilterPipeline` 无切面时直通。挂载策略 Time Gradient Habituation 与 `ReflexGate` 以 `llmTokens: 0` 抑制例行信号并累计 `suppressedRoutineCount`。`ChronoceptiveSignalSynthesizer` 从经过时间扣除冬眠区间。
-- **`@ai0/cognition-core`** 的 `VirtualClock` 在 LIVE 锁定 1x，在 `SANDBOX:<fork_id>` 支持时间变速并记录冬眠区间。声明式 `ContinuousStateMetaEngine` 以描述符与潜状态驱动演化，默认 `descriptors = []`，SQL 心理标量列数为零。五域 `AuthoritativeStateCoordinator` 执行 MVCC 裁决。Tier 0 SB 243 安全守卫、四级 `EpistemicMemoryFirewall`（含玩笑语用防火墙与 `CommonGround` 双方共同确认状态机）及低于 2500 token 的声明式 `BlackboardCompiler`（含 70% `Social Mask Damper`）约束认知输入。包含 W1 对话、W2 行动、W3 睡眠整理、W4 多模态分析四路并发 Worker、五脑区模型路由与 `.scenario.yaml` 回放评估器。
+- **`@ai0/cognition-core`** 提供虚拟时钟、连续状态描述符、模型路由、结构化响应处理和 `StateDomainArbiter`。域所有者注册读取与更新函数，宿主绑定读写和证据权限。裁决器检查版本、授权和证据，可向挂载的域策略征求审查结果，再交给域更新函数。`apps/daemon/src/profiles/digital-life/` 装配五个状态域、角色输出契约、黑板编译器、W1–W4、具身表现及回放。连续状态值来自已挂载描述符。
 - **`@ai0/expression-core`** 的 `CommunicativeIntentEnvelope` 独立于人形，支持 `communicate | explicit_silence | actuate | request_observation`。`RealizerVocabularyNegotiator` 在缺少符合隐私约束的交互通道时置为 `held_pending_compliant_channel`。有界 `InteractionOpportunityPool` 管理表达机会。四态真值链为 `generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`。`GroundingReceiptTracker` 跟踪 `silenced` 与 `done` 两个中断边界，并恢复 `unsaid_remainder`。
 - **`@ai0/storage`** 负责 Local-First `.soul` 的 SQLite WAL、FTS5 与向量存储，以 `continuous_states_json` 保存检查点。持久化 `souls/host/` 基础设施与 Vault，负责 CCv3 导入、越权指令清理、未知 `extensions.<namespace>` 无损保留及 `.soul` 唤醒。Stage 1 用 SQL `WHERE visibility_scope …` 强制过滤。五表载荷执行拓扑级联 Hard Forget，通过 `redaction_ledger.json` 跨快照重放。V1 的兼容视图和预置灵魂数均为零。
 - **`@ai0/gateway`** 以 `ChannelProtocolGateway` 提供 Channel A Protocol v0 处理，以 `PrivilegedAdminServer` 提供 Channel B Owner Admin REST/SSE、`/healthz` 和 `/readyz`。
@@ -84,7 +85,8 @@ L0_UNCLAIMED
 │   ├── stage3-perception-expression/
 │   ├── stage4-universal-derivation/
 │   ├── stage5-composite-channel-facets/
-│   └── stage6-mechanism-policy-ablation/
+│   ├── stage6-mechanism-policy-ablation/
+│   └── stage7-public-contracts/
 ├── packages/
 │   ├── protocol/
 │   ├── extension-core/
@@ -96,7 +98,7 @@ L0_UNCLAIMED
 │   ├── gateway/
 │   └── sdk/
 ├── apps/
-│   ├── daemon/
+│   ├── daemon/src/profiles/digital-life/ # 数字生命配置的组合入口
 │   └── console/
 ├── plugins/
 ├── scripts/
@@ -117,7 +119,7 @@ L0_UNCLAIMED
 | `@ai0/protocol` | 无。Zod 提供跨平台 Schema 校验。 |
 | `@ai0/extension-core`、`@ai0/storage` | `@ai0/protocol` |
 | `@ai0/agent-core`、`@ai0/perception-core`、`@ai0/expression-core`、`@ai0/sdk` | `@ai0/protocol`、`@ai0/extension-core` |
-| `@ai0/cognition-core` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/agent-core`、`@ai0/perception-core`、`@ai0/expression-core`、`@ai0/storage` |
+| `@ai0/cognition-core` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/agent-core` |
 | `@ai0/gateway` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`、`@ai0/storage` |
 | `plugins/**` | `@ai0/protocol`、`@ai0/sdk` |
 

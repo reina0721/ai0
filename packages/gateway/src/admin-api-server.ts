@@ -37,6 +37,8 @@ const ROUTES = [
   { methods: ["GET", "PUT"], pattern: /^\/api\/admin\/v1\/extensions\/(?<extensionId>[^/]+)\/config$/, operation: "extensions.config" },
   { methods: ["DELETE"], pattern: /^\/api\/admin\/v1\/extensions\/(?<extensionId>[^/]+)$/, operation: "extensions.uninstall" },
   { methods: ["GET"], pattern: /^\/api\/admin\/v1\/runtime\/traces$/, operation: "runtime.traces" },
+  { methods: ["POST"], pattern: /^\/api\/admin\/v1\/runtime\/agent$/, operation: "runtime.agent" },
+  { methods: ["GET"], pattern: /^\/api\/admin\/v1\/runtime\/model-requests\/(?<stepId>[^/]+)$/, operation: "runtime.modelRequest" },
   { methods: ["POST"], pattern: /^\/api\/admin\/v1\/clock\/advance$/, operation: "clock.advance" },
   { methods: ["POST"], pattern: /^\/api\/admin\/v1\/sandbox\/fork$/, operation: "sandbox.fork" },
   { methods: ["POST"], pattern: /^\/api\/admin\/v1\/sandbox\/inject$/, operation: "sandbox.inject" },
@@ -77,6 +79,7 @@ export type AdminOperation = (typeof ROUTES)[number]["operation"];
 export type AdminTelemetryTrack = "[EVENT]" | "[TRACE]" | "[AGENCY]" | "[SYS]";
 
 export interface AdminRequest {
+  signal?: AbortSignal;
   method: string;
   path: string;
   headers?: Record<string, string | undefined>;
@@ -238,8 +241,11 @@ export class PrivilegedAdminServer {
       for (const [key, value] of Object.entries(request.headers))
         headers[key] = Array.isArray(value) ? value.join(",") : value;
       const body = await this.readBody(request);
+      const disconnected = new AbortController();
+      response.once("close", () => disconnected.abort());
+      if (response.destroyed) disconnected.abort();
       const result = await this.handleRequest({ method: request.method ?? "GET", path: url.pathname,
-        headers, query: Object.fromEntries(url.searchParams.entries()), body });
+        signal: disconnected.signal, headers, query: Object.fromEntries(url.searchParams.entries()), body });
       response.statusCode = result.status; response.setHeader("content-type", "application/json; charset=utf-8");
       response.end(JSON.stringify(result.body ?? null));
     } catch (error) {

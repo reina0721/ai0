@@ -1444,6 +1444,7 @@ export function importMcpServersFromJson(
 
     const server = McpServerConfigSchema.parse({
       id: `mcp_${sanitizeIdFragment(name)}`,
+      projections: spec.projections,
       name,
       description: typeof spec.description === "string" ? spec.description : "",
       transport,

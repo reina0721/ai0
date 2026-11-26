@@ -128,7 +128,7 @@ const VerifiableTurnStepsSchema = z.object({
   }),
   step5_strategy_proposal: z.object({
     chosen_strategy: z.string(),
-    interaction_frame: InteractionFrameSchema,
+    interaction_frame: InteractionFrameSchema.optional(),
     model_reported_rationale: z.object({
       authority_badge: z.literal("MODEL_SELF_REPORT_UNVERIFIED"),
       text: z.string()
@@ -138,7 +138,7 @@ const VerifiableTurnStepsSchema = z.object({
       drives_embodied_channel: z.boolean(),
       masked_placeholder: z.string(),
       raw_text: z.string()
-    })
+    }).optional()
   }),
   step6_tool_auth: z.object({
     prospective_commitment_registered: z

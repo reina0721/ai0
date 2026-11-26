@@ -1,3 +1,4 @@
+import type { AgentStepManifest, AgentToolAdvertisement } from "@ai0/protocol";
 import { registeredPages } from "../router/plugin-pages.js";
 import {
   WorkspaceChoice, WorkspaceCode, WorkspaceField, WorkspaceGrid, WorkspaceItem, WorkspaceLink,
@@ -18,6 +19,26 @@ import { renderConsoleIcon } from "../design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot, PromptBrickView } from "../live-snapshot.js";
 import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
 import { useWorkspaceDraft, useWorkspaceSave, WorkspaceHeader, WorkspaceSaveButton } from "./workspace.js";
+
+interface RequestPreview {
+  promptText: string;
+  totalTokens: number;
+  manifest: AgentStepManifest;
+  tools: AgentToolAdvertisement[];
+}
+type PreviewResult = RequestPreview | { unavailable: true; reason: string };
+type PreviewPair = { privatePreview: PreviewResult; publicPreview: PreviewResult };
+
+function RequestInspector({ request }: { request: RequestPreview }) {
+  return <details><summary>请求来源与模型契约</summary>
+    <p>响应契约 <code>{request.manifest.responseContract}</code></p>
+    <p>请求指纹 <code>{request.manifest.fingerprint}</code></p>
+    <ul>{request.manifest.fragments.map((part, i) => <li key={i}>
+      <code>{part.source}/{part.id}@{part.version}</code> · {part.role} · {part.reason} · {part.chars} 字符
+    </li>)}</ul>
+    <WorkspaceCode>{JSON.stringify({ projections: request.manifest.projections, tools: request.tools, output: request.manifest.output }, null, 2)}</WorkspaceCode>
+  </details>;
+}
 
 export interface Domain1DashboardPageProps {
   pathname: "/dashboard" | "/dashboard/blackboard" | "/conversations" | string;
@@ -81,19 +102,20 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
   const studio = snap?.studioConfig;
 
   const draft = useWorkspaceDraft({
+    responseContract: studio?.soulStudio.responseContract ?? "agent.standard_v1",
     bricks: studio?.soulStudio.promptBricks ?? [],
     maxBudget: studio?.soulStudio.maxBlackboardTokens ?? snap?.maxBlackboardTokens ?? 2200
   });
-  const { bricks, maxBudget } = draft.value;
+  const { bricks, maxBudget, responseContract } = draft.value;
   const [previewScope, setPreviewScope] = useState<"private" | "public">("private");
-  const [preview, setPreview] = useState<{
-    privatePreview: { promptText: string; totalTokens: number };
-    publicPreview: { promptText: string; totalTokens: number };
-  }>();
+  const [preview, setPreview] = useState<PreviewPair>();
+  const [sample, setSample] = useState("");
+  const [stepId, setStepId] = useState("");
+  const [sent, setSent] = useState<string>();
   const [pending, setPending] = useState(false);
   const form = useWorkspaceSave(route?.id === "config.blackboard" ? route.id : undefined,
     draft.dirty, () => { draft.discard(); setPreview(undefined); },
-    async () => { await ctx?.postStudio("config", { soulStudio: { maxBlackboardTokens: maxBudget, promptBricks: bricks } }); },
+    async () => { await ctx?.postStudio("config", { soulStudio: { responseContract, maxBlackboardTokens: maxBudget, promptBricks: bricks } }); },
     "上下文黑板配置已保存", draft.accept);
   const canWrite = Boolean(ctx?.ownerToken && ctx.mode === "live");
 
@@ -106,9 +128,10 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
   };
 
   if (route?.id === "config.blackboard") {
-    const privatePreview = preview?.privatePreview ?? snap?.promptPreviewPrivate;
-    const publicPreview = preview?.publicPreview ?? snap?.promptPreviewPublic;
-    const usedTokens = privatePreview?.totalTokens ?? snap?.totalBlackboardTokens;
+    const selected = previewScope === "private" ? preview?.privatePreview : preview?.publicPreview;
+    const privatePreview = preview?.privatePreview && "manifest" in preview.privatePreview ? preview.privatePreview : undefined;
+    const publicPreview = preview?.publicPreview && "manifest" in preview.publicPreview ? preview.publicPreview : undefined;
+    const usedTokens = privatePreview?.totalTokens;
     const shownPublicTokens = publicPreview?.totalTokens;
 
     const updateBrick = (id: string, patch: Partial<PromptBrickView>) => {
@@ -128,15 +151,13 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
       if (!ctx || !studio || pending) return;
       setPending(true);
       try {
-        const preview = await ctx.postStudio<{
-          privatePreview: { promptText: string; totalTokens: number };
-          publicPreview: { promptText: string; totalTokens: number };
-        }>("/api/studio/prompt-preview", {
+        const preview = await ctx.postStudio<PreviewPair>("/api/studio/prompt-preview", {
+          text: sample, mode: ctx.mode,
           config: {
             ...studio,
             soulStudio: {
               ...studio.soulStudio,
-              maxBlackboardTokens: maxBudget,
+              responseContract, maxBlackboardTokens: maxBudget,
               promptBricks: bricks
             }
           }
@@ -279,6 +300,10 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                     <span>重新编译</span>
                   </RippleButton>
                 </WorkspaceRow>
+                <WorkspaceField><span>响应契约</span><CompactInput value={responseContract} ariaLabel="响应契约" disabled={!form.canWrite}
+                  onInput={value => { draft.setValue(prev => ({ ...prev, responseContract: value })); setPreview(undefined); }} /></WorkspaceField>
+                <WorkspaceField><span>本轮输入</span><CompactInput value={sample} ariaLabel="预览话轮输入"
+                  onInput={value => { setSample(value); setPreview(undefined); }} /></WorkspaceField>
                 <div className="ai0-workspace-actions">
                   <RippleButton
                     variant={previewScope === "private" ? "primary" : "secondary"}
@@ -299,7 +324,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                     <span>公开样式 ({shownPublicTokens ?? "—"} tok)</span>
                   </RippleButton>
                 </div>
-                {draft.dirty && !preview ? <small>当前显示最近保存的编译结果。选择「重新编译」预览草稿。</small> : null}
+                {draft.dirty && !preview ? <small>选择「重新编译」查看当前草稿。</small> : null}
                 <WorkspaceCode
                   id="prompt-preview-private-box"
 
@@ -307,7 +332,6 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                   className="ai0-workspace-preview"
                 >
                   {privatePreview?.promptText ??
-                    snap?.compiledBlackboardPrompt ??
                     "等待编译上下文黑板..."}
                 </WorkspaceCode>
                 <WorkspaceCode
@@ -318,6 +342,15 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
                 >
                   {publicPreview?.promptText ?? "等待编译公开受众上下文…"}
                 </WorkspaceCode>
+                {selected && ("manifest" in selected ? <RequestInspector request={selected} /> : <p role="status">{selected.reason}</p>)}
+                <WorkspaceField><span>实发步骤 ID</span><CompactInput value={stepId} ariaLabel="实发步骤 ID"
+                  onInput={value => { setStepId(value); setSent(undefined); }} /></WorkspaceField>
+                <RippleButton disabled={!ctx?.ownerToken || !stepId.trim()} onClick={async () => {
+                  if (!ctx) return;
+                  try { setSent(JSON.stringify(await ctx.getAdmin("runtime/model-requests/" + encodeURIComponent(stepId.trim())), null, 2)); }
+                  catch (err) { setSent(err instanceof Error ? err.message : String(err)); }
+                }}>读取实发记录</RippleButton>
+                {sent && <WorkspaceCode>{sent}</WorkspaceCode>}
               </WorkspaceSection>
             </aside>
           </WorkspaceSplit>
@@ -513,7 +546,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
             <div className="ai0-workspace-metric">
               <span className="ai0-workspace-metric__label">{renderConsoleIcon("circadian", 14)}心境与节律</span>
               <strong className="ai0-workspace-metric__value">
-                {snap ? `${snap.moodValence.toFixed(2)} · ${Math.round(snap.circadianEnergy * 100)}%` : "—"}
+                {typeof snap?.moodValence === "number" && typeof snap.circadianEnergy === "number" ? `${snap.moodValence.toFixed(2)} · ${Math.round(snap.circadianEnergy * 100)}%` : "—"}
               </strong>
               <small>当前心境与节律活力</small>
             </div>

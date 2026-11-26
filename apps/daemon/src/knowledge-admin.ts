@@ -154,6 +154,7 @@ export function knowledgeAdmin(runtime: DaemonHandlerContext): AdminRouteHandler
           removeDocumentSlices(storage, document);
           db.prepare("DELETE FROM knowledge_documents WHERE id=?").run(document);
         });
+        runtime.runtime.modelRequests[live ? "live" : "sandbox"].clear();
         return { ok: true };
       }
       return {

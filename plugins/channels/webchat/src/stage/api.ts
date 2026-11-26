@@ -3,7 +3,7 @@ import { channelRunStages, type ChannelRunPresentation, type ChannelReasoningEve
 import type { Ai0StageMode } from "@ai0/sdk";
 
 export type WebChatStage = ChannelRunStage;
-export type WebChatStatus = "accepted" | "generating" | "delivering" | "completed" | "interrupted" | "cancelled" | "failed";
+export type WebChatStatus = "accepted" | "generating" | "delivering" | "completed" | "interrupted" | "cancelled" | "held_pending_compliant_channel" | "failed";
 
 export interface WebChatReceipt {
   status: "completed" | "interrupted";
@@ -50,7 +50,7 @@ export class WebChatHttpError extends Error {
 }
 
 const WEBCHAT_STATUSES = new Set<WebChatStatus>([
-  "accepted", "generating", "delivering", "completed", "interrupted", "cancelled", "failed"
+  "accepted", "generating", "delivering", "completed", "interrupted", "cancelled", "held_pending_compliant_channel", "failed"
 ]);
 
 function readWebChatStream(body: ReadableStream<Uint8Array<ArrayBuffer>>): ReadableStream<WebChatStreamChunk> {
@@ -142,7 +142,7 @@ export function createWebChatProtocolApi(
 }
 
 export function isFinishedChatRun(status: WebChatStatus): boolean {
-  return ["completed", "interrupted", "cancelled", "failed"].includes(status);
+  return ["completed", "interrupted", "cancelled", "held_pending_compliant_channel", "failed"].includes(status);
 }
 
 export function spokenCharOffset(text: string): number {

@@ -1,17 +1,21 @@
 import { defineFacetPoint } from "@ai0/extension-core";
-import { InteractionChannelSchema, type CommunicativeIntentEnvelope, type ExpressionEnvelope,
+import { EmbodiedPresentationStyleSchema, type EmbodiedPresentationStyle, InteractionChannelSchema, type CommunicativeIntentEnvelope, type ExpressionEnvelope,
   type InteractionChannel } from "@ai0/protocol";
+import type { MediaCursorResolver } from "@ai0/protocol";
 
 export interface ExpressionRealizer {
   channel: InteractionChannel;
-  deliver?(envelope: ExpressionEnvelope): void | Promise<void>;
+  presentationStyle?: EmbodiedPresentationStyle;
+  deliver?(envelope: ExpressionEnvelope, signal?: AbortSignal): void | import("@ai0/protocol").DeliveryReceipt | Promise<void | import("@ai0/protocol").DeliveryReceipt>;
 }
 export interface ExpressionMediaTranscoder {
+  cursor?: MediaCursorResolver;
   onUpstreamMediaFrame?(frame: unknown): void | Promise<void>;
   onDownstreamExpression?(intent: ExpressionEnvelope): void | Promise<void>;
 }
 export interface ExpressionIntentDecorator {
   priority?: number;
+  presentationStyle?: EmbodiedPresentationStyle;
   decorate(intent: CommunicativeIntentEnvelope, channel: InteractionChannel): CommunicativeIntentEnvelope;
 }
 
@@ -22,7 +26,8 @@ export const expressionRealizerFacet = defineFacetPoint<ExpressionRealizer>({
     if (!value || (value.deliver !== undefined && typeof value.deliver !== "function")) {
       throw new TypeError("Invalid expression realizer");
     }
-    return { channel: InteractionChannelSchema.parse(value.channel), deliver: value.deliver };
+    return { channel: InteractionChannelSchema.parse(value.channel),
+      presentationStyle: EmbodiedPresentationStyleSchema.optional().parse(value.presentationStyle), deliver: value.deliver };
   }
 });
 
@@ -32,7 +37,8 @@ export const expressionMediaTranscoderFacet = defineFacetPoint<ExpressionMediaTr
     const value = raw as ExpressionMediaTranscoder | null;
     if (!value || (value.onUpstreamMediaFrame !== undefined && typeof value.onUpstreamMediaFrame !== "function") ||
         (value.onDownstreamExpression !== undefined && typeof value.onDownstreamExpression !== "function") ||
-        (!value.onUpstreamMediaFrame && !value.onDownstreamExpression)) throw new TypeError("Invalid media transcoder");
+        (value.cursor !== undefined && (!value.cursor?.extension || typeof value.cursor.resolve !== "function")) ||
+        (!value.onUpstreamMediaFrame && !value.onDownstreamExpression && !value.cursor)) throw new TypeError("Invalid media transcoder");
     return value;
   }
 });
@@ -44,6 +50,7 @@ export const expressionIntentDecoratorFacet = defineFacetPoint<ExpressionIntentD
     if (typeof value?.decorate !== "function" || (value.priority !== undefined && !Number.isFinite(value.priority))) {
       throw new TypeError("Invalid intent decorator");
     }
+    EmbodiedPresentationStyleSchema.optional().parse(value.presentationStyle);
     return value;
   }
 });
