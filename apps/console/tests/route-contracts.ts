@@ -9,17 +9,17 @@ interface RouteContract {
   probe: Probe;
 }
 
-// Each route has its own browser-visible affordance or loaded record, independently of the router's shell metadata.
+// Each route has its own browser-visible affordance or loaded record, independently of the router's channel metadata.
 export const ROUTE_CONTRACTS: Record<string, RouteContract> = {
   "dashboard.overview": { heading: "系统概览", probe: { selector: '[aria-label="实时运行概况"]' } },
   "dashboard.conversations": { heading: "会话记录", probe: { selector: "[data-trigger-sleep-run]", enabled: true } },
   "dashboard.blackboard": { heading: "上下文黑板", probe: { selector: "[data-prompt-brick-id] [data-brick-template]:not(:disabled)", enabled: true } },
-  "shells.topology": { heading: "接入通道", probe: { selector: "[data-platform-id] [data-plat-enabled]", enabled: true } },
-  "shells.profiles-rules": { heading: "受众与策略", probe: { selector: "[data-profile-id]" } },
-  "shells.attention": { heading: "注意力焦点仲裁", probe: { role: "heading", name: "共享机会池" } },
-  "shells.thalamic-gate": { heading: "话轮防抖与感官门控", probe: { selector: "[data-plat-debounce]", enabled: true } },
-  "shells.media-pipeline": { heading: "语音与表现管线", probe: { role: "button", name: "配置服务商", enabled: true } },
-  "shells.simulator": { heading: "躯壳协议模拟器", probe: { selector: 'textarea[aria-label="模拟文本"]', enabled: true } },
+  "channels.topology": { heading: "接入通道", probe: { selector: "[data-platform-id] [data-plat-enabled]", enabled: true } },
+  "channels.profiles-rules": { heading: "受众与策略", probe: { selector: "[data-profile-id]" } },
+  "channels.attention": { heading: "注意力焦点仲裁", probe: { role: "heading", name: "共享机会池" } },
+  "channels.thalamic-gate": { heading: "话轮防抖与感官门控", probe: { selector: "[data-plat-debounce]", enabled: true } },
+  "channels.media-pipeline": { heading: "语音与表现管线", probe: { role: "button", name: "配置服务商", enabled: true } },
+  "channels.simulator": { heading: "交互通道协议模拟器", probe: { selector: 'textarea[aria-label="模拟文本"]', enabled: true } },
   "soul.distiller": { heading: "角色卡片蒸馏", probe: { selector: "[data-distill-preview]", enabled: true } },
   "soul.persona": { heading: "关系契约与性格设定", probe: { selector: "[data-select-archetype]", enabled: true } },
   "soul.homeostasis": { heading: "节律与情绪动力学", probe: { selector: '[aria-label="24 小时作息活力曲线"]' } },

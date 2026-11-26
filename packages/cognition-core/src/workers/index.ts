@@ -1,9 +1,8 @@
 import {
-  EmbodiedKeyframeSchema,
   ExpressionEnvelopeSchema,
   VerifiableTurnTraceSchema,
   type AudienceScope,
-  type ShellTokenUsage,
+  type ChannelTokenUsage,
   type KnowledgeSource, type KnowledgeCitation,
   type CapabilityRisk,
   type ExpressionEnvelope,
@@ -103,7 +102,7 @@ export class ThreeDimensionalPolicyEngine {
 }
 
 export interface W1TurnInput {
-  target_shell_id?: string;
+  target_channel_id?: string;
   knowledgeRecall?: (signal?: AbortSignal) => Promise<KnowledgeSource[]>;
   event_id: string;
   principal: PrincipalTrust;
@@ -131,7 +130,9 @@ export interface W1TurnInput {
 
 import { ADDITIONAL_BLACKBOARD_SLOT_TOKENS, BlackboardCompiler, estimateBlackboardTokens } from "../blackboard/blackboard-compiler.js";
 import type { CompiledBlackboard } from "../blackboard/blackboard-compiler.js";
-import { PolymorphicExtensionHost } from "../extension-bus/polymorphic-extension-host.js";
+import { sortFacetsByPriority, type ExtensionCoreHost } from "@ai0/extension-core";
+import { expressionMediaTranscoderFacet } from "@ai0/expression-core";
+import { cognitionContextContributorFacet, cognitionSleepOrganFacet, selectReadableSnapshot } from "../facets/index.js";
 import { BrainRegionRouter } from "../router/brain-region-router.js";
 import type { RegionRoute } from "../router/brain-region-router.js";
 import {
@@ -150,12 +151,12 @@ export interface W1FastDialogueWorkerOptions {
   brainRouter?: BrainRegionRouter;
   llmClient?: UniversalLlmProviderClient;
   personaName?: string;
-  extensionHost?: PolymorphicExtensionHost;
+  extensionHost?: ExtensionCoreHost;
   onTraceCommitted?: (trace: VerifiableTurnTrace) => void;
 }
 
 export interface W1AsyncTurnResult {
-  usage?: ShellTokenUsage;
+  usage?: ChannelTokenUsage;
   usedMemoryIds?: string[];
   usedKnowledge?: boolean;
   knowledgeSources?: KnowledgeCitation[];
@@ -193,7 +194,7 @@ export class W1FastDialogueWorker {
   private readonly brainRouter: BrainRegionRouter;
   private readonly llmClient: UniversalLlmProviderClient;
   private readonly personaName: string;
-  private readonly extensionHost?: PolymorphicExtensionHost;
+  private readonly extensionHost?: ExtensionCoreHost;
   private readonly onTraceCommitted?: (trace: VerifiableTurnTrace) => void;
   private proposalSequence = 0;
 
@@ -361,12 +362,13 @@ export class W1FastDialogueWorker {
 
     const organContributions: string[] = [];
     if (this.extensionHost && ownerPrivate && !input.liveStudioContext?.publicMask) {
-      for (const ext of this.extensionHost.listExtensions()) {
-        if (ext.buses.includes("ext.cognitive_organ")) {
-          const item = await this.extensionHost.contributeOrgan(ext.id, preSnapshot, 120);
-          signal?.throwIfAborted();
-          if (item?.text) organContributions.push(`[${item.slot_id}] ${item.text}`);
-        }
+      const host = this.extensionHost;
+      for (const entry of sortFacetsByPriority(host.listFacets(cognitionContextContributorFacet))) {
+        if (!host.allowsAudienceScope(entry.packageId, input.audience_scope)) continue;
+        const item = await host.invokeFacetAsync(entry, facet =>
+          facet.contributeToBlackboard(selectReadableSnapshot(host, entry.packageId, preSnapshot), 120));
+        signal?.throwIfAborted();
+        if (item?.text) organContributions.push(`[${item.slot_id}] ${item.text.slice(0, 300)}`);
       }
     }
 
@@ -483,6 +485,11 @@ export class W1FastDialogueWorker {
       checked,
       options.deferDeliveryReceipt
     );
+    const host = this.extensionHost;
+    if (host) for (const entry of host.listFacets(expressionMediaTranscoderFacet)) {
+      if (!host.allowsAudienceScope(entry.packageId, input.audience_scope)) continue;
+      await host.invokeFacetAsync(entry, facet => facet.onDownstreamExpression?.(structuredClone(committed.expression)));
+    }
     return {
       ...committed,
       usedMemoryIds: inputMemories.map(memory => memory.memory_id),
@@ -585,19 +592,19 @@ export class W1FastDialogueWorker {
     isCrisis: boolean,
     synthesized?: LlmDialogueSynthesisOutput
   ): ExpressionEnvelope {
-    const tag = isCrisis ? "concerned" : (synthesized?.facial_expression ?? "soft_smile");
+    const cue = isCrisis ? undefined : synthesized?.facial_expression;
     const negotiator = this.options.realizerNegotiator;
-    if (input.target_shell_id && negotiator?.hasShell(input.target_shell_id)) {
+    if (input.target_channel_id && negotiator?.hasChannel(input.target_channel_id)) {
       const intentId = `int_${input.event_id}`;
       const dispatch = negotiator.negotiate({
         intentId, correlationEventId: input.event_id, intent: "communicate",
         utterance: fallbackText, attentionTarget: "interlocutor",
-        expressiveStance: { semanticCue: tag, intensity: 0.75 },
+        expressiveStance: cue ? { semanticCue: cue } : undefined,
         deliveryConstraints: { audienceScope: input.audience_scope }
-      }, input.target_shell_id);
+      }, input.target_channel_id);
       return ExpressionEnvelopeSchema.parse(dispatch.envelope ?? {
         intent_id: intentId, correlation_event_id: input.event_id, chunk_seq: 0,
-        is_final: true, action_type: "explicit_silence", fallback_text: ""
+        is_final: true, action_type: "explicit_silence", fallback_text: "", extensions: {}
       });
     }
     return ExpressionEnvelopeSchema.parse({
@@ -607,23 +614,7 @@ export class W1FastDialogueWorker {
       is_final: true,
       action_type: "speak",
       fallback_text: fallbackText,
-      extensions: {
-        "ext.affect.v1": {
-          label: isCrisis ? "concerned" : (synthesized?.vocal_emotion_tag ?? "warm_attentive"),
-          vad: { valence: isCrisis ? -0.1 : 0.45, arousal: 0.35, dominance: 0.5 }
-        },
-        "ext.rhythm.v1": {
-          pre_delay_ms: 120,
-          typing_indicator_ms: 320,
-          pause_after_ms: 180
-        },
-        "ext.embodied.v1": EmbodiedKeyframeSchema.parse({
-          sync_anchor: "pre_speech",
-          attention: { target: "interlocutor", behavior: "locked" },
-          expression: { tag, intensity: 0.75 },
-          linger_ms: 420
-        })
-      }
+      extensions: {}
     });
   }
 
@@ -787,8 +778,33 @@ export class W2AgencyTaskWorker {
   constructor(
     private readonly coordinator: AuthoritativeStateCoordinator,
     private readonly policy: ThreeDimensionalPolicyEngine,
-    private readonly clock: IVirtualClock
+    private readonly clock: IVirtualClock,
+    private readonly extensionHost?: ExtensionCoreHost
   ) {}
+
+  async collectPlanningContext(taskId: string, maxTokens = 120): Promise<Array<{ slot_id: string; text: string }>> {
+    const host = this.extensionHost;
+    const task = this.requireTask(taskId);
+    if (!host || task.status !== "running" || task.principal !== "owner_verified" ||
+        task.audience_scope !== "only_owner" || !Number.isFinite(maxTokens) || maxTokens <= 0) return [];
+    const entries = sortFacetsByPriority(host.listFacets(cognitionContextContributorFacet));
+    if (!entries.length) return [];
+    const snapshot = this.coordinator.getSnapshot();
+    const contributions: Array<{ slot_id: string; text: string }> = [];
+    let remainingChars = Math.floor(maxTokens * 2.5);
+    for (const entry of entries) {
+      if (remainingChars <= 0 || this.tasks.get(taskId) !== task || task.status !== "running") break;
+      if (!host.allowsAudienceScope(entry.packageId, task.audience_scope)) continue;
+      const item = await host.invokeFacetAsync(entry, facet =>
+        facet.contributeToBlackboard(selectReadableSnapshot(host, entry.packageId, snapshot), remainingChars / 2.5));
+      if (item?.text) {
+        const text = item.text.slice(0, remainingChars);
+        contributions.push({ slot_id: item.slot_id, text });
+        remainingChars -= text.length;
+      }
+    }
+    return this.tasks.get(taskId) === task && task.status === "running" ? contributions : [];
+  }
 
   startTask(
     params: Omit<AgencyTaskRecord, "lifecycle" | "cursor" | "status"> & {
@@ -942,8 +958,25 @@ export class W3SleepReflectionWorker {
   constructor(
     private readonly coordinator: AuthoritativeStateCoordinator,
     private readonly storage: KernelReadOnlyStorageView,
-    private readonly clock: IVirtualClock
+    private readonly clock: IVirtualClock,
+    private readonly extensionHost?: ExtensionCoreHost
   ) {}
+
+  async runSleepOrgans(events: readonly unknown[] = []): Promise<number> {
+    const host = this.extensionHost;
+    if (!host) return 0;
+    let accepted = 0;
+    for (const entry of host.listFacets(cognitionSleepOrganFacet)) {
+      const snapshot = selectReadableSnapshot(host, entry.packageId, this.coordinator.getSnapshot());
+      const proposals = await host.invokeFacetAsync(entry, facet =>
+        facet.onSleepCycleWakeup(snapshot, host.allowsReadDomain(entry.packageId, "D1_WORKING_TURN") ? structuredClone(events) : []));
+      for (const proposal of proposals ?? []) {
+        if (host.allowsProposeDomain(entry.packageId, proposal.domain)
+          && this.coordinator.submitProposal(proposal).accepted) accepted++;
+      }
+    }
+    return accepted;
+  }
 
   runSleepMemoryConsolidation(onAccepted?: (eventId: string) => void): number {
     const events = this.storage
@@ -1060,17 +1093,28 @@ export class W3SleepReflectionWorker {
 export class W4MultimodalAnalyzerWorker {
   constructor(
     private readonly coverage: SensoryCoverageBucketManager,
-    private readonly clock: IVirtualClock
+    private readonly clock: IVirtualClock,
+    private readonly extensionHost?: ExtensionCoreHost
   ) {}
 
+  async processMediaFrame(frame: unknown, audience: AudienceScope): Promise<void> {
+    const host = this.extensionHost;
+    if (!host) return;
+    for (const entry of host.listFacets(expressionMediaTranscoderFacet)) {
+      if (host.allowsAudienceScope(entry.packageId, audience)) {
+        await host.invokeFacetAsync(entry, facet => facet.onUpstreamMediaFrame?.(structuredClone(frame)));
+      }
+    }
+  }
+
   analyzeAuthorizedSnapshot(params: {
-    shell_id: string;
+    channel_id: string;
     source_key: string;
     high_res_observation: string;
     confidence: number;
   }) {
     return this.coverage.upsert({
-      shell_id: params.shell_id,
+      channel_id: params.channel_id,
       modality: "visual_semantic",
       source_key: params.source_key,
       coverage: "live_foveal",

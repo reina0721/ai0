@@ -1,21 +1,22 @@
-export interface KnowledgeSource {
-  chunkId: string;
-  collectionId: string;
-  documentId: string;
-  title: string;
-  location: string;
-  excerpt: string;
-  taint_level: "untrusted_external";
-}
+import { z } from "zod";
 
-export interface KnowledgeCitation extends KnowledgeSource {
-  marker: number;
-}
+const KnowledgeSourceSchema = z.object({
+  chunkId: z.string(),
+  collectionId: z.string(),
+  documentId: z.string(),
+  title: z.string(),
+  location: z.string(),
+  excerpt: z.string(),
+  taint_level: z.literal("untrusted_external")
+});
+export type KnowledgeSource = z.infer<typeof KnowledgeSourceSchema>;
 
-/** Optional evidence metadata on Shell run, history and perception responses. */
-export interface ShellKnowledgeReferences {
-  sources?: KnowledgeCitation[];
-}
+const KnowledgeCitationSchema = KnowledgeSourceSchema.extend({ marker: z.number() });
+export type KnowledgeCitation = z.infer<typeof KnowledgeCitationSchema>;
+
+/** Optional evidence metadata on channel run, history and perception responses. */
+export const ChannelKnowledgeReferencesSchema = z.object({ sources: z.array(KnowledgeCitationSchema).optional() });
+export type ChannelKnowledgeReferences = z.infer<typeof ChannelKnowledgeReferencesSchema>;
 
 export interface KnowledgeCollection {
   id: string;

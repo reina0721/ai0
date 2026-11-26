@@ -13,7 +13,7 @@ export interface McpProbeResult {
 
 function inferToolRisk(name: string, description: string): McpToolDescriptor["risk"] {
   const combined = `${name} ${description}`.toLowerCase();
-  if (/(exec|shell|bash|powershell|cmd|sudo|eval|delete_all|rm_rf|drop_table)/iu.test(combined)) {
+  if (/(exec|channel|bash|powershell|cmd|sudo|eval|delete_all|rm_rf|drop_table)/iu.test(combined)) {
     return "high_risk";
   }
   if (/(write|create|update|delete|remove|edit|patch|post|send|commit|push|upload|move|rename)/iu.test(combined)) {

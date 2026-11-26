@@ -52,21 +52,21 @@ async function startChatUpstream(ctx: TestContext, expectedAuthorization?: strin
   return { baseUrl: "http://127.0.0.1:" + (server.address() as AddressInfo).port + "/v1", requests };
 }
 
-it("progresses from an empty host to a live shell and exports only the sanitized card", async ctx => {
-  const { runtime, soulsRoot, request, readiness, connectShell } = lifecycleFixture(ctx);
+it("progresses from an empty host to a live channel and exports only the sanitized card", async ctx => {
+  const { runtime, soulsRoot, request, readiness, connectChannel } = lifecycleFixture(ctx);
   const soulDirs = () => readdirSync(soulsRoot, { withFileTypes: true })
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".soul")).map(entry => entry.name);
   expect(await request("/healthz")).toMatchObject({ ok: true, alive: true, stage: "L0_UNCLAIMED", hasAwakenedSoul: false, soulDir: null });
   const initial = await readiness("L0_UNCLAIMED");
-  expect(initial.checks).toMatchObject({ hostClaimed: false, hostCardsCount: 0, activeSoulId: null, activeShellConnections: 0 });
+  expect(initial.checks).toMatchObject({ hostClaimed: false, hostCardsCount: 0, activeSoulId: null, activeChannelConnections: 0 });
   expect(initial.missing_prerequisites.toSorted()).toEqual(["host_owner_claim", "verified_chat_provider", "awakened_soul_archive",
-    "soul_consciousness_model_binding", "connected_compliant_shell"].sort());
+    "soul_consciousness_model_binding", "connected_compliant_channel"].sort());
   expect(await request("/api/admin/v1/cards")).toMatchObject({ cards: [] });
   expect(await request("/api/studio/bootstrap")).toMatchObject({ snapshot: {
     hasAwakenedSoul: false, personaName: "未唤醒", soulId: "", soulDir: "", availableSouls: [], eventsCount: 0,
     memoriesCount: 0, tracesCount: 0, hostCards: [], readiness: { stage: "L0_UNCLAIMED" }
   } });
-  expect(await request("/protocol/v0/shell/perception", "POST", { text: "请求对话" }, 503))
+  expect(await request("/protocol/v0/channel/perception", "POST", { text: "请求对话" }, 503))
     .toMatchObject({ error: "SOUL_NOT_AWAKENED", readiness: { stage: "L0_UNCLAIMED" } });
   expect(soulDirs()).toEqual([]);
 
@@ -97,13 +97,13 @@ it("progresses from an empty host to a live shell and exports only the sanitized
   const { soulId } = await request<{ soulId: string }>("/api/admin/v1/souls/awaken", "POST", { cardId: saved.cardId }, 201);
   expect(soulDirs()).toEqual(["orion.soul"]);
   expect(runtime.soulDir).toBe(join(soulsRoot, "orion.soul"));
-  expect((await readiness("L4_SOUL_AWAKENED_NO_SHELL")).checks).toMatchObject({ bindingValid: true, activeSoulId: soulId });
-  const { shellId, sessionId, token } = await connectShell();
+  expect((await readiness("L4_SOUL_AWAKENED_NO_CHANNEL")).checks).toMatchObject({ bindingValid: true, activeSoulId: soulId });
+  const { channelId, sessionId, token } = await connectChannel();
   expect((await readiness("L5_LIVE_READY")).missing_prerequisites).toEqual([]);
 
   const text = "Private observing notes for this turn only.";
   const turn = await request<{ expression: ExpressionEnvelope; trace: VerifiableTurnTrace; provider: { model: string } }>(
-    "/protocol/v0/shell/perception", "POST", { text, shell_id: shellId, audience_scope: "only_owner", venue_type: "private_1on1" }
+    "/protocol/v0/channel/perception", "POST", { text, channel_id: channelId, audience_scope: "only_owner", venue_type: "private_1on1" }
   );
   expect(upstream.requests).toEqual([{ model: modelId, stream: false }, { model: modelId, stream: true }]);
   expect(turn.provider.model).toBe(modelId);
@@ -123,12 +123,12 @@ it("progresses from an empty host to a live shell and exports only the sanitized
   for (const confidential of [text, eventId, privateMemory, memoryId, apiKey]) {
     expect(JSON.stringify(exported)).not.toContain(confidential);
   }
-  await request("/protocol/v0/shell/connections/" + sessionId, "DELETE", undefined, 200, token);
-  expect((await readiness("L4_SOUL_AWAKENED_NO_SHELL")).checks.activeShellConnections).toBe(0);
+  await request("/protocol/v0/channel/connections/" + sessionId, "DELETE", undefined, 200, token);
+  expect((await readiness("L4_SOUL_AWAKENED_NO_CHANNEL")).checks.activeChannelConnections).toBe(0);
 });
 
 it("probes and inherits a keyless custom HTTP chat model without sending a disabled vault key", async ctx => {
-  const { request, readiness, connectShell } = lifecycleFixture(ctx);
+  const { request, readiness, connectChannel } = lifecycleFixture(ctx);
   const upstream = await startChatUpstream(ctx);
   const sourceId = "src_custom_chat";
   const sources = "/api/admin/v1/integrations/sources";
@@ -147,9 +147,9 @@ it("probes and inherits a keyless custom HTTP chat model without sending a disab
     .toMatchObject({ ok: true, health: { status: "ready" } });
   expect((await readiness("L2_PROVIDER_READY_NO_SOUL")).checks.defaultChatModel).toBe(modelId);
   await request("/api/studio/onboarding", "POST", { displayName: "Vega", corePersonalityPrompt: "An astronomer." });
-  const { shellId } = await connectShell();
+  const { channelId } = await connectChannel();
   await readiness("L5_LIVE_READY");
-  expect(await request("/protocol/v0/shell/perception", "POST", { shell_id: shellId, text: "Who are you?" }))
+  expect(await request("/protocol/v0/channel/perception", "POST", { channel_id: channelId, text: "Who are you?" }))
     .toMatchObject({ provider: { model: modelId }, expression: { fallback_text: reply } });
   expect(upstream.requests).toEqual([{ model: modelId, stream: false }, { model: modelId, stream: true }]);
 });

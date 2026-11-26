@@ -59,7 +59,7 @@ export function CommandsAutomationTab(props: { snapshot?: ConsoleLiveSnapshot })
     }
   );
 
-  const organs = snap?.extensions.filter((ext) => ext.buses.includes("ext.cognitive_organ")) ?? [];
+  const organs = snap?.extensions.filter((ext) => ext.facets.includes("cognition.context_contributor")) ?? [];
   const sandbox = ctx?.mode === "sandbox";
 
   const toggleOrgan = async (id: string, enabled: boolean) => {

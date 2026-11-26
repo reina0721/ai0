@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
 >
-> 本文档定义系统的持久化存储底座（`@ai0/storage`）。遵循**“灵魂存档彻底独立于任何躯壳”、“事件日志为唯一真相源，记忆为带血缘的可重建投影”**以及**“检索层代码按受众硬性隔离隐私”**三大公理，给出 `.soul` 单目录嵌入式存储结构、完整 SQLite DDL 表设计，以及局部血缘失效重算与真遗忘擦除算法。
+> 本文档定义系统的持久化存储底座（`@ai0/storage`）。遵循**“灵魂存档彻底独立于任何交互通道”、“事件日志为唯一真相源，记忆为带血缘的可重建投影”**以及**“检索层代码按受众硬性隔离隐私”**三大公理，给出 `.soul` 单目录嵌入式存储结构、核心 SQLite DDL 表设计，以及局部血缘失效重算与真遗忘擦除算法。
 
 ---
 
@@ -15,7 +15,7 @@ Clean-Slate V1 将磁盘实体分为四层。宿主基础设施与静态角色�
 3. **独立活体灵魂存档** · 从 CCv3 卡唤醒后创建 `souls/<soul_id>.soul/`，记录来源、实例配置、事件与状态。`module_overrides` 以 `Inherit | Override` 表示随宿主默认值解析或使用实例配置。连续状态描述符由角色卡或已启用器官初始化。Vault 中的秘密通过引用解析。
 4. **可重建检索投影** · 每个实例独立持有 FTS5 与向量索引，由同一实例的权威数据重建，始终服从实例的 SQL 受众边界。
 
-**Zero-Preset** · 发行版的灵魂存档列表初始为空，移除的历史种子见 [07 清零账本](07-implementation-adrs-and-deviation-ledger.md)。
+**Zero-Preset** · Clean-Slate V1 以零预置灵魂起步，初始灵魂存档列表为空。见 [07 架构决断记录](07-implementation-adrs-and-deviation-ledger.md)。
 
 ```text
 souls/
@@ -50,54 +50,85 @@ souls/
 
 ---
 
-## 二、SQLite 核心数据库完整 DDL 架构 (`soul_core.sqlite`)
+宿主的 `souls/host/infrastructure.json` 持有两层算力池。`providerSources` 管理端点、适配器与密钥引用，`modelInstances` 管理模型标识、用途和来源关联。宿主 Vault 使用 `souls/host/vault/provider_keys.json`，角色配置按实例引用宿主算力。
 
-Clean-Slate V1 包含 **7 张权威表**，另设 `memory_lineage_edges` 关联边表与 FTS5／向量索引。边表记录权威记忆之间的派生与更替关系。兼容视图数为零，移除的历史视图见 [07 清零账本](07-implementation-adrs-and-deviation-ledger.md)。
+## 二、SQLite 核心数据库 DDL (`soul_core.sqlite`)
+
+Clean-Slate V1 包含 **7 张权威表**，另设 `memory_lineage_edges` 关联边表与 FTS5／向量索引。边表记录权威记忆之间的派生与更替关系。Clean-Slate V1 以零兼容视图起步。见 [07 架构决断记录](07-implementation-adrs-and-deviation-ledger.md)。
+
+### 通道会话的持久证据
+
+`channel_action_intents` 记录会话待核验的动作、同意要求与证据。跨端身份按 `(channel_id, external_id)` 绑定到同一 `principal_id`。
+
+```sql
+CREATE TABLE IF NOT EXISTS channel_action_intents (
+    intent_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    actuator_id TEXT NOT NULL,
+    requires_consent INTEGER NOT NULL,
+    arguments_json TEXT,
+    evidence_id TEXT
+);
+CREATE INDEX IF NOT EXISTS channel_actions_by_session ON channel_action_intents(session_id);
+CREATE TABLE IF NOT EXISTS channel_principal_bindings (
+    channel_id TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    principal_id TEXT NOT NULL,
+    PRIMARY KEY(channel_id, external_id)
+);
+```
 
 ### 2.1 表 1：不可变原始事件日志表 (`event_log` — Single Source of Truth)
 
-`event_log` 是不可变事件 SSOT，记录来源躯壳、主体（含信任级别）、场所、受众四元组。已提交感知的 `payload_json` 保留完整结构化 `UniversalObservationFrame`，摘要单独保存。Hard Forget 按下文的墓碑事务擦除原载荷。
+`event_log` 是不可变事件 SSOT，记录来源通道（`source_channel_id`）、主体（含信任级别）、场所、受众四元组。已提交感知的 `payload_json` 保留完整结构化 `UniversalObservationFrame`，摘要单独保存。Hard Forget 按下文的墓碑事务擦除原载荷。
 
 
 ```sql
-CREATE TABLE event_log (
-    event_seq           INTEGER PRIMARY KEY AUTOINCREMENT, -- 全局严格递增物理序列号
-    event_id            TEXT NOT NULL UNIQUE,              -- ULID (如 evt_01J9Z...)
-    wall_ts_ms          INTEGER NOT NULL,                  -- 真实物理世界 UTC 毫秒时间戳
-    virtual_ts_ms       INTEGER NOT NULL,                  -- 认知核 VirtualClock 虚拟毫秒时间戳
-    
-    -- 四元组溯源信封 (The Provenance Quadruple)
-    source_shell_id     TEXT NOT NULL,                     -- 来源躯壳实例 ID (或 'cognition.internal')
-    principal_id        TEXT NOT NULL,                     -- 归一化主体 ID ('owner' | 'friend:<id>' | 'stranger:<uid>' | 'system')
+CREATE TABLE IF NOT EXISTS event_log (
+    event_seq           INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id            TEXT NOT NULL UNIQUE,
+    wall_ts_ms          INTEGER NOT NULL,
+    virtual_ts_ms       INTEGER NOT NULL,
+    source_channel_id     TEXT NOT NULL,
+    principal_id        TEXT NOT NULL,
     principal_trust     TEXT NOT NULL CHECK (principal_trust IN ('owner_verified', 'bound_friend', 'stranger', 'environment_sensor', 'tool_output')),
     venue_type          TEXT NOT NULL CHECK (venue_type IN ('private_1on1', 'group_chat', 'public_livestream', 'local_ambient', 'internal_background')),
-    audience_scope      TEXT NOT NULL,                     -- 在场受众作用域 ('only_owner' | 'group:<id>' | 'public_all')
-    
-    -- 事件分类与载荷
+    audience_scope      TEXT NOT NULL,
     event_category      TEXT NOT NULL CHECK (event_category IN (
-                            'perception_committed',        -- 上行已确认感知事件
-                            'expression_delivered',        -- 下行已确认送达/被打断表达回执
-                            'action_episode_completed',    -- 8步行动任务完成事件
-                            'sleep_consolidation_run',     -- 真实执行过的后台睡眠整理事件
-                            'curiosity_exploration_run',   -- 真实执行过的后台好奇心探索事件
-                            'config_or_ablation_changed',  -- 认知模块开关或路由配置变更事件
-                            'memory_redacted_tombstone',   -- 真遗忘擦除墓碑事件
-                            'soul_rollback_bridge'         -- 灵魂回档断层弥合元事件
+                            'perception_committed',
+                            'expression_delivered',
+                            'action_episode_completed',
+                            'sleep_consolidation_run',
+                            'curiosity_exploration_run',
+                            'config_or_ablation_changed',
+                            'memory_redacted_tombstone',
+                            'soul_rollback_bridge'
                         )),
-    modality            TEXT NOT NULL,                     -- 'text' | 'audio_transcript' | 'visual_cue' | 'contact_interaction' | 'system_chronoception' | 'custom.*'
-    summary_text        TEXT NOT NULL,                     -- 供快速检索的文本摘要 (执行真遗忘后物理覆写为 '[REDACTED_BY_OWNER]')
-    payload_json        TEXT NOT NULL,                     -- 完整结构化 JSON 载荷，感知事件保留 UniversalObservationFrame (执行真遗忘后物理覆写为 '{}')
-    
-    -- 因果与消融审计元数据
-    state_rev_after     INTEGER NOT NULL,                  -- 该事件处理后的权威状态版本号 v_N
-    active_modules_mask INTEGER NOT NULL,                  -- 当时开启的认知模块位图 (用于消融实验因果复现)
-    redacted_at_ts_ms   INTEGER DEFAULT NULL,              -- 若被执行“真遗忘”，记录擦除时间戳
-    redacted_by_event   TEXT DEFAULT NULL                  -- 指向对应的墓碑事件 ID
+    modality            TEXT NOT NULL,
+    summary_text        TEXT NOT NULL,
+    payload_json        TEXT NOT NULL,
+    state_rev_after     INTEGER NOT NULL,
+    active_modules_mask INTEGER NOT NULL,
+    redacted_at_ts_ms   INTEGER DEFAULT NULL,
+    redacted_by_event   TEXT DEFAULT NULL
 );
 
-CREATE INDEX idx_event_log_virtual_ts ON event_log(virtual_ts_ms);
-CREATE INDEX idx_event_log_audience ON event_log(audience_scope, virtual_ts_ms);
-CREATE INDEX idx_event_log_category ON event_log(event_category, virtual_ts_ms);
+CREATE INDEX IF NOT EXISTS idx_event_log_virtual_ts ON event_log(virtual_ts_ms);
+CREATE INDEX IF NOT EXISTS idx_event_log_audience ON event_log(audience_scope, virtual_ts_ms);
+CREATE INDEX IF NOT EXISTS idx_event_log_category ON event_log(event_category, virtual_ts_ms);
+```
+
+`channel_run_process` 以事件 ID 关联通道运行快照。删除事件级联删除快照，事件被标记为真遗忘时触发器清除快照载荷。
+
+```sql
+CREATE TABLE IF NOT EXISTS channel_run_process (
+    event_id TEXT PRIMARY KEY REFERENCES event_log(event_id) ON DELETE CASCADE,
+    snapshot_json TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS redact_channel_run_process AFTER UPDATE OF redacted_at_ts_ms ON event_log
+WHEN NEW.redacted_at_ts_ms IS NOT NULL BEGIN
+    DELETE FROM channel_run_process WHERE event_id = NEW.event_id;
+END;
 ```
 
 ### 2.2 表 2：多层次主观记忆投影表 (`memories`) 与血缘边表 (`memory_lineage_edges`)
@@ -106,86 +137,79 @@ CREATE INDEX idx_event_log_category ON event_log(event_category, virtual_ts_ms);
 
 
 ```sql
-CREATE TABLE memories (
-    memory_id           TEXT PRIMARY KEY,                  -- ULID (如 mem_01J9Z...)
-    memory_tier         TEXT NOT NULL CHECK (memory_tier IN (
-                            'episodic_experience',         -- 带时间与情绪权重的共同经历摘要
-                            'semantic_fact',               -- 沉淀下来的客观事实或用户偏好
-                            'relational_tacit',            -- 相处默契、内部梗或共同黑话
-                            'kb_crystallized_gist',        -- 从热插拔外部知识库沉淀下来的百字常识卡
-                            'topic_taboo_seal'             -- 负向避雷封印 (“别再提这件事”)
-                        )),
-    
-    -- 认知溯源 (Epistemic Provenance — 严禁混淆事实与猜测)
-    epistemic_type      TEXT NOT NULL CHECK (epistemic_type IN (
-                            'observed_firsthand',          -- 亲历或主人亲口确认
-                            'reported_hearsay',            -- 第三方或外部传闻 (不可写入核心主人画像)
-                            'inferred_hypothesis',         -- 潜台词或情绪揣测 (强制带过期时间，禁止升格为事实)
-                            'imagined_narrative'           -- 角色内白日梦/创意构想
-                        )),
-    attributed_principal TEXT NOT NULL,                    -- 该信息归属的主体
-    
-    -- 隐私隔离墙硬过滤字段 (Database-Level Privacy Scope Guard)
-    visibility_scope    TEXT NOT NULL,                     -- 'only_owner' | 'group:<id>' | 'public_all'
-    taint_level         TEXT NOT NULL CHECK (taint_level IN ('trusted_owner', 'semi_trusted_friend', 'untrusted_external')),
-    
-    -- 记忆内容与艾宾浩斯动力学参数
-    content_text        TEXT NOT NULL,                     -- 记忆正文 (若为 topic_taboo_seal 则存避雷规则描述)
-    emotional_valence   REAL NOT NULL DEFAULT 0.0,         -- 形成记忆时的情绪效价 [-1.0, 1.0]
-    emotional_arousal   REAL NOT NULL DEFAULT 0.0,         -- 形成记忆时的情绪唤醒度 [0.0, 1.0]
-    base_importance     REAL NOT NULL DEFAULT 0.5,         -- 基础重要度权重 [0.0, 1.0]
-    stability_half_life REAL NOT NULL DEFAULT 168.0,       -- 艾宾浩斯遗忘半衰期 (虚拟小时数，随每次召回巩固递增)
-    recall_count        INTEGER NOT NULL DEFAULT 0,        -- 累计被召回次数
-    
-    -- 时间、双时态演进与共同默契采纳生命周期
+CREATE TABLE IF NOT EXISTS memories (
+    memory_id               TEXT PRIMARY KEY,
+    memory_tier             TEXT NOT NULL CHECK (memory_tier IN (
+                                'episodic_experience',
+                                'semantic_fact',
+                                'relational_tacit',
+                                'kb_crystallized_gist',
+                                'topic_taboo_seal'
+                            )),
+    epistemic_type          TEXT NOT NULL CHECK (epistemic_type IN (
+                                'observed_firsthand',
+                                'reported_hearsay',
+                                'inferred_hypothesis',
+                                'imagined_narrative'
+                            )),
+    attributed_principal    TEXT NOT NULL,
+    visibility_scope        TEXT NOT NULL,
+    taint_level             TEXT NOT NULL CHECK (taint_level IN ('trusted_owner', 'semi_trusted_friend', 'untrusted_external')),
+    content_text            TEXT NOT NULL,
+    emotional_valence       REAL NOT NULL DEFAULT 0.0,
+    emotional_arousal       REAL NOT NULL DEFAULT 0.0,
+    base_importance         REAL NOT NULL DEFAULT 0.5,
+    stability_half_life     REAL NOT NULL DEFAULT 168.0,
+    recall_count            INTEGER NOT NULL DEFAULT 0,
     created_virtual_ts      INTEGER NOT NULL,
     last_recalled_ts        INTEGER NOT NULL,
-    valid_from_virtual_ts   INTEGER NOT NULL,                  -- 双时态：该事实/偏好开始生效的虚拟时间戳
-    valid_until_virtual_ts  INTEGER DEFAULT NULL,              -- 双时态：若被新事实取代 (supersedes)，记录旧事实封口退居历史态的时间戳
-    expires_virtual_ts      INTEGER DEFAULT NULL,              -- inferred_hypothesis 强制设置过期时间
+    valid_from_virtual_ts   INTEGER NOT NULL,
+    valid_until_virtual_ts  INTEGER DEFAULT NULL,
+    expires_virtual_ts      INTEGER DEFAULT NULL,
     grounding_status        TEXT NOT NULL DEFAULT 'not_applicable' CHECK (grounding_status IN (
-                                'not_applicable',              -- 非 relational_tacit 记忆默认此值
-                                'proposed_presented',          -- 已单方面说出该内部梗/称呼，尚未获对方接梗确认
-                                'mutually_grounded',           -- 已观测到对方正向接梗/回用，正式成为双方共同默契
-                                'disputed_retired'             -- 对方冷场或明确拒绝，已弃用不再复读
+                                'not_applicable',
+                                'proposed_presented',
+                                'mutually_grounded',
+                                'disputed_retired'
                             )),
-    invalidated_at_ts       INTEGER DEFAULT NULL,              -- 若上游血缘被真遗忘删除或重算，标记为失效
-    created_at_rev          INTEGER NOT NULL                   -- 写入时的协调器状态版本号
+    invalidated_at_ts       INTEGER DEFAULT NULL,
+    created_at_rev          INTEGER NOT NULL
 );
+```
 
--- 记忆血缘与认知更替有向无环图边表 (Lineage & Epistemic Revision DAG Edges)
--- 记录每条记忆源自哪些原始事件/父记忆 (derived_from)、取代/反驳了哪条旧记忆 (supersedes / contradicts)，或由哪个知识库切片浓缩沉淀而来 (crystallized_from)
-CREATE TABLE memory_lineage_edges (
+```sql
+CREATE TABLE IF NOT EXISTS memory_lineage_edges (
     child_memory_id     TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
     parent_type         TEXT NOT NULL CHECK (parent_type IN ('event', 'memory', 'knowledge_chunk')),
-    parent_id           TEXT NOT NULL,                     -- 指向 event_log.event_id、memories.memory_id 或 knowledge_chunks.chunk_id
+    parent_id           TEXT NOT NULL,
     relation_type       TEXT NOT NULL DEFAULT 'derived_from' CHECK (relation_type IN (
-                            'derived_from',                -- 正向血缘派生 (用于真遗忘级联擦除与微重算)
-                            'supersedes',                  -- 双时态事实更替 (新偏好/纠错后的新事实取代旧事实)
-                            'contradicts',                 -- 待睡眠整理消解的证据冲突边
-                            'crystallized_from'            -- 由内建混合 RAG 或外部知识库切片浓缩生成的百字常识卡 (kb_crystallized_gist) 血缘边
+                            'derived_from',
+                            'supersedes',
+                            'contradicts',
+                            'crystallized_from'
                         )),
     PRIMARY KEY (child_memory_id, parent_type, parent_id)
 );
 
-CREATE INDEX idx_memories_Retrieval ON memories(visibility_scope, invalidated_at_ts, memory_tier);
-CREATE INDEX idx_lineage_parent ON memory_lineage_edges(parent_type, parent_id);
+CREATE INDEX IF NOT EXISTS idx_memories_Retrieval ON memories(visibility_scope, invalidated_at_ts, memory_tier);
+CREATE INDEX IF NOT EXISTS idx_lineage_parent ON memory_lineage_edges(parent_type, parent_id);
+
+CREATE TABLE IF NOT EXISTS memories_vec (
+    memory_id       TEXT PRIMARY KEY REFERENCES memories(memory_id) ON DELETE CASCADE,
+    embedding_json  TEXT NOT NULL
+);
 ```
 
-*(注：向量索引表 `memories_vec` 使用 `sqlite-vec` 虚拟表绑定 `memory_id`，并在检索时与 `memories` 表做内连接，确保 `WHERE visibility_scope IN (...) AND invalidated_at_ts IS NULL` 在 SQL 引擎底层先于返回结果生效。)*
+`memories_vec` 按 `memory_id` 保存 JSON 向量。检索先按受众和失效状态约束 SQL 候选，再使用向量计算。
 
 ### 2.3 表 3：承诺与前瞻记忆状态机表 (`prospective_commitments`)
 
 ```sql
-CREATE TABLE prospective_commitments (
+CREATE TABLE IF NOT EXISTS prospective_commitments (
     commitment_id       TEXT PRIMARY KEY,
-    commitment_kind     TEXT NOT NULL CHECK (commitment_kind IN (
-                            'agent_promise',               -- 她答应主人的事 (违约需触发角色内真诚道歉)
-                            'user_upcoming_event',         -- 主人未来的重要事项 (事后需主动关心结果)
-                            'curiosity_agenda'             -- 她自己产生的好奇心探索线索
-                        )),
-    visibility_scope    TEXT NOT NULL,                     -- 'only_owner' | 'group:<id>' | 'public_all'
-    taint_level         TEXT NOT NULL DEFAULT 'trusted_owner' CHECK (taint_level IN ('trusted_owner', 'semi_trusted_friend', 'untrusted_external')), -- 若由 W3 外部好奇心冲浪生成则强制锁死为 'untrusted_external'，唤醒时物理禁止自动连带触发副作用工具调用!
+    commitment_kind     TEXT NOT NULL CHECK (commitment_kind IN ('agent_promise', 'user_upcoming_event', 'curiosity_agenda')),
+    visibility_scope    TEXT NOT NULL,
+    taint_level         TEXT NOT NULL DEFAULT 'trusted_owner' CHECK (taint_level IN ('trusted_owner', 'semi_trusted_friend', 'untrusted_external')),
     description         TEXT NOT NULL,
     trigger_type        TEXT NOT NULL CHECK (trigger_type IN ('at_virtual_ts', 'on_next_interaction_after_ts', 'on_idle_window')),
     trigger_virtual_ts  INTEGER NOT NULL,
@@ -195,7 +219,7 @@ CREATE TABLE prospective_commitments (
     resolved_event_id   TEXT DEFAULT NULL
 );
 
-CREATE INDEX idx_commitments_status_ts ON prospective_commitments(status, trigger_virtual_ts);
+CREATE INDEX IF NOT EXISTS idx_commitments_status_ts ON prospective_commitments(status, trigger_virtual_ts);
 ```
 
 ### 2.4 表 4：权威认知状态与内稳态检查点表 (`cognitive_state_checkpoints`)
@@ -206,40 +230,37 @@ CREATE INDEX idx_commitments_status_ts ON prospective_commitments(status, trigge
 
 
 ```sql
-CREATE TABLE cognitive_state_checkpoints (
-    state_rev           INTEGER PRIMARY KEY,               -- 单调递增的权威状态版本号 v_N
-    virtual_ts_ms       INTEGER NOT NULL,
-    caused_by_event_id  TEXT NOT NULL,
-    
-    continuous_states_json TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS cognitive_state_checkpoints (
+    state_rev INTEGER PRIMARY KEY,
+    virtual_ts_ms INTEGER NOT NULL,
+    caused_by_event_id TEXT NOT NULL,
+    continuous_states_json TEXT NOT NULL DEFAULT '{}',
     state_attributions_json TEXT NOT NULL DEFAULT '[]',
-    relationship_json   TEXT NOT NULL,
-    user_model_json     TEXT NOT NULL,
-    working_memory_json TEXT NOT NULL,
+    relationship_json TEXT NOT NULL DEFAULT '{}',
+    user_model_json TEXT NOT NULL DEFAULT '{}',
+    working_memory_json TEXT NOT NULL DEFAULT '{}',
     hibernation_intervals_json TEXT NOT NULL DEFAULT '[]',
-    next_wakeup_ts_ms   INTEGER DEFAULT NULL               -- 反解出的下一阈值唤醒虚拟时间戳
+    next_wakeup_ts_ms INTEGER DEFAULT NULL
 );
 ```
 
 ### 2.5 表 5：8 步可验证系统决策审计轨迹表 (`turn_decision_traces`)
 
 ```sql
-CREATE TABLE turn_decision_traces (
-    trace_id            TEXT PRIMARY KEY,
-    turn_event_id       TEXT NOT NULL REFERENCES event_log(event_id),
-    virtual_ts_ms       INTEGER NOT NULL,
-    state_rev_before    INTEGER NOT NULL,
-    state_rev_after     INTEGER NOT NULL,
-    
-    -- 8 步确定性审计记录 (JSON 结构化存储，供 WebUI 白盒面板与回归回放断言)
-    step1_perception_json   TEXT NOT NULL,                 -- 输入信封与四元组
-    step2_gate_safety_json  TEXT NOT NULL,                 -- L0 危机检查、显著性得分、防抖合并计数、识别意图
-    step3_memory_recall_json TEXT NOT NULL,                -- 受众过滤条件、召回的 memory_id 列表及各项分值明细
-    step4_homeostasis_json  TEXT NOT NULL,                 -- 裁决前稳态向量 -> 代码裁决后的状态 Diff
-    step5_strategy_proposal_json TEXT NOT NULL,            -- 选用策略、model_reported_rationale (非权威)、theatrical_subtext (带 spoiler_level)
-    step6_tool_auth_json    TEXT NOT NULL,                 -- 选择的 MCP/Skill/Shell Actuator 及三维权限引擎裁决结果
-    step7_emitted_intent_json TEXT NOT NULL,               -- 下发的 CommunicativeIntentEnvelope / 行动指令
-    step8_delivery_receipt_json TEXT DEFAULT NULL          -- 异步回填的 DeliveryReceipt (含呈现、执行、共同确认与 silenced / done 边界)
+CREATE TABLE IF NOT EXISTS turn_decision_traces (
+    trace_id                       TEXT PRIMARY KEY,
+    turn_event_id                  TEXT NOT NULL REFERENCES event_log(event_id),
+    virtual_ts_ms                  INTEGER NOT NULL,
+    state_rev_before               INTEGER NOT NULL,
+    state_rev_after                INTEGER NOT NULL,
+    step1_perception_json          TEXT NOT NULL,
+    step2_gate_safety_json         TEXT NOT NULL,
+    step3_memory_recall_json       TEXT NOT NULL,
+    step4_homeostasis_json         TEXT NOT NULL,
+    step5_strategy_proposal_json   TEXT NOT NULL,
+    step6_tool_auth_json           TEXT NOT NULL,
+    step7_emitted_intent_json      TEXT NOT NULL,
+    step8_delivery_receipt_json    TEXT DEFAULT NULL
 );
 ```
 
@@ -248,25 +269,31 @@ CREATE TABLE turn_decision_traces (
 每个实例的 `soul_core.sqlite` 保存知识切片及定位信息。`metadata_json` 记录标题、行段或 PDF 页码，原始文档位于实例的 `knowledge/documents/`。全文索引使用 FTS5，向量索引按 `chunk_id` 关联切片。切片固定标记为 `untrusted_external`，引用完整送达后才更新引用计数。
 
 ```sql
-CREATE TABLE knowledge_chunks (
-    chunk_id            TEXT PRIMARY KEY,                  -- ULID
-    collection_id       TEXT NOT NULL,                     -- 所属知识集 ID (如 'kb.local.project_docs' 或 'kb.anime.lore')
-    document_name       TEXT NOT NULL,                     -- 原始文档名 (PDF / Markdown / DOCX / 代码文件)
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    chunk_id            TEXT PRIMARY KEY,
+    collection_id       TEXT NOT NULL,
+    document_name       TEXT NOT NULL,
     chunk_index         INTEGER NOT NULL,
     content_text        TEXT NOT NULL,
-    metadata_json       TEXT NOT NULL DEFAULT '{}',        -- 页码、章节标题或代码符号路径
+    metadata_json       TEXT NOT NULL DEFAULT '{}',
     taint_level         TEXT NOT NULL DEFAULT 'untrusted_external' CHECK (taint_level = 'untrusted_external'),
-    citation_count      INTEGER NOT NULL DEFAULT 0,        -- 在真实对话中被高权重引用的累计次数 (卸载时用于筛选提炼 Gist 常识卡)
+    citation_count      INTEGER NOT NULL DEFAULT 0,
     last_cited_ts_ms    INTEGER DEFAULT NULL,
     created_at_ts_ms    INTEGER NOT NULL
 );
 
--- SQLite FTS5 BM25 稀疏检索虚拟表 (与模型向量余弦检索共同构成 Hybrid RAG + Reranker 管线)
-CREATE VIRTUAL TABLE knowledge_chunks_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
     chunk_id UNINDEXED,
     collection_id UNINDEXED,
     content_text,
     tokenize = 'unicode61'
+);
+```
+
+```sql
+CREATE TABLE IF NOT EXISTS knowledge_chunks_vec (
+    chunk_id        TEXT PRIMARY KEY REFERENCES knowledge_chunks(chunk_id) ON DELETE CASCADE,
+    embedding_json  TEXT NOT NULL
 );
 ```
 
@@ -275,18 +302,20 @@ CREATE VIRTUAL TABLE knowledge_chunks_fts USING fts5(
 为使 `.soul/milestones_and_rituals.yaml` 中定义的正向成长规则与前端 `/memory/relationship` 页面的**共同经历里程碑画廊**形成持久化闭环（归属协调器 `D5_IDENTITY_NARRATIVE` 状态域管辖），数据库维护已达成里程碑与时间仪式的不可变解锁账本：
 
 ```sql
-CREATE TABLE soul_milestones_ledger (
-    milestone_id        TEXT PRIMARY KEY,                  -- 对应 milestones_and_rituals.yaml 中的规则 ID (如 'ms.companion_30_days')
-    title               TEXT NOT NULL,                     -- 里程碑标题 (如 '相伴满月纪念' / '共同攻克第 10 个行动任务')
-    category            TEXT NOT NULL CHECK (category IN ('temporal_anniversary', 'trust_breakthrough', 'joint_agency_achievement', 'story_event')),
-    unlocked_virtual_ts INTEGER NOT NULL,                  -- 达成时的 VirtualClock 虚拟毫秒时间戳
-    trigger_event_id    TEXT NOT NULL REFERENCES event_log(event_id), -- 触发该里程碑的源事件 ID (供画廊点击溯源)
-    unlocked_rewards_json TEXT NOT NULL DEFAULT '{}',      -- 正向成长解锁载荷 (如解锁的新专属称呼、新增黄金声线样本 ID 或纪念日前瞻约定 ID)
-    state_rev_unlocked  INTEGER NOT NULL                   -- 达成时的权威状态版本号 v_N
+CREATE TABLE IF NOT EXISTS soul_milestones_ledger (
+    milestone_id            TEXT PRIMARY KEY,
+    title                   TEXT NOT NULL,
+    category                TEXT NOT NULL CHECK (category IN ('temporal_anniversary', 'trust_breakthrough', 'joint_agency_achievement', 'story_event')),
+    unlocked_virtual_ts     INTEGER NOT NULL,
+    trigger_event_id        TEXT NOT NULL REFERENCES event_log(event_id),
+    unlocked_rewards_json   TEXT NOT NULL DEFAULT '{}',
+    state_rev_unlocked      INTEGER NOT NULL
 );
 ```
 
 ---
+
+其余知识集合、文档、位置与来源表，以及 `sb243_annual_metrics`、`kernel_runtime_meta` 的完整定义见 [DDL 源码](../../packages/storage/src/sqlite/schema-ddl.ts)。
 
 ## 三、核心存储算法：血缘 DAG 级联真遗忘、局部失效重算与混合检索
 

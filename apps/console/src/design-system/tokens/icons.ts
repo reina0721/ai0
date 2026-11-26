@@ -10,7 +10,7 @@ import {
 
 const icons = {
   dashboard: LayoutDashboard, chat: MessageSquare, sessions: History, persona: UserRound,
-  blackboard: Boxes, circadian: Activity, models: Cpu, shells: Globe, rules: SlidersHorizontal,
+  blackboard: Boxes, circadian: Activity, models: Cpu, channels: Globe, rules: SlidersHorizontal,
   memory: Network, evolution: Moon, knowledge: BookOpen, subagents: Users, extensions: Puzzle,
   telemetry: Terminal, system: Settings2, wizard: WandSparkles, sandbox: FlaskConical,
   pulse: Activity, bell: Bell, export: Download, sun: Sun, moon: Moon, search: Search,

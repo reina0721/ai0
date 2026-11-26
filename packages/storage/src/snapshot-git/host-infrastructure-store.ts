@@ -173,8 +173,8 @@ export interface PlatformAdapterTemplate {
 export const PLATFORM_ADAPTER_TEMPLATES: readonly PlatformAdapterTemplate[] = Object.freeze([
   {
     adapterKind: "protocol_v0_ws",
-    label: "外部 Protocol v0 躯壳客户端",
-    defaultEndpoint: "ws://127.0.0.1:4173/protocol/v0/shell",
+    label: "外部 Protocol v0 通道客户端",
+    defaultEndpoint: "ws://127.0.0.1:4173/protocol/v0/channel",
     defaultAudienceCeiling: "only_owner",
     description: "通过标准 Protocol v0 接入任意自研桌面端、游戏 Mod 或移动客户端"
   },
@@ -207,9 +207,9 @@ export const PLATFORM_ADAPTER_TEMPLATES: readonly PlatformAdapterTemplate[] = Ob
     description: "面向团队协作场景接入飞书群聊与单聊"
   },
   {
-    adapterKind: "desktop_shell",
-    label: "桌面伴侣 / Live2D 躯壳",
-    defaultEndpoint: "ws://127.0.0.1:4173/protocol/v0/shell",
+    adapterKind: "desktop_channel",
+    label: "桌面伴侣 / Live2D 通道",
+    defaultEndpoint: "ws://127.0.0.1:4173/protocol/v0/channel",
     defaultAudienceCeiling: "only_owner",
     description: "支持桌面窗口感知、视线先行与三锚点微表情渲染的本地具身载体"
   },
@@ -617,7 +617,7 @@ export function createDefaultHostInfrastructureConfig(): HostInfrastructureConfi
         id: "builtin.webchat",
         label: "WebChat (内置官方通道)",
         adapterKind: "builtin_webchat",
-        endpoint: "/protocol/v0/shell",
+        endpoint: "/protocol/v0/channel",
         authMode: "local_builtin",
         defaultAudienceCeiling: "only_owner",
         enabled: true,
@@ -628,12 +628,12 @@ export function createDefaultHostInfrastructureConfig(): HostInfrastructureConfi
         id: "builtin.terminal",
         label: "Terminal CLI (内置终端通道)",
         adapterKind: "builtin_terminal",
-        endpoint: "/protocol/v0/shell",
+        endpoint: "/protocol/v0/channel",
         authMode: "local_builtin",
         defaultAudienceCeiling: "only_owner",
         enabled: true,
         builtinPluginId: "builtin.terminal",
-        notes: "命令行终端交互躯壳"
+        notes: "命令行终端交互通道"
       }
     ],
     mcpServers: [

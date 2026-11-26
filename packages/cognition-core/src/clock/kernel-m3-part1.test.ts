@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { ExtensionCoreHost } from "@ai0/extension-core";
 
 import {
   AuthoritativeStateCoordinator,
   BlackboardCompiler,
+  COMPANION_HOMEOSTASIS_DESCRIPTORS,
   ContinuousSessionTimer,
+  ContinuousStateMetaEngine,
   InteractionOpportunityPool,
   LiveInstanceClockTamperForbiddenError,
   SensoryCoverageBucketManager,
@@ -20,6 +23,7 @@ import {
   computeMonotonicDriveIntegral,
   computeSecondOrderCoupledAffect,
   computeSensoryHabituation,
+  cognitionContextContributorFacet,
   evaluateAiIdentityDisclosure,
   evaluateCrisisGuard,
   evaluateExitFrictionAndMinorGuard,
@@ -27,6 +31,18 @@ import {
 } from "../index.js";
 
 describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate", () => {
+  it("registers companion homeostasis descriptors only when supplied", () => {
+    const neutral = new ContinuousStateMetaEngine();
+    expect(neutral.evolveTo(1000)).toEqual({});
+    expect(neutral.solveNextWakeupMs(1000)).toBeNull();
+
+    const companion = new ContinuousStateMetaEngine(COMPANION_HOMEOSTASIS_DESCRIPTORS);
+    const initial = companion.evolveTo(0);
+    expect(Object.keys(initial)).toEqual(COMPANION_HOMEOSTASIS_DESCRIPTORS.map(({ id }) => id));
+    for (const { id, baseline } of COMPANION_HOMEOSTASIS_DESCRIPTORS) {
+      expect(initial[id]).toBeCloseTo(baseline);
+    }
+  });
   it("enforces live instance 403 clock lock, deducts hibernation gaps, and solves coupled ODE & inverse wakeup analytically", () => {
     const t0 = 1_800_000_000_000;
     const liveClock = new VirtualClock({
@@ -147,7 +163,7 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
 
     const buckets = new SensoryCoverageBucketManager(clock);
     const first = buckets.upsert({
-      shell_id: "desktop.1",
+      channel_id: "desktop.1",
       modality: "visual_semantic",
       source_key: "camera.main",
       coverage: "live_foveal",
@@ -161,20 +177,18 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
 
     // High confidence revision contradicting low confidence hypothesis
     const revised = buckets.upsert({
-      shell_id: "desktop.1",
+      channel_id: "desktop.1",
       modality: "visual_semantic",
       source_key: "camera.main",
       coverage: "live_foveal",
       summary_text: "a roll of masking tape",
       frame_span_ms: 1000,
       freshness_ttl_ms: 5_000,
-      updated_at_virtual_ts: t0 + 1000,
+      updated_at_virtual_ts: clock.nowMs(),
       perception_confidence: 0.92,
       competing_hypotheses: []
     });
-    expect(revised.predictive_coding_revision_directive).toContain(
-      "a roll of masking tape"
-    );
+    expect(revised.predictive_coding_revision?.actual_summary).toBe("a roll of masking tape");
 
     // Advance past TTL -> bucket becomes stale
     clock.advanceBy(10_000);
@@ -192,7 +206,8 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
     });
     expect(merged?.debounce_merged_events).toBe(2);
     const retracted = debouncer.ingest({ lifecycle: "retract" });
-    expect(retracted?.retracted_observation).toContain("欲言又止");
+    expect(retracted).toBeNull();
+    expect(debouncer.flush()).toBeNull();
 
     // Opportunity pool expiration and topic-shift withdrawal
     const pool = new InteractionOpportunityPool(clock);
@@ -403,7 +418,7 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
     );
   });
 
-  it("coordinates W1 Fast Dialogue, W2 8-Step Agency with 3D Policy Engine, W3 Sleep/Curiosity/Milestones, and W4 Multimodal Analyzer", () => {
+  it("coordinates W1 Fast Dialogue, W2 8-Step Agency with 3D Policy Engine, W3 Sleep/Curiosity/Milestones, and W4 Multimodal Analyzer", async () => {
     const t0 = 1_800_000_000_000;
     const clock = new VirtualClock({
       targetInstance: "sandbox:workers",
@@ -478,7 +493,8 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
     ).toBe("DENY");
 
     // 2. W2 starts a multi-step background task and advances to step 1/2
-    const w2 = new W2AgencyTaskWorker(coordinator, policy, clock);
+    const extensionHost = new ExtensionCoreHost();
+    const w2 = new W2AgencyTaskWorker(coordinator, policy, clock, extensionHost);
     w2.startTask({
       task_id: "task_logs_01",
       goal: "整理项目旧测试日志",
@@ -492,6 +508,30 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
       ]
     });
     w2.advanceStep("task_logs_01", "已扫描 120 个文件");
+
+    expect(await w2.collectPlanningContext("task_logs_01")).toEqual([]);
+    extensionHost.mountPackage({
+      manifest: {
+        manifest_version: "2.0.0", extension_id: "test-planning-context", display_name: "Planning Context",
+        version: "1", author: "test", carrier_kind: "native_code_plugin", facets: [cognitionContextContributorFacet.id],
+        permissions: {
+          read_blackboard_domains: ["D4_COMMITMENTS_TASKS"], propose_mutation_domains: [],
+          max_audience_scope: "only_owner", network_access: false
+        }
+      },
+      activate(scope) {
+        scope.contributeFacet(cognitionContextContributorFacet, {
+          async contributeToBlackboard(snapshot) {
+            expect(snapshot.D1_WORKING_TURN).toBeUndefined();
+            const task = snapshot.D4_COMMITMENTS_TASKS?.active_tasks.task_logs_01;
+            return task ? { slot_id: "progress", text: `Current step: ${task.current_step}` } : null;
+          }
+        });
+      }
+    });
+    expect(await w2.collectPlanningContext("task_logs_01")).toEqual([
+      { slot_id: "progress", text: "Current step: 1" }
+    ]);
 
     // 3. While W2 is running in background, W1 handles user interjection and reports W2 live progress!
     const w1 = new W1FastDialogueWorker(
@@ -517,9 +557,7 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
     expect(turnResult.trace.steps.step5_strategy_proposal.model_reported_rationale.authority_badge).toBe(
       "MODEL_SELF_REPORT_UNVERIFIED"
     );
-    expect(turnResult.trace.steps.step7_emitted_intent.extensions_attached).toContain(
-      "ext.embodied.v1"
-    );
+    expect(turnResult.trace.steps.step7_emitted_intent.extensions_attached).toEqual([]);
 
     // 4. Complete W2 task -> Step8_EpisodicCrystallization
     const w2Done = w2.advanceStep("task_logs_01", "已归档 42 个旧日志");
@@ -552,7 +590,7 @@ describe("Milestone M3 Part 1 Audit: VirtualClock, SB 243 Guards & Thalamic Gate
     const coverage = new SensoryCoverageBucketManager(clock);
     const w4 = new W4MultimodalAnalyzerWorker(coverage, clock);
     const snapRes = w4.analyzeAuthorizedSnapshot({
-      shell_id: "desktop.1",
+      channel_id: "desktop.1",
       source_key: "camera.main",
       high_res_observation: "holding a ceramic duck",
       confidence: 0.95

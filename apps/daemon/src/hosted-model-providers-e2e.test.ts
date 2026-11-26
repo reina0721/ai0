@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { DiscoveredRemoteModel, ModelInstance, ProviderCatalogSource, ProviderSource, ShellTokenUsage, SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
+import type { DiscoveredRemoteModel, ModelInstance, ProviderCatalogSource, ProviderSource, ChannelTokenUsage, SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
 import { expect, it } from "vitest";
 
 import { createDefaultDaemonRuntime, createUnifiedDaemonHttpServer } from "./index.js";
@@ -156,10 +156,10 @@ it("discovers, imports, probes and uses hosted models through real admin and Web
     }
 
     async function runWebChat(thread: string, modelId: string): Promise<void> {
-      const response = await fetch(`${daemon}/protocol/v0/shell/runs`, {
+      const response = await fetch(`${daemon}/protocol/v0/channel/runs`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ requestId: randomUUID(), mode: "live", shellId: "builtin.webchat", thread, text: "请帮我检查这个函数的返回值。" })
+        body: JSON.stringify({ requestId: randomUUID(), mode: "live", channelId: "builtin.webchat", thread, text: "请帮我检查这个函数的返回值。" })
       });
       expect(response.status).toBe(200);
       const raw = await response.text();
@@ -167,7 +167,7 @@ it("discovers, imports, probes and uses hosted models through real admin and Web
       const frames = raw.split("\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)) as {
         type: string;
         delta?: string;
-        data?: { provider?: { model: string }; process?: import("@ai0/protocol").ShellRunProcess };
+        data?: { provider?: { model: string }; process?: import("@ai0/protocol").ChannelRunProcess };
       });
       expect(frames.filter((frame) => frame.type === "text-delta").map((frame) => frame.delta).join("")).toBe(replyFor(modelId));
       expect(frames.some((frame) => frame.data?.provider?.model === modelId)).toBe(true);
@@ -457,10 +457,10 @@ it("applies a model context override to real conversation prompts and rejects in
         event_id: string;
         expression: { intent_id: string; fallback_text: string };
         compiledBlackboard: { max_total_tokens: number };
-        usage?: ShellTokenUsage;
-      }>("/protocol/v0/shell/perception", "POST", { shell_id: "builtin.webchat", thread: chatThread, text, ...options });
+        usage?: ChannelTokenUsage;
+      }>("/protocol/v0/channel/perception", "POST", { channel_id: "builtin.webchat", thread: chatThread, text, ...options });
       if (deliver) {
-        await json("/protocol/v0/shell/receipt", "POST", {
+        await json("/protocol/v0/channel/receipt", "POST", {
           intent_id: result.expression.intent_id,
           spoken_char_offset: Array.from(result.expression.fallback_text).length,
           full_text: result.expression.fallback_text
@@ -626,15 +626,15 @@ it("applies a model context override to real conversation prompts and rejects in
     expect(shortResponseBudget).toBeLessThan(1024);
     const upstreamCallCount = modelRequests.length;
     const text = "请求文本越界。".repeat(1000);
-    expect(await json("/protocol/v0/shell/perception", "POST", { shell_id: "builtin.webchat", thread: chatThread, text }, 422))
+    expect(await json("/protocol/v0/channel/perception", "POST", { channel_id: "builtin.webchat", thread: chatThread, text }, 422))
       .toMatchObject({ error: "MODEL_CONTEXT_LIMIT" });
     const requestId = randomUUID();
-    const streamed = await request("/protocol/v0/shell/runs", "POST", {
-      requestId, shellId: "builtin.webchat", thread: chatThread, mode: "live", text
+    const streamed = await request("/protocol/v0/channel/runs", "POST", {
+      requestId, channelId: "builtin.webchat", thread: chatThread, mode: "live", text
     });
     expect(streamed.status).toBe(200);
     expect(await streamed.text()).toContain("MODEL_CONTEXT_LIMIT");
-    const status = await json(`/protocol/v0/shell/runs/${requestId}?mode=live&shellId=builtin.webchat`, "GET");
+    const status = await json(`/protocol/v0/channel/runs/${requestId}?mode=live&channelId=builtin.webchat`, "GET");
     expect(status).toMatchObject({ status: "failed", error: "MODEL_CONTEXT_LIMIT" });
     expect(modelRequests).toHaveLength(upstreamCallCount);
   } finally {

@@ -82,8 +82,8 @@ export function listAvailableSoulInstances(soulsRootOrActiveSoulDir: string, has
 
 // Both list and detail queries project the same accepted and delivered messages.
 const conversationMessages = `WITH turns AS (
-  SELECT e.event_id, e.event_seq, e.wall_ts_ms, e.source_shell_id, e.audience_scope, e.principal_id,
-    e.summary_text, json_array(e.source_shell_id, e.audience_scope,
+  SELECT e.event_id, e.event_seq, e.wall_ts_ms, e.source_channel_id, e.audience_scope, e.principal_id,
+    e.summary_text, json_array(e.source_channel_id, e.audience_scope,
       COALESCE(json_extract(e.payload_json,'$.thread'), CASE WHEN e.audience_scope='only_owner' THEN e.principal_id ELSE e.audience_scope END)) AS conversation,
     json_extract(t.step7_emitted_intent_json,'$.fallback_text') AS generated,
     json_extract(t.step8_delivery_receipt_json,'$.spoken_char_offset') AS delivered,
@@ -114,7 +114,7 @@ export function buildConversationsList(
       ROW_NUMBER() OVER (PARTITION BY conversation ORDER BY event_seq DESC,direction DESC) AS rank FROM messages
   ) SELECT * FROM ranked WHERE rank=1 ORDER BY event_seq DESC`).all();
   return rows.map(row => {
-    const platform = String(row.source_shell_id);
+    const platform = String(row.source_channel_id);
     const audienceScope = row.audience_scope === "only_owner" ? "only_owner" as const :
       row.audience_scope === "public_all" ? "public_all" as const : "fixed_group" as const;
     const parts = JSON.parse(String(row.conversation)) as [string, string, string];
@@ -397,7 +397,7 @@ export async function dispatchOrAdvanceCoWorkTask(
         return {ok:false,error:"TASK_NOT_QUEUED"};
       if (!runtime.storage.getEventById(evidenceId)) runtime.storage.appendEvent({
         event_id: evidenceId, event_category: "action_episode_completed", principal_trust: "tool_output",
-        wall_ts_ms: Date.now(), virtual_ts_ms: nowMs, source_shell_id: "knowledge.search",
+        wall_ts_ms: Date.now(), virtual_ts_ms: nowMs, source_channel_id: "knowledge.search",
         principal_id: "executor:knowledge.search", audience_scope: "only_owner", venue_type: "internal_background",
         modality: "text", summary_text: "知识库检索完成，返回 " + hits.length + " 个片段",
         payload_json: JSON.stringify({ task_id: target.id, query: target.title, chunk_ids: hits.map(hit => hit.chunkId) }),
@@ -462,7 +462,7 @@ export function runManualSleepReflection(runtime: Ai0DaemonRuntime) {
     event_id: "evt_sleep_" + randomUUID(),
     wall_ts_ms: Date.now(),
     virtual_ts_ms: nowMs,
-    source_shell_id: "kernel.w3.sleep",
+    source_channel_id: "kernel.w3.sleep",
     principal_id: "system:w3",
     principal_trust: "environment_sensor",
     venue_type: "local_ambient",
@@ -603,7 +603,7 @@ export function buildLivePromptPreviews(
   const promptPreviewPrivate = compileStudioPromptPreview(studio, {
     audienceScope: "only_owner",
     venueType: "private_1on1",
-    platform: runtime.fallbackShellId(),
+    platform: runtime.fallbackChannelId(),
     moodValence: affect.instant_valence,
     circadianEnergy: affect.circadian_energy,
     metabolicEnergy: affect.metabolic_energy,

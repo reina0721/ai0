@@ -1,0 +1,17 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.late-night-coding-care",
+  "display_name": "深夜编程关怀",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "visual_cognitive_flow",
+  "facets": [
+    "extension.asset_codec"
+  ],
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  }
+}

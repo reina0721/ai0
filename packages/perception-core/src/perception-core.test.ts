@@ -4,13 +4,59 @@ import {
   ChronoceptiveSignalSynthesizer,
   EmbodimentAffordanceRegistry,
   ObservationNormalizer,
+  PerceptionFilterPipeline,
   ReflexGate,
   ScopedContextRegistry,
   SensoryCoverageBucketManager,
+  TurnDebounceAggregator,
   TurnLifecycleGate
 } from "./index.js";
 
 describe("@ai0/perception-core universal observation & sensory self-knowledge", () => {
+  it("returns structured revisions and formats a directive only when configured", () => {
+    const buckets = new SensoryCoverageBucketManager({ nowMs: () => 100 });
+    const observation = {
+      channel_id: "channel.camera", modality: "visual_semantic", source_key: "cam.0",
+      coverage: "live_foveal", summary_text: "open door", frame_span_ms: 100,
+      freshness_ttl_ms: 500, updated_at_virtual_ts: 100, competing_hypotheses: []
+    } as const;
+    const actual = { ...observation, competing_hypotheses: [], perception_confidence: 0.9 };
+    const hypothesis = { ...observation, competing_hypotheses: [{ text: "closed door", confidence: 0.4 }] };
+    buckets.upsert(hypothesis);
+    const revision = { previous_hypothesis: "closed door", actual_summary: "open door" };
+    const neutral = buckets.upsert(actual);
+    expect(neutral.predictive_coding_revision).toEqual(revision);
+    expect(neutral).not.toHaveProperty("predictive_coding_revision_directive");
+    buckets.upsert(hypothesis);
+    expect(buckets.upsert(actual, summary => `Observed: ${summary}`)).toMatchObject({
+      predictive_coding_revision: revision,
+      predictive_coding_revision_directive: "Observed: open door"
+    });
+  });
+
+  it("passes commits immediately without filters and retracts without a default observation", () => {
+    const clock = { nowMs: () => 100 };
+    const pipeline = new PerceptionFilterPipeline();
+    const event = { lifecycle: "commit", text: "hello" } as const;
+    expect(pipeline.ingest(event, "channel.text", clock.nowMs())).toEqual({ kind: "pass", event });
+    expect(pipeline.flushDue(clock.nowMs())).toEqual([]);
+    expect(pipeline.ingest({ lifecycle: "retract" }, "channel.text", clock.nowMs())).toEqual({ kind: "neutral_retract" });
+
+    const neutral = new TurnDebounceAggregator(clock);
+    expect(neutral.debounceWindowMs).toBe(0);
+    expect(neutral.ingest(event)).toMatchObject({ text: "hello", debounce_merged_events: 1 });
+    neutral.ingest({ lifecycle: "interim", text: "draft" });
+    expect(neutral.ingest({ lifecycle: "retract" })).toBeNull();
+    expect(neutral.flush()).toBeNull();
+    expect(neutral.ingest({ lifecycle: "commit" })).toBeNull();
+
+    const formatted = new TurnDebounceAggregator(clock, 100, () => "Draft withdrawn");
+    formatted.ingest(event);
+    expect(formatted.ingest({ lifecycle: "retract" })).toMatchObject({
+      frames: [], text: "", retracted_observation: "Draft withdrawn"
+    });
+    expect(formatted.flush()).toBeNull();
+  });
   it("tracks dynamic embodiment affordances, blind locks, TTL staleness, and untrusted observation normalization", () => {
     let now = 1_000_000;
     const clock = {
@@ -20,8 +66,8 @@ describe("@ai0/perception-core universal observation & sensory self-knowledge", 
     const registry = new EmbodimentAffordanceRegistry();
     const manifest = HandshakeManifestSchema.parse({
       protocol_version: "0.1.0",
-      shell_id: "shell.iot.desk",
-      shell_kind: "hardware_iot",
+      channel_id: "channel.iot.desk",
+      channel_kind: "hardware_iot",
       display_name: "Desk Lamp Sensor",
       venue_type: "local_ambient",
       current_audience: { scope: "only_owner", member_count: 1 },
@@ -37,9 +83,9 @@ describe("@ai0/perception-core universal observation & sensory self-knowledge", 
       auth_token: "tok"
     });
     registry.mount(manifest, [{ id: "ignored_card_anchor" }]);
-    expect(registry.coverage("shell.iot.desk", "tactile", "pad.top")).toBe("live_foveal");
-    expect(registry.coverage("shell.iot.desk", "visual_semantic")).toBe("blind");
-    expect(registry.connectedShells()[0]?.anchors.map((a) => a.id)).toEqual(["chassis_top"]);
+    expect(registry.coverage("channel.iot.desk", "tactile", "pad.top")).toBe("live_foveal");
+    expect(registry.coverage("channel.iot.desk", "visual_semantic")).toBe("blind");
+    expect(registry.connectedChannels()[0]?.anchors.map((a) => a.id)).toEqual(["chassis_top"]);
 
     const normalizer = new ObservationNormalizer(clock);
     const frame = normalizer.normalize(
@@ -54,15 +100,15 @@ describe("@ai0/perception-core universal observation & sensory self-knowledge", 
         persistence_hint: "permanent",
         extensions: {}
       }),
-      { shellId: "shell.iot.desk", principalId: "owner:local", audienceScope: "only_owner" }
+      { channelId: "channel.iot.desk", principalId: "owner:local", audienceScope: "only_owner" }
     );
     expect(frame.provenance).toEqual({ epistemicTier: "untrusted_utterance", trustedGrant: false });
-    expect(frame.channel.shellId).toBe("shell.iot.desk");
+    expect(frame.channel.channelId).toBe("channel.iot.desk");
 
     const buckets = new SensoryCoverageBucketManager(clock);
-    buckets.lockBlindness("shell.iot.desk", "visual_semantic", "cam.0", "camera permission denied");
+    buckets.lockBlindness("channel.iot.desk", "visual_semantic", "cam.0", "camera permission denied");
     buckets.upsert({
-      shell_id: "shell.iot.desk",
+      channel_id: "channel.iot.desk",
       modality: "visual_semantic",
       source_key: "cam.0",
       coverage: "live_foveal",
@@ -72,7 +118,7 @@ describe("@ai0/perception-core universal observation & sensory self-knowledge", 
       updated_at_virtual_ts: now,
       competing_hypotheses: []
     });
-    const locked = buckets.get("shell.iot.desk", "visual_semantic", "cam.0");
+    const locked = buckets.get("channel.iot.desk", "visual_semantic", "cam.0");
     expect(locked?.coverage).toBe("blind");
     expect(locked?.summary_text).toBe("");
     expect(locked?.anti_hallucination_lock).toContain("sensor_blind");

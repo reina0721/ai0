@@ -11,7 +11,7 @@ import type {
 import type { BrainRegion, BrainRegionModelConfig } from "./brain-region-router.js";
 
 export interface UmoResolutionInput {
-  readonly shellId: string;
+  readonly channelId: string;
   readonly venueType: VenueType;
   readonly sessionKey: string;
   /** Maximum privacy audience permitted by the transport/token attestation. */
@@ -48,9 +48,9 @@ function clampAudienceScope(
   return { scope: desired, downgraded: false };
 }
 
-export function formatUmo(shellId: string, venueType: string, sessionKey: string): string {
+export function formatUmo(channelId: string, venueType: string, sessionKey: string): string {
   const norm = (value: string, fallback: string) => value.trim() || fallback;
-  return `${norm(shellId, "shell.default")}:${norm(venueType, "private_1on1")}:${norm(sessionKey, "default")}`;
+  return `${norm(channelId, "channel.default")}:${norm(venueType, "private_1on1")}:${norm(sessionKey, "default")}`;
 }
 
 function matchSegment(pattern: string, actual: string): boolean {
@@ -150,7 +150,7 @@ export function toBrainRouterConfig(
  * with fail-closed audience scope ceiling enforcement.
  */
 export function resolveSessionProfile(input: UmoResolutionInput): UmoResolutionOutput {
-  const umo = formatUmo(input.shellId, input.venueType, input.sessionKey);
+  const umo = formatUmo(input.channelId, input.venueType, input.sessionKey);
   const candidates = input.config.routingRules
     .filter((rule) => rule.enabled && matchesUmoPattern(rule.umoPattern, umo))
     .sort((left, right) => {

@@ -132,6 +132,9 @@ importers:
       '@ai-sdk/openai-compatible':
         specifier: 3.0.94
         version: 3.0.94(zod@4.6.7)
+      '@ai0/extension-core':
+        specifier: workspace:*
+        version: link:../extension-core
       '@ai0/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -147,6 +150,9 @@ importers:
       '@ai0/expression-core':
         specifier: workspace:*
         version: link:../expression-core
+      '@ai0/extension-core':
+        specifier: workspace:*
+        version: link:../extension-core
       '@ai0/perception-core':
         specifier: workspace:*
         version: link:../perception-core
@@ -159,9 +165,21 @@ importers:
 
   packages/expression-core:
     dependencies:
+      '@ai0/extension-core':
+        specifier: workspace:*
+        version: link:../extension-core
       '@ai0/protocol':
         specifier: workspace:*
         version: link:../protocol
+
+  packages/extension-core:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@deepseek-ai/cordis':
+        specifier: 4.1.0
+        version: 4.1.0
 
   packages/gateway:
     dependencies:
@@ -171,6 +189,9 @@ importers:
       '@ai0/expression-core':
         specifier: workspace:*
         version: link:../expression-core
+      '@ai0/extension-core':
+        specifier: workspace:*
+        version: link:../extension-core
       '@ai0/perception-core':
         specifier: workspace:*
         version: link:../perception-core
@@ -183,6 +204,9 @@ importers:
 
   packages/perception-core:
     dependencies:
+      '@ai0/extension-core':
+        specifier: workspace:*
+        version: link:../extension-core
       '@ai0/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -195,12 +219,12 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@ai0/extension-core':
+        specifier: workspace:*
+        version: link:../extension-core
       '@ai0/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@deepseek-ai/cordis':
-        specifier: 4.1.0
-        version: 4.1.0
 
   packages/storage:
     dependencies:
@@ -214,7 +238,7 @@ importers:
         specifier: ^3.24.0
         version: 3.25.76
 
-  plugins/cognitive-organs/dream-journal:
+  plugins/channels/terminal:
     dependencies:
       '@ai0/protocol':
         specifier: workspace:*
@@ -223,16 +247,7 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/sdk
 
-  plugins/media-pipelines/emotion-tts-sideband:
-    dependencies:
-      '@ai0/protocol':
-        specifier: workspace:*
-        version: link:../../../packages/protocol
-      '@ai0/sdk':
-        specifier: workspace:*
-        version: link:../../../packages/sdk
-
-  plugins/shells/webchat:
+  plugins/channels/webchat:
     dependencies:
       '@ai0/protocol':
         specifier: workspace:*
@@ -289,6 +304,60 @@ importers:
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)
+
+  plugins/cognitive-organs/attention-arbitrator:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  plugins/cognitive-organs/companion-homeostasis:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  plugins/cognitive-organs/dream-journal:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  plugins/cognitive-organs/lorebook-contributor:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  plugins/media-pipelines/emotion-tts-sideband:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+
+  plugins/perception-filters/conversational-gate:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
 
 packages:
 

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@ai0/protocol": "workspace:*",
+    "@ai0/extension-core": "workspace:*",
     "@ai0/storage": "workspace:*",
     "@ai0/agent-core": "workspace:*",
     "@ai0/perception-core": "workspace:*",

@@ -17,6 +17,6 @@
   },
   "dependencies": {
     "@ai0/protocol": "workspace:*",
-    "@deepseek-ai/cordis": "4.1.0"
+    "@ai0/extension-core": "workspace:*"
   }
 }

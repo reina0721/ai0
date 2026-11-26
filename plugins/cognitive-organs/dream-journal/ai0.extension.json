@@ -1,28 +1,26 @@
 {
   "$schema": "https://ai0.dev/schemas/ai0.extension.schema.json",
-  "manifest_version": "1.0",
-  "id": "community.organ.dream-journal",
-  "name": "Dream Journal",
+  "manifest_version": "2.0.0",
   "version": "1.0.0",
   "author": "ai0-community",
-  "tags": ["sleep", "memory", "poetic"],
+  "tags": [
+    "sleep",
+    "memory",
+    "poetic"
+  ],
   "description": "在 W3 睡眠反思期间将日常对话余温整理为富有诗意的梦境片段，并以只读方式注入意识黑板与情节记忆候选。",
-  "carrier": "native_code_plugin",
-  "bus": "ext.cognitive_organ",
   "entry": "./dist/index.js",
-  "default_enabled": true,
   "permissions": {
-    "read_domains": [
+    "read_blackboard_domains": [
       "D1_WORKING_TURN",
       "D2_HOMEOSTASIS_AFFECT",
       "D3_MEMORY_PROJECTION"
     ],
-    "propose_domains": [
+    "propose_mutation_domains": [
       "D3_MEMORY_PROJECTION"
     ],
-    "network": false,
-    "filesystem": false,
-    "actuation": false
+    "max_audience_scope": "only_owner",
+    "network_access": false
   },
   "console_contributions": {
     "config_fields": [
@@ -33,9 +31,18 @@
         "default": "warm_nocturne",
         "hint": "控制 W3 睡眠反思生成梦境余温时的叙事语调",
         "options": [
-          { "value": "warm_nocturne", "label": "温柔夜曲（默认）" },
-          { "value": "starlight_minimal", "label": "星光留白（极简）" },
-          { "value": "cinema_sketch", "label": "胶片速写（意象丰富）" }
+          {
+            "value": "warm_nocturne",
+            "label": "温柔夜曲（默认）"
+          },
+          {
+            "value": "starlight_minimal",
+            "label": "星光留白（极简）"
+          },
+          {
+            "value": "cinema_sketch",
+            "label": "胶片速写（意象丰富）"
+          }
         ]
       },
       {
@@ -65,7 +72,11 @@
         "key": "motif_tags",
         "label": "偏好意象关键词",
         "type": "list",
-        "default": ["海风", "台灯", "星空"],
+        "default": [
+          "海风",
+          "台灯",
+          "星空"
+        ],
         "hint": "逗号分隔，引导梦境隐喻风格"
       }
     ],
@@ -87,5 +98,14 @@
         "title": "梦境手记"
       }
     ]
-  }
+  },
+  "facets": [
+    "cognition.context_contributor",
+    "cognition.sleep_organ",
+    "console.surface",
+    "console.ui_slot"
+  ],
+  "extension_id": "community.organ.dream-journal",
+  "display_name": "Dream Journal",
+  "carrier_kind": "native_code_plugin"
 }

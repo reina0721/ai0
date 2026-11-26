@@ -1,4 +1,5 @@
-import type { ShellProtocolGateway } from "@ai0/gateway";
+import type { ExtensionCoreHost } from "@ai0/sdk";
+import type { ChannelProtocolGateway } from "@ai0/gateway";
 import { randomUUID } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ import {
   simulateLorebookActivation, toBrainRouterConfig, type AuthoritativeStateCoordinator,
   type BlackboardCompiler, type BlackboardPolicy, type BrainRegion,
   type BrainRegionRouter, type InteractionOpportunityPool,
-  type PolymorphicExtensionHost, type SensoryCoverageBucketManager,
+  type SensoryCoverageBucketManager,
   type SensoryCoverageUpdate, type VerifiableTurnTrace as CoordinatorTrace,
   type VirtualClock, type W1FastDialogueWorker
 } from "@ai0/cognition-core";
@@ -61,7 +62,7 @@ export interface DaemonHandlerContext {
   uninstallExternalExtension(id: string, keepConfig: boolean): Promise<void>;
   pluginLoader: RuntimePluginLoader;
   bundledSkillsDir: string;
-  shellGateway: ShellProtocolGateway;
+  channelGateway: ChannelProtocolGateway;
   soulDir: string;
   hostDir: string;
   storage: CoordinatorStorageMutator; sandboxStorage: CoordinatorStorageMutator;
@@ -69,8 +70,8 @@ export interface DaemonHandlerContext {
   soulArchiveManager: SoulArchiveManager; virtualClock: VirtualClock; sandboxClock: VirtualClock;
   coordinator: AuthoritativeStateCoordinator; sandboxCoordinator: AuthoritativeStateCoordinator;
   blackboardCompiler: BlackboardCompiler; sandboxBlackboardCompiler: BlackboardCompiler;
-  brainRegionRouter: BrainRegionRouter; extensionHost: PolymorphicExtensionHost;
-  sandboxExtensionHost: PolymorphicExtensionHost; sensoryCoverage: SensoryCoverageBucketManager;
+  brainRegionRouter: BrainRegionRouter; extensionHost: ExtensionCoreHost;
+  sandboxExtensionHost: ExtensionCoreHost; sensoryCoverage: SensoryCoverageBucketManager;
   opportunityPool: InteractionOpportunityPool; sandboxW1: W1FastDialogueWorker;
   coordinatorTraces: CoordinatorTrace[]; state: DaemonMutableState;
   emitTelemetry(track: AdminTelemetryTrack, payload: unknown,
@@ -208,13 +209,13 @@ export function createRealAdminHandlers(
       const audience = body.audience_scope === "only_owner" ? "only_owner" : "public_all";
       return backend.compiler.compile(backend.coordinator.getSnapshot(), policy, audience);
     },
-    "shells.topology": (_request, context) => ({
-      active_sessions: runtime.shellGateway.listConnections(context.target_instance),
-      shell_extensions: selected(runtime, context.target_instance).extensions.listExtensions()
-        .filter((item) => item.buses.includes("ext.shell")),
+    "channels.topology": (_request, context) => ({
+      active_sessions: runtime.channelGateway.listConnections(context.target_instance),
+      channel_extensions: selected(runtime, context.target_instance).extensions.listPackages()
+        .filter((item) => item.manifest.facets.includes("channel.bridge")),
       sensory_coverage: runtime.sensoryCoverage.list()
     }),
-    "shells.thalamicGate": (request) => {
+    "channels.thalamicGate": (request) => {
       const body = bodyOf(request.body);
       if (request.method !== "GET") {
         if (body.debounce_window_ms !== undefined)
@@ -318,9 +319,10 @@ export function createRealAdminHandlers(
       if (request.method !== "GET" && typeof body.extension_id === "string" && typeof body.enabled === "boolean") {
         if (context.target_instance === "live") return { status: 403,
           body: { error: "LIVE_SOVEREIGNTY_FENCE_VIOLATION" } };
-        host.setOrganEnabled(body.extension_id, body.enabled);
+        if (!host.getPackage(body.extension_id)) return { status: 404, body: { error: "UNKNOWN_EXTENSION" } };
+        host.setPackageEnabled(body.extension_id, body.enabled);
       }
-      return { extensions: host.listExtensions() };
+      return { extensions: host.listPackages() };
     },
     "extensions.hotReload": async (request, context) => {
       const body = bodyOf(request.body), id = context.params.extensionId;
@@ -652,9 +654,9 @@ export function createRealAdminHandlers(
       const venue = (perception.venue_type ?? "private_1on1") as VenueType;
       const audience = (perception.audience_scope ?? "only_owner") as AudienceScope;
       const modality = (perception.modality ?? "text") as SensorModality;
-      return runtime.runtime.handleShellTurn({
+      return runtime.runtime.handleChannelTurn({
         mode: "sandbox", text, principalId: audience === "only_owner" ? "owner:local" : "sandbox:operator",
-        shell_id: String(perception.shell_id ?? "sandbox.shell.default"), venue_type: venue, audience_scope: audience, modality
+        channel_id: String(perception.channel_id ?? "sandbox.channel.default"), venue_type: venue, audience_scope: audience, modality
       }, { eventId });
     },
     "sandbox.scenarios.run": () => runScenarioPlaybook(GOLDEN_REGRESSION_SCENARIO_V1),
@@ -1204,14 +1206,14 @@ export function createRealAdminHandlers(
     "integrations.platforms": (request, context) => {
       if (request.method === "GET") {
         const infra = readHostInfrastructureConfig(runtime.hostDir);
-        const activeSessions = runtime.shellGateway.listConnections(context.target_instance);
-        const shellExtensions = selected(runtime, context.target_instance).extensions.listExtensions()
-          .filter((item) => item.buses.includes("ext.shell"));
+        const activeSessions = runtime.channelGateway.listConnections(context.target_instance);
+        const channelExtensions = selected(runtime, context.target_instance).extensions.listPackages()
+          .filter((item) => item.manifest.facets.includes("channel.bridge"));
         return {
           platforms: infra.platforms,
           templates: PLATFORM_ADAPTER_TEMPLATES,
           active_sessions: activeSessions,
-          shell_extensions: shellExtensions
+          channel_extensions: channelExtensions
         };
       }
       if (context.target_instance !== "live") {
@@ -1303,13 +1305,13 @@ export function createRealAdminHandlers(
     "config.routingRulesTest": (request) => {
       const body = bodyOf(request.body);
       const config = readSoulProfileConfig(runtime.soulDir);
-      const shellId = String(body.shellId ?? "builtin.webchat").trim() || "builtin.webchat";
+      const channelId = String(body.channelId ?? "builtin.webchat").trim() || "builtin.webchat";
       const venueParsed = VenueTypeSchema.safeParse(body.venueType ?? "private_1on1");
       const venueType: VenueType = venueParsed.success ? venueParsed.data : "private_1on1";
       const sessionKey = String(body.sessionKey ?? "owner:local").trim() || "owner:local";
       const ceilingParsed = AudienceScopeSchema.safeParse(body.maxAudienceCeiling ?? "only_owner");
       const maxAudienceCeiling: AudienceScope = ceilingParsed.success ? ceilingParsed.data : "only_owner";
-      const resolved = resolveSessionProfile({ shellId, venueType, sessionKey, maxAudienceCeiling, config });
+      const resolved = resolveSessionProfile({ channelId, venueType, sessionKey, maxAudienceCeiling, config });
       return { route: resolved.route, regionBindings: resolved.regionBindings };
     },
     "knowledge.library": knowledgeAdmin(runtime),

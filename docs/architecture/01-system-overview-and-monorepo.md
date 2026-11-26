@@ -1,52 +1,56 @@
 # 01. 系统总体架构与 Monorepo 目标工程拓扑规范
 
-> **Clean-Slate V1** · 始终保持第一版，零历史沉积、零预设默认角色卡、三级渐进派生、四核正交分立。
+> **Clean-Slate V1** · 始终保持第一版，零历史沉积、零预设默认角色卡、三级渐进派生、五核正交分立。
 
-## 一、四核架构与三级渐进派生
+## 一、五核架构与三级渐进派生
 
-三级派生依次验证通用话轮、感知与表达边界、完整认知与宿主运行。实验从纸面轨迹出发，经过通用执行验证、AIRI 解剖与感知表达验证，收敛到通用派生。图中实线从依赖方指向依赖项，虚线表示网络通道。
+三级派生先划分宿主、角色卡、运行实例和挂载，再消去设备与场景策略，最后以七阶段实验检验不变量。`labs/stage0-paper-traces` → `labs/stage1-agent-core` → `labs/stage2-airi-dissection` → `labs/stage3-perception-expression` → `labs/stage4-universal-derivation` → `labs/stage5-composite-channel-facets` → `labs/stage6-mechanism-policy-ablation`。图中实线从依赖方指向依赖项，虚线表示网络通道。
 
 ```mermaid
 flowchart TB
-    Shell["具身躯壳与媒体插件"]
+    InteractionChannel["具身交互通道与媒体插件"]
     Admin["Owner WebUI / CLI"]
     Gateway["@ai0/gateway"]
     Protocol["@ai0/protocol"]
     Storage["@ai0/storage"]
     SDK["@ai0/sdk"]
-    subgraph Cores["四个正交核心"]
+    subgraph Cores["五个正交核心"]
+        Extension["@ai0/extension-core"]
         Agent["@ai0/agent-core"]
         Perception["@ai0/perception-core"]
         Cognition["@ai0/cognition-core"]
         Expression["@ai0/expression-core"]
     end
-    Shell -.->|"Channel A · Protocol v0 WebSocket"| Gateway
+    InteractionChannel -.->|"Channel A · Protocol v0"| Gateway
     Admin -.->|"Channel B · Owner REST/SSE"| Gateway
-    Shell --> Protocol & SDK
-    SDK --> Protocol
-    Gateway --> Protocol & Perception & Cognition & Expression & Storage
-    Cognition --> Protocol & Agent & Perception & Expression & Storage
+    InteractionChannel --> Protocol & SDK
+    SDK --> Protocol & Extension
+    Extension --> Protocol
+    Agent & Perception & Expression --> Extension
+    Gateway --> Protocol & Extension & Perception & Cognition & Expression & Storage
+    Cognition --> Protocol & Extension & Agent & Perception & Expression & Storage
     Agent & Perception & Expression & Storage --> Protocol
 ```
 
-## 二、八包职责
+## 二、九包职责
 
 - **`@ai0/protocol`** 为 Zod 机器契约唯一真相源，零内部依赖。覆盖 `core-v0/`、`extensions/`、`plugin-manifests/`、`character-card-v3/` 和 `control-plane/`。控制面定义 L0～L5 Deploy-to-Live 就绪契约及 `VerifiableTurnTrace`。
+- **`@ai0/extension-core`** 是扩展机制核心。以 `defineFacetPoint` 定义切面契约，`ExtensionCoreHost` 执行包级权限、`rev` 热重载及 `faulted_isolated` 熔断，`ExtensionComposition` 管理 Cordis Fiber 生命周期。详见[05 多切面扩展规范](05-eight-dimension-extension-system.md)。
 - **`@ai0/agent-core`** 是通用 LLM 与工具 `Turn / Round` 执行引擎。以 `system_invariant`、`developer_frame`、`untrusted_observation` 三层分离指令权威与数据。支持多步并发工具调度、`maxSteps` 到限结算和 `goalVerification` 缺少证据时的 `unverified` 守卫。HTTP 408、429 和 5xx 瞬态故障仅在副作用发生前重试。上游传输支持 `opencode_go` 的 `deepseek-v4.1-flash`、OpenAI-compatible、Anthropic、DeepSeek 与 Ollama。领域边界为零陪伴、情绪、记忆与 Avatar 知识。
-- **`@ai0/perception-core`** 拥有上行 `EmbodimentAffordanceRegistry` 与 `UniversalObservationFrame` 六元组元语法。`ScopedContextRegistry` 使用 `freshnessTtlMs` 和 `blind | disconnected | stale` 锁约束感知推断。`TurnLifecycleGate` 处理 `activity | interim | commit | retract`。时间梯度习惯化与 `ReflexGate` 以 `llmTokens: 0` 抑制例行信号并累计 `suppressedRoutineCount`。`ChronoceptiveSignalSynthesizer` 从经过时间扣除冬眠区间。
-- **`@ai0/cognition-core`** 的 `VirtualClock` 在 LIVE 锁定 1x，在 `SANDBOX:<fork_id>` 支持时间变速并记录冬眠区间。声明式 `ContinuousStateMetaEngine` 以描述符与潜状态驱动演化，SQL 心理标量列数为零。五域 `AuthoritativeStateCoordinator` 执行 MVCC 裁决。Tier 0 SB 243 安全守卫、四级 `EpistemicMemoryFirewall`（含玩笑语用防火墙与 `CommonGround` 双方共同确认状态机）及低于 2500 token 的声明式 `BlackboardCompiler`（含 70% `Social Mask Damper`）约束认知输入。包含 W1 对话、W2 行动、W3 睡眠整理、W4 多模态分析四路并发 Worker、五脑区模型路由、`PolymorphicExtensionHost` 与 `.scenario.yaml` 回放评估器。
-- **`@ai0/expression-core`** 的 `CommunicativeIntentEnvelope` 独立于人形，支持 `communicate | explicit_silence | actuate | request_observation`。`RealizerVocabularyNegotiator` 在缺少符合隐私约束的躯壳时置为 `held_pending_compliant_shell`。有界 `InteractionOpportunityPool` 管理表达机会。四态真值链为 `generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`。`GroundingReceiptTracker` 跟踪 `silenced` 与 `done` 两个中断边界，并恢复 `unsaid_remainder`。
+- **`@ai0/perception-core`** 拥有上行 `EmbodimentAffordanceRegistry` 与 `UniversalObservationFrame` 六元组元语法。`ScopedContextRegistry` 使用 `freshnessTtlMs` 和 `blind | disconnected | stale` 锁约束感知推断。`TurnLifecycleGate` 处理 `activity | interim | commit | retract`。`PerceptionFilterPipeline` 无切面时直通。挂载策略 Time Gradient Habituation 与 `ReflexGate` 以 `llmTokens: 0` 抑制例行信号并累计 `suppressedRoutineCount`。`ChronoceptiveSignalSynthesizer` 从经过时间扣除冬眠区间。
+- **`@ai0/cognition-core`** 的 `VirtualClock` 在 LIVE 锁定 1x，在 `SANDBOX:<fork_id>` 支持时间变速并记录冬眠区间。声明式 `ContinuousStateMetaEngine` 以描述符与潜状态驱动演化，默认 `descriptors = []`，SQL 心理标量列数为零。五域 `AuthoritativeStateCoordinator` 执行 MVCC 裁决。Tier 0 SB 243 安全守卫、四级 `EpistemicMemoryFirewall`（含玩笑语用防火墙与 `CommonGround` 双方共同确认状态机）及低于 2500 token 的声明式 `BlackboardCompiler`（含 70% `Social Mask Damper`）约束认知输入。包含 W1 对话、W2 行动、W3 睡眠整理、W4 多模态分析四路并发 Worker、五脑区模型路由与 `.scenario.yaml` 回放评估器。
+- **`@ai0/expression-core`** 的 `CommunicativeIntentEnvelope` 独立于人形，支持 `communicate | explicit_silence | actuate | request_observation`。`RealizerVocabularyNegotiator` 在缺少符合隐私约束的交互通道时置为 `held_pending_compliant_channel`。有界 `InteractionOpportunityPool` 管理表达机会。四态真值链为 `generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`。`GroundingReceiptTracker` 跟踪 `silenced` 与 `done` 两个中断边界，并恢复 `unsaid_remainder`。
 - **`@ai0/storage`** 负责 Local-First `.soul` 的 SQLite WAL、FTS5 与向量存储，以 `continuous_states_json` 保存检查点。持久化 `souls/host/` 基础设施与 Vault，负责 CCv3 导入、越权指令清理、未知 `extensions.<namespace>` 无损保留及 `.soul` 唤醒。Stage 1 用 SQL `WHERE visibility_scope …` 强制过滤。五表载荷执行拓扑级联 Hard Forget，通过 `redaction_ledger.json` 跨快照重放。V1 的兼容视图和预置灵魂数均为零。
-- **`@ai0/gateway`** 提供 Channel A Protocol v0 WebSocket、Channel B Owner Admin REST/SSE、`/healthz` 和 `/readyz`。
-- **`@ai0/sdk`** 是 `plugins/**` 的零后门多态扩展 SDK。官方与社区扩展共用运行时清单发现、装载与权限裁决路径。
+- **`@ai0/gateway`** 以 `ChannelProtocolGateway` 提供 Channel A Protocol v0 处理，以 `PrivilegedAdminServer` 提供 Channel B Owner Admin REST/SSE、`/healthz` 和 `/readyz`。
+- **`@ai0/sdk`** 是 `plugins/**` 的零后门多态扩展 SDK。提供 `defineExtensionPackage` 和跨核 `FacetPoint`。官方与社区扩展共用运行时清单发现、装载与权限裁决路径。
 
 ## 三、双平面接口与部署就绪
 
 | 边界 | Channel A · 公开具身协议 | Channel B · Owner 管理与遥测 |
 | :--- | :--- | :--- |
-| 传输 | `/protocol/v0/shell` · Protocol v0 WebSocket | `/api/admin/v1/*` · REST 与 SSE |
-| 凭据 | `Scoped Capability Token`，强制校验躯壳、场所、受众与执行器权限 | Owner 管理会话 |
-| 数据 | 注入可信来源四元组，端到端保留结构化 `UniversalObservationFrame`。普通字符串仅作为帧内内容字段。向合规躯壳发送表达意图并接收回执。 | 宿主认领、Provider 配置、角色卡管理与唤醒、躯壳绑定、`VerifiableTurnTrace` 与存档治理。 |
+| 传输 | `/protocol/v0/channel` · 五原语契约，部署桥提供 HTTP/SSE | `/api/admin/v1/*` · REST 与 SSE |
+| 凭据 | `Scoped Capability Token`，强制校验交互通道、场所、受众与执行器权限 | Owner 管理会话 |
+| 数据 | 注入可信来源四元组，端到端保留结构化 `UniversalObservationFrame`。普通字符串仅作为帧内内容字段。向合规交互通道发送表达意图并接收回执。 | 宿主认领、Provider 配置、角色卡管理与唤醒、交互通道绑定、`VerifiableTurnTrace` 与存档治理。 |
 
 `/healthz` 表示进程存活。`/readyz` 报告 Deploy-to-Live 阶段，仅 L5 表示 LIVE 就绪。
 
@@ -55,7 +59,7 @@ L0_UNCLAIMED
   → L1_CLAIMED_NO_PROVIDER
   → L2_PROVIDER_READY_NO_SOUL
   → L3_SOUL_AWAKENED_CONFIG_NEEDED
-  → L4_SOUL_AWAKENED_NO_SHELL
+  → L4_SOUL_AWAKENED_NO_CHANNEL
   → L5_LIVE_READY
 ```
 
@@ -78,9 +82,12 @@ L0_UNCLAIMED
 │   ├── stage1-agent-core/
 │   ├── stage2-airi-dissection/
 │   ├── stage3-perception-expression/
-│   └── stage4-universal-derivation/
+│   ├── stage4-universal-derivation/
+│   ├── stage5-composite-channel-facets/
+│   └── stage6-mechanism-policy-ablation/
 ├── packages/
 │   ├── protocol/
+│   ├── extension-core/
 │   ├── agent-core/
 │   ├── perception-core/
 │   ├── cognition-core/
@@ -103,15 +110,15 @@ L0_UNCLAIMED
 
 ## 五、编译期依赖边界
 
-`verify-architecture-boundaries.mjs` 对包声明及源码导入执行以下直接内部依赖允许清单。跨目录相对路径与别名同样受约束。
+`scripts/verify-architecture-boundaries.mjs` 对包声明及源码导入执行以下直接内部依赖允许清单。跨目录相对路径与别名同样受约束。
 
 | 依赖方 | 允许的直接内部依赖 |
 | :--- | :--- |
 | `@ai0/protocol` | 无。Zod 提供跨平台 Schema 校验。 |
-| `@ai0/agent-core` | `@ai0/protocol` |
-| `@ai0/perception-core`、`@ai0/expression-core`、`@ai0/storage`、`@ai0/sdk` | `@ai0/protocol` |
-| `@ai0/cognition-core` | `@ai0/protocol`、`@ai0/agent-core`、`@ai0/perception-core`、`@ai0/expression-core`、`@ai0/storage` |
-| `@ai0/gateway` | `@ai0/protocol`、`@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`、`@ai0/storage` |
+| `@ai0/extension-core`、`@ai0/storage` | `@ai0/protocol` |
+| `@ai0/agent-core`、`@ai0/perception-core`、`@ai0/expression-core`、`@ai0/sdk` | `@ai0/protocol`、`@ai0/extension-core` |
+| `@ai0/cognition-core` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/agent-core`、`@ai0/perception-core`、`@ai0/expression-core`、`@ai0/storage` |
+| `@ai0/gateway` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`、`@ai0/storage` |
 | `plugins/**` | `@ai0/protocol`、`@ai0/sdk` |
 
 `packages/*` 和 `apps/*` 禁止依赖或导入 `@ai0/plugin-*` 或 `plugins/**`。插件依靠运行时清单发现与权限裁决，插件页面由控制台动态挂载。Worker 与认知器官持有只读存储视图，权威写入由协调器通过提案提交。

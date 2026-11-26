@@ -1,6 +1,6 @@
 import { allowedCollections, mountedCollectionIds, profileMounts, searchKnowledge } from "./knowledge-service.js";
 import { countDeliveredSources, listKnowledgeCollections, turnKnowledgeSources } from "@ai0/storage";
-import { ExtensionComposition } from "@ai0/sdk";
+import { ExtensionCoreHost, ExtensionComposition, cognitionStateDynamicsFacet, cognitionContextContributorFacet, cognitionAttentionArbitratorFacet } from "@ai0/sdk";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import type { ConsoleLiveSnapshot } from "@ai0/console-webui";
 import {
   PrivilegedAdminServer,
-  ShellProtocolGateway,
+  ChannelProtocolGateway,
   type AdminTelemetryFrame,
   type AdminTelemetryTrack
 } from "@ai0/gateway";
@@ -20,10 +20,11 @@ import {
   BrainRegionRouter,
   buildRegionBindingsFromProfile,
   InteractionOpportunityPool,
-  PolymorphicExtensionHost,
   resolveSessionProfile,
   SensoryCoverageBucketManager,
   ThreeDimensionalPolicyEngine,
+  ContinuousStateMetaEngine,
+  evaluateCrisisGuard,
   toBrainRouterConfig,
   UniversalLlmProviderClient,
   VirtualClock,
@@ -239,6 +240,27 @@ function createKernelRetriever(
 }
 
 export class Ai0DaemonRuntime {
+  private readonly dynamics = new WeakMap<object, ContinuousStateMetaEngine>();
+  private readonly attention = new Map<string, { channelId: string | null; switchedAt: number }>();
+
+  getContinuousStates(mode: "live" | "sandbox" = "live"): Record<string, number> {
+    const host = mode === "live" ? this.extensionHost : this.sandboxExtensionHost;
+    const now = (mode === "live" ? this.virtualClock : this.sandboxClock).nowMs();
+    const states: Record<string, number> = {};
+    for (const entry of host.listFacets(cognitionStateDynamicsFacet)) {
+      const values = host.invokeFacet(entry, ({ descriptors }) => {
+        let engine = this.dynamics.get(entry);
+        if (!engine) {
+          engine = new ContinuousStateMetaEngine(descriptors, now);
+          this.dynamics.set(entry, engine);
+        }
+        return engine.evolveTo(now);
+      });
+      Object.assign(states, values);
+    }
+    return states;
+  }
+
   private readonly revoked = new Map<string, AbortController>();
   private readonly capabilityTimer: ReturnType<typeof setInterval>;
   generation(id: string, mode: "live" | "sandbox" = "live") {
@@ -248,7 +270,7 @@ export class Ai0DaemonRuntime {
     const key = JSON.stringify([id, mode]);
     this.revoked.get(key)?.abort();
     this.revoked.delete(key);
-    this.shellGateway.disconnectPlugin(id, mode);
+    this.channelGateway.disconnectPlugin(id, mode);
   }
   pluginSignal(pluginId: string, mode: "live" | "sandbox"): AbortSignal {
     const id = JSON.stringify([pluginId, mode]);
@@ -280,12 +302,12 @@ export class Ai0DaemonRuntime {
     readonly sandboxCoordinator: AuthoritativeStateCoordinator,
     readonly blackboardCompiler: BlackboardCompiler,
     readonly sandboxBlackboardCompiler: BlackboardCompiler,
-    readonly extensionHost: PolymorphicExtensionHost,
-    readonly sandboxExtensionHost: PolymorphicExtensionHost,
+    readonly extensionHost: ExtensionCoreHost,
+    readonly sandboxExtensionHost: ExtensionCoreHost,
     readonly brainRegionRouter: BrainRegionRouter,
     readonly workers: DaemonWorkers,
     readonly sandboxW1: W1FastDialogueWorker,
-    readonly shellGateway: ShellProtocolGateway,
+    readonly channelGateway: ChannelProtocolGateway,
     readonly adminServer: PrivilegedAdminServer,
     readonly coordinatorTraces: KernelTurnTrace[],
     readonly mutableState: DaemonMutableState,
@@ -328,7 +350,7 @@ export class Ai0DaemonRuntime {
     }
     this.archiveLifetime.abort();
     this.archiveLifetime = new AbortController();
-    this.shellGateway.disconnectTarget("live");
+    this.channelGateway.disconnectTarget("live");
     for (const controller of this.revoked.values()) controller.abort();
     this.revoked.clear();
     previousStorage.close();
@@ -357,13 +379,13 @@ export class Ai0DaemonRuntime {
       resolveSoulTurnModelBinding(manifest, readSoulProfileConfig(this.soulDir), infrastructure).consciousness ||
       this.hasExplicitLlmConfig || this.allowDeterministicSandbox
     ) : false;
-    const liveConnections = this.shellGateway.listConnections("live");
+    const liveConnections = this.channelGateway.listConnections("live");
     const prerequisites = [
       { met: claim.claimed, name: "host_owner_claim", stage: "L0_UNCLAIMED" },
       { met: providerReady, name: "verified_chat_provider", stage: "L1_CLAIMED_NO_PROVIDER" },
       { met: soulAwakened, name: "awakened_soul_archive", stage: "L2_PROVIDER_READY_NO_SOUL" },
       { met: bindingValid, name: "soul_consciousness_model_binding", stage: "L3_SOUL_AWAKENED_CONFIG_NEEDED" },
-      { met: liveConnections.length > 0, name: "connected_compliant_shell", stage: "L4_SOUL_AWAKENED_NO_SHELL" }
+      { met: liveConnections.length > 0, name: "connected_compliant_channel", stage: "L4_SOUL_AWAKENED_NO_CHANNEL" }
     ] as const;
     const missing = prerequisites.filter(item => !item.met);
     const stage = missing[0]?.stage ?? "L5_LIVE_READY";
@@ -379,7 +401,7 @@ export class Ai0DaemonRuntime {
         soulAwakened,
         activeSoulId: manifest?.soul_id ?? null,
         bindingValid,
-        activeShellConnections: liveConnections.length,
+        activeChannelConnections: liveConnections.length,
         hostCardsCount: listHostCharacterCards(this.hostDir).length
       }
     };
@@ -431,7 +453,7 @@ export class Ai0DaemonRuntime {
       const plugin = this.pluginLoader.getPlugin(id);
       writeExtensionRuntimeConfig(this.soulDir, id, { ...config }, {
         carrier_kind: plugin?.manifest.carrier_kind,
-        dimension: plugin?.manifest.dimension,
+        facets: plugin?.manifest.facets,
         enabled: plugin?.enabled ?? true,
         permissions: plugin?.manifest.permissions
       });
@@ -480,8 +502,8 @@ export class Ai0DaemonRuntime {
     await this.refreshCapabilities();
   }
 
-  fallbackShellId(): string {
-    return "shell.default";
+  fallbackChannelId(): string {
+    return "channel.default";
   }
 
   get storage(): CoordinatorStorageMutator {
@@ -503,10 +525,10 @@ export class Ai0DaemonRuntime {
     this.coordinator.restoreCheckpoint();
   }
 
-  async handleShellTurn(input: {
+  async handleChannelTurn(input: {
     principalId?: string;
     thread?: string;
-    shell_id?: string;
+    channel_id?: string;
     text: string;
     venue_type?: VenueType;
     audience_scope?: AudienceScope;
@@ -525,20 +547,20 @@ export class Ai0DaemonRuntime {
     const w1 = isSandbox ? this.sandboxW1 : this.workers.w1;
     const target: "live" | `sandbox:${string}` = isSandbox ? "sandbox:console" : "live";
 
-    const shellId = input.shell_id?.trim() || this.fallbackShellId();
+    const channelId = input.channel_id?.trim() || this.fallbackChannelId();
     const venue: VenueType = input.venue_type ?? "private_1on1";
     const requestedCeiling: AudienceScope =
       input.audience_scope ?? (venue === "public_livestream" ? "public_all" : "only_owner");
     const principal = input.principalId === "owner:local" ? "owner_verified" : "stranger";
     const modality: SensorModality = input.modality ?? "text";
     const nowMs = clock.nowMs();
-    const eventId = options.eventId ?? "evt_shell_" + randomUUID();
+    const eventId = options.eventId ?? "evt_channel_" + randomUUID();
 
     // Orthogonal UMO -> Profile -> Provider resolution (AstrBot-style routing + fail-closed ceiling)
     const { infrastructure, soulProfiles } = ensureOrthogonalStoresMigrated(this.soulDir, this.hostDir);
     const sessionKey = input.thread ?? input.principalId ?? "owner:local";
     const resolved = resolveSessionProfile({
-      shellId,
+      channelId,
       venueType: venue,
       sessionKey,
       maxAudienceCeiling: requestedCeiling,
@@ -556,7 +578,7 @@ export class Ai0DaemonRuntime {
       event_id: eventId,
       wall_ts_ms: Date.now(),
       virtual_ts_ms: nowMs,
-      source_shell_id: shellId,
+      source_channel_id: channelId,
       principal_id: input.principalId ?? "unknown",
       principal_trust: principal,
       venue_type: venue,
@@ -578,7 +600,7 @@ export class Ai0DaemonRuntime {
 
     this.adminServer.broadcastTelemetry("[EVENT]", {
       event_id: eventId,
-      shell_id: shellId,
+      channel_id: channelId,
       venue_type: venue,
       audience_scope: audience,
       profile_id: resolved.route.profileId,
@@ -591,17 +613,48 @@ export class Ai0DaemonRuntime {
     const primaryRoleMeta =
       ROLE_ARCHETYPE_PRESETS[resolved.profile.roleArchetype] ??
       ROLE_ARCHETYPE_PRESETS[studioConfig.soulStudio.primaryRole];
-    const matchedLoreEntries = studioConfig.soulStudio.lorebooks
-      .filter((entry) => entry.enabled && entry.keys.some((k) => k && input.text.includes(k)))
-      .map((entry) => ({ title: entry.title, content: entry.content }));
     const effectivePublicMask = resolved.route.socialMaskActive || audience !== "only_owner" || principal !== "owner_verified";
+    const host = isSandbox ? this.sandboxExtensionHost : this.extensionHost;
+    const continuous = this.getContinuousStates(isSandbox ? "sandbox" : "live");
+    const matchedLoreEntries: { title: string; content: string }[] = [];
+    if (!effectivePublicMask) {
+      for (const entry of host.listFacets(cognitionContextContributorFacet)) {
+        if (entry.packageId !== "builtin.lorebook-contributor" ||
+            !host.allowsReadDomain(entry.packageId, "D1_WORKING_TURN") ||
+            !host.allowsReadDomain(entry.packageId, "D5_IDENTITY_NARRATIVE")) continue;
+        const item = await host.invokeFacetAsync(entry, facet => facet.contributeToBlackboard({
+          D1_WORKING_TURN: { recent_turns: [{ role: "user", text: input.text }] },
+          D5_IDENTITY_NARRATIVE: { lorebook: { book_id: "studio", title: "Lorebook",
+            entries: studioConfig.soulStudio.lorebooks.map(entry => ({
+              entry_id: entry.id, keys: entry.keys, content: entry.content, enabled: entry.enabled,
+              priority: entry.priority, recursive_depth: 3, max_token_budget: 240
+            })) } }
+        }, 240));
+        if (item) matchedLoreEntries.push({ title: item.slot_id, content: item.text });
+      }
+    }
+    const previousFocus = this.attention.get(target);
+    const policy = host.listFacets(cognitionAttentionArbitratorFacet)[0];
+    const focus = policy && host.invokeFacet(policy, facet => facet.arbitrate({
+      candidates: [...new Set([channelId, ...this.channelGateway.listConnections(isSandbox ? "sandbox" : "live").map(connection => connection.channel_id)])]
+        .map(id => ({ channel_id: id, salience: Number(id === channelId),
+          l0_crisis: id === channelId && evaluateCrisisGuard(input.text, clock).status === "INTERCEPTED_CRISIS" })),
+      current_channel_id: previousFocus?.channelId ?? null,
+      last_switch_ts_ms: previousFocus?.switchedAt ?? nowMs,
+      now_ts_ms: nowMs,
+      events: [{ channel_id: channelId, event_type: "perception_committed" }]
+    }));
+    if (focus?.switched) {
+      this.attention.set(target, { channelId: focus.selected_channel_id, switchedAt: nowMs });
+      this.adminServer.broadcastTelemetry("[SYS]", { action: "attention_focus", ...focus }, target, nowMs);
+    }
     const compiledStudioPrompt = compileStudioPromptPreview(studioConfig, {
       audienceScope: effectivePublicMask ? "public_all" : "only_owner",
       venueType: venue,
-      platform: shellId,
-      moodValence: snapBefore.D2_HOMEOSTASIS_AFFECT.instant_valence,
-      circadianEnergy: snapBefore.D2_HOMEOSTASIS_AFFECT.circadian_energy,
-      metabolicEnergy: snapBefore.D2_HOMEOSTASIS_AFFECT.metabolic_energy
+      platform: channelId,
+      moodValence: continuous.instant_valence ?? snapBefore.D2_HOMEOSTASIS_AFFECT.instant_valence,
+      circadianEnergy: continuous.circadian_energy ?? snapBefore.D2_HOMEOSTASIS_AFFECT.circadian_energy,
+      metabolicEnergy: continuous.metabolic_energy ?? snapBefore.D2_HOMEOSTASIS_AFFECT.metabolic_energy
     });
 
     const matchedModel = routedBinding && (
@@ -652,21 +705,21 @@ export class Ai0DaemonRuntime {
             model: modelId,
             discoveredModel,
             sessionId: routedSource.adapterType === "opencode_go"
-              ? createHash("sha256").update(JSON.stringify([manifest.soul_id, target, shellId, sessionKey])).digest("hex")
+              ? createHash("sha256").update(JSON.stringify([manifest.soul_id, target, channelId, sessionKey])).digest("hex")
               : undefined
           }
         : undefined;
-    // D1 is shared across shells. Only replay this session's turns; knowledge is recalled
+    // D1 is shared across channels. Only replay this session's turns; knowledge is recalled
     // afresh under the current mounts and audience instead of replaying an old quotation.
     const history = snapBefore.D1_WORKING_TURN.recent_turns;
     const modelWindow = getEffectiveModelContextWindow(dynamicLlmConfig);
     const canReplay = (turn: typeof history[number]) => {
       const event = storage.getEventById(turn.event_id.replace(/:w1$/, ""));
-      if (!event || event.redacted_at_ts_ms !== null || event.source_shell_id !== shellId ||
+      if (!event || event.redacted_at_ts_ms !== null || event.source_channel_id !== channelId ||
           event.principal_id !== input.principalId || event.audience_scope !== audience) return false;
       try {
         const meta = JSON.parse(event.payload_json);
-        return !meta?.shell_process_redacted && meta?.thread === input.thread && meta?.profile_id === resolved.profile.id &&
+        return !meta?.channel_process_redacted && meta?.thread === input.thread && meta?.profile_id === resolved.profile.id &&
           !(turn.role === "assistant" && meta.knowledge_consulted);
       } catch {
         return false;
@@ -683,8 +736,8 @@ export class Ai0DaemonRuntime {
     const latestTurn = history.at(-1);
     const turn = await w1.runTurnAsync({
       event_id: eventId,
-      target_shell_id: this.shellGateway.listConnections(isSandbox ? "sandbox" : "live")
-        .some(connection => connection.shell_id === shellId) ? shellId : undefined,
+      target_channel_id: this.channelGateway.listConnections(isSandbox ? "sandbox" : "live")
+        .some(connection => connection.channel_id === channelId) ? channelId : undefined,
       principal,
       venue_type: venue,
       audience_scope: audience,
@@ -794,8 +847,8 @@ export class Ai0DaemonRuntime {
     return receipt;
   }
 
-  handleShellInterrupt(input: {
-    shell_id?: string;
+  handleChannelInterrupt(input: {
+    channel_id?: string;
     intent_id: string;
     spoken_char_offset: number;
     full_text: string;
@@ -816,7 +869,7 @@ export class Ai0DaemonRuntime {
       "[TRACE]",
       {
         event: "barge_in_interrupted",
-        ...(input.shell_id ? { shell_id: input.shell_id } : {}),
+        ...(input.channel_id ? { channel_id: input.channel_id } : {}),
         intent_id: input.intent_id,
         spoken_char_offset: offset,
         ...(eventId ? {} : { unsaid_remainder: unsaidRemainder })
@@ -831,7 +884,7 @@ export class Ai0DaemonRuntime {
     };
   }
 
-  clearShellTranscript(_shellId?: string, _mode: "live" | "sandbox" = "live"): { ok: true; cleared: number } {
+  clearChannelTranscript(_channelId?: string, _mode: "live" | "sandbox" = "live"): { ok: true; cleared: number } {
     return { ok: true, cleared: 0 };
   }
 
@@ -924,7 +977,7 @@ export class Ai0DaemonRuntime {
           id: evt.event_id,
           track: evt.event_category === "sleep_consolidation_run" ? "AGENCY" : "EVENT",
           timestamp: new Date(evt.virtual_ts_ms).toISOString().slice(11, 19),
-          message: `[${evt.source_shell_id}/${evt.audience_scope}] ${evt.summary_text}`
+          message: `[${evt.source_channel_id}/${evt.audience_scope}] ${evt.summary_text}`
         });
       }
     }
@@ -973,11 +1026,11 @@ export class Ai0DaemonRuntime {
       const manifest = plugin.manifest;
       if (!studioConfig.ecosystem.plugins.some(item => item.id === manifest.extension_id)) {
         studioConfig.ecosystem.plugins.push({ id: manifest.extension_id, name: manifest.display_name,
-          version: manifest.version, bus: manifest.dimension, carrier: manifest.carrier_kind,
+          version: manifest.version, bus: manifest.facets[0]!, carrier: manifest.carrier_kind,
           enabled: plugin.enabled, description: "", configFields: [] });
       }
     }
-    const connections = this.shellGateway.listConnections(mode);
+    const connections = this.channelGateway.listConnections(mode);
     const conversations = buildConversationsList(storage, studioConfig, soulProfiles);
     const availableSouls = unawakened ? [] : this.listSoulInstances();
 
@@ -996,7 +1049,7 @@ export class Ai0DaemonRuntime {
       virtualOffsetHours: isSandbox ? this.mutableState.virtualOffsetHours : 0,
       capabilityRevision: this.pluginLoader.revision,
       activeConnections: connections.length,
-      connectedShellIds: [...new Set(connections.map(session => session.shell_id))],
+      connectedChannelIds: [...new Set(connections.map(session => session.channel_id))],
       eventsCount: unawakened ? 0 : Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM event_log WHERE redacted_at_ts_ms IS NULL").get()?.n),
       memoriesCount: unawakened ? 0 : Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM memories WHERE invalidated_at_ts IS NULL").get()?.n),
       tracesCount: unawakened ? 0 : Number(storage.sqlite.prepare("SELECT COUNT(*) AS n FROM turn_decision_traces").get()?.n),
@@ -1035,7 +1088,7 @@ export class Ai0DaemonRuntime {
       milestones,
       extensions: this.pluginLoader.listPlugins().map(plugin => {
         const id = plugin.manifest.extension_id;
-        const mounted = extHost.listExtensions().find(item => item.id === id);
+        const mounted = extHost.getPackage(id);
         const cfgState = this.pluginLoader.getPluginConfig(extHost, id);
         return {
           id,
@@ -1052,9 +1105,9 @@ export class Ai0DaemonRuntime {
           generation: this.generation(id, mode),
           activationError: this.pluginLoader.activationError(extHost, id),
           carrier: plugin.manifest.carrier_kind,
-          buses: mounted ? [...mounted.buses] : [plugin.manifest.dimension],
-          enabled: !!mounted,
-          rev: mounted?.rev ?? cfgState.rev,
+          facets: plugin.manifest.facets,
+          enabled: mounted?.status === "active",
+          rev: cfgState.rev,
           readDomains: [...plugin.manifest.permissions.read_blackboard_domains],
           proposeDomains: [...plugin.manifest.permissions.propose_mutation_domains],
           maxAudienceScope: plugin.manifest.permissions.max_audience_scope,
@@ -1194,8 +1247,8 @@ function composeDaemonRuntime(
     ...(options.userPluginsDir ? { userPluginsDir: options.userPluginsDir } : {}),
     ...(options.extraPluginDirs ? { extraPluginDirs: options.extraPluginDirs } : {})
   });
-  const extensionHost = new PolymorphicExtensionHost();
-  const sandboxExtensionHost = new PolymorphicExtensionHost();
+  const extensionHost = new ExtensionCoreHost();
+  const sandboxExtensionHost = new ExtensionCoreHost();
   const compositions = [new ExtensionComposition(), new ExtensionComposition()];
 
 
@@ -1235,7 +1288,8 @@ function composeDaemonRuntime(
     if (frame) mutableState.telemetryFrames.push(frame);
   };
 
-  const shellGateway = new ShellProtocolGateway({
+  const channelGateway = new ChannelProtocolGateway({
+    extensionHost,
     clock: virtualClock,
     w1: {
       recordInterruption(record) { workers.w1.recordInterruption(record); }
@@ -1252,14 +1306,14 @@ function composeDaemonRuntime(
         brainRouter: brainRegionRouter,
         llmClient,
         allowDeterministicSandbox,
-        realizerNegotiator: shellGateway.negotiator,
+        realizerNegotiator: channelGateway.negotiator,
         extensionHost,
         onTraceCommitted: (trace) => emitTelemetry("[TRACE]", { trace_id: trace.trace_id, rev: trace.state_rev_after }, "live")
       }
     ),
-    w2: new W2AgencyTaskWorker(coordinator, new ThreeDimensionalPolicyEngine(), virtualClock),
-    w3: new W3SleepReflectionWorker(coordinator, readOnlyView, virtualClock),
-    w4: new W4MultimodalAnalyzerWorker(sensoryCoverage, virtualClock)
+    w2: new W2AgencyTaskWorker(coordinator, new ThreeDimensionalPolicyEngine(), virtualClock, extensionHost),
+    w3: new W3SleepReflectionWorker(coordinator, readOnlyView, virtualClock, extensionHost),
+    w4: new W4MultimodalAnalyzerWorker(sensoryCoverage, virtualClock, extensionHost)
   };
 
   const sandboxW1 = new W1FastDialogueWorker(
@@ -1272,7 +1326,7 @@ function composeDaemonRuntime(
       brainRouter: brainRegionRouter,
       llmClient,
       allowDeterministicSandbox,
-      realizerNegotiator: shellGateway.negotiator,
+      realizerNegotiator: channelGateway.negotiator,
       extensionHost: sandboxExtensionHost,
       onTraceCommitted: (trace) =>
         emitTelemetry("[TRACE]", { trace_id: trace.trace_id, rev: trace.state_rev_after }, "sandbox:console")
@@ -1288,7 +1342,7 @@ function composeDaemonRuntime(
     uninstallExternalExtension: (id, keepConfig) => runtimeRef!.uninstallExternalExtension(id, keepConfig),
     pluginLoader,
     bundledSkillsDir,
-    shellGateway,
+    channelGateway,
     get soulDir() { return runtimeRef!.soulDir; },
     hostDir,
     get storage() { return getLiveStorage(); },
@@ -1353,7 +1407,7 @@ function composeDaemonRuntime(
     brainRegionRouter,
     workers,
     sandboxW1,
-    shellGateway,
+    channelGateway,
     adminServer,
     coordinatorTraces,
     mutableState,

@@ -387,7 +387,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
               </WorkspaceTableHead>
               <WorkspaceTableBody>
                 {conversations.map((conv) => {
-                  const page = registeredPages(snap).find(item => item.shell_id === conv.platform);
+                  const page = registeredPages(snap).find(item => item.channel_id === conv.platform);
                   const stageHref = page?.path;
                   return (
                   <WorkspaceTableRow key={conv.umo}>
@@ -472,8 +472,8 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
     }
   };
 
-  const shellPages = registeredPages(snap).filter(page => page.shell_id);
-  const primaryPage = shellPages.length === 1 ? shellPages[0] : undefined;
+  const channelPages = registeredPages(snap).filter(page => page.channel_id);
+  const primaryPage = channelPages.length === 1 ? channelPages[0] : undefined;
   const primaryStageHref = primaryPage?.path ?? "/integrations/platforms";
   const primaryStageLabel = primaryPage ? "进入 " + primaryPage.title : "管理消息平台";
 
@@ -523,7 +523,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
               <small>{policy ? `配置用量 ${(policy.usedTokensToday / 1000).toFixed(1)}k / ${(policy.dailyTokenBudget / 1000).toFixed(0)}k Tokens` : "等待预算状态"}</small>
             </div>
             <div className="ai0-workspace-metric">
-              <span className="ai0-workspace-metric__label">{renderConsoleIcon("shells", 14)}平台与路由</span>
+              <span className="ai0-workspace-metric__label">{renderConsoleIcon("channels", 14)}平台与路由</span>
               <strong className="ai0-workspace-metric__value">
                 {snap?.infrastructure?.platforms.length ?? snap?.activeConnections ?? "—"}
               </strong>
@@ -639,7 +639,7 @@ export function Domain1DashboardPage(props: Domain1DashboardPageProps): ReactEle
               <small>统一接入 LLM、Embedding、Rerank、TTS/STT 上游算力池</small>
             </WorkspaceChoice>
             <WorkspaceChoice href="/integrations/platforms" onClick={navClick("/integrations/platforms")}  >
-              <span className="ai0-workspace-choice-title">{renderConsoleIcon("shells", 15)}<span>消息平台与躯壳</span></span>
+              <span className="ai0-workspace-choice-title">{renderConsoleIcon("channels", 15)}<span>消息平台与交互通道</span></span>
               <small>管理 WebChat、QQ、Telegram、Discord 与外部具身通道</small>
             </WorkspaceChoice>
             <WorkspaceChoice href="/config/profiles" onClick={navClick("/config/profiles")}  >

@@ -660,7 +660,7 @@ function RoutingRulesEditor(props: { snapshot?: ConsoleLiveSnapshot }): ReactEle
   const pickedProfileId = newProfileId || profiles[0]?.id || "";
 
   // Live UMO routing simulator
-  const [testShell, setTestShell] = useState("builtin.webchat");
+  const [testChannel, setTestChannel] = useState("builtin.webchat");
   const [testVenue, setTestVenue] = useState<VenueType>("private_1on1");
   const [testSession, setTestSession] = useState("owner:local");
   const [testCeiling, setTestCeiling] = useState<AudienceScope>("only_owner");
@@ -699,7 +699,7 @@ function RoutingRulesEditor(props: { snapshot?: ConsoleLiveSnapshot }): ReactEle
     setTesting(true);
     try {
       const res = await ctx.postAdmin<{ route: ResolvedSessionRoute }>("config/routing-rules/test", {
-        shellId: testShell,
+        channelId: testChannel,
         venueType: testVenue,
         sessionKey: testSession,
         maxAudienceCeiling: testCeiling
@@ -840,8 +840,8 @@ function RoutingRulesEditor(props: { snapshot?: ConsoleLiveSnapshot }): ReactEle
         </WorkspaceRow>
         <WorkspaceGrid columns={4}>
           <WorkspaceField>
-            <label>来源平台 / Shell ID</label>
-            <CompactInput value={testShell} onInput={setTestShell} />
+            <label>来源平台 / Channel ID</label>
+            <CompactInput value={testChannel} onInput={setTestChannel} />
           </WorkspaceField>
           <WorkspaceField>
             <span>场合类型</span>

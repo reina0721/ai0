@@ -41,7 +41,7 @@ export function CapabilitiesMultimodalPage(props: CapabilitiesMultimodalPageProp
   const allProviders = snap?.infrastructure?.providers ?? [];
   const ttsProviders = allProviders.filter((p) => p.capabilityKind === "tts");
   const sttProviders = allProviders.filter((p) => p.capabilityKind === "stt");
-  const extensions = snap?.extensions.filter((ext) => ext.buses.some((bus) => bus.startsWith("ext.media"))) ?? [];
+  const extensions = snap?.extensions.filter((ext) => ext.facets.includes("expression.media_transcoder")) ?? [];
   const intent = snap?.latestTrace?.steps.step7_emitted_intent;
 
   const draft = useWorkspaceDraft<MultimodalCapabilityConfig>(

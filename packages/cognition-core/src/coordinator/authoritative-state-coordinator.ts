@@ -9,7 +9,7 @@ export type StateDomain =
 export type DomainRevisions = Record<StateDomain, number>;
 
 export interface WorkingTurnState {
-  active_focus_shell_id: string;
+  active_focus_channel_id: string;
   recent_turns: Array<{ role: "user" | "assistant"; text: string; event_id: string }>;
   unsaid_remainder: string | null;
   pending_opportunities: InteractionOpportunity[];
@@ -113,7 +113,7 @@ export class AuthoritativeStateCoordinator {
   private stateRev = 0;
   private readonly domainRevs = Object.fromEntries(DOMAINS.map(d => [d, 0])) as DomainRevisions;
   private readonly d1: WorkingTurnState = {
-    active_focus_shell_id: "", recent_turns: [], unsaid_remainder: null, pending_opportunities: [],
+    active_focus_channel_id: "", recent_turns: [], unsaid_remainder: null, pending_opportunities: [],
   };
   private readonly d2: HomeostasisAffectState = {
     instant_valence: 0, instant_arousal: 0, mood_baseline_val: 0,
@@ -179,7 +179,7 @@ export class AuthoritativeStateCoordinator {
       if (stale && !barge) reason = "STALE_TURN";
       else {
         if (barge) this.truncateSpokenTurn(Number(p.spoken_char_offset ?? 0));
-        if (typeof p.active_focus_shell_id === "string") this.d1.active_focus_shell_id = p.active_focus_shell_id;
+        if (typeof p.active_focus_channel_id === "string") this.d1.active_focus_channel_id = p.active_focus_channel_id;
         if (p.append_turn && typeof p.append_turn === "object") this.d1.recent_turns.push(p.append_turn as WorkingTurnState["recent_turns"][number]);
         if (Array.isArray(p.pending_opportunities)) this.d1.pending_opportunities = p.pending_opportunities as InteractionOpportunity[];
       }

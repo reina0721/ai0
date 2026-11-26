@@ -57,7 +57,7 @@ export function SandboxLabWorkspace({ snapshot }: { snapshot?: ConsoleLiveSnapsh
   });
   const inject = () => run(async () => {
     const result = await ctx?.postAdmin<{ trace?: VerifiableTurnTrace; expression?: { fallback_text?: string } }>("sandbox/inject", {
-      venue_type: "public_livestream", audience_scope: "public_all", shell_id: "console.lab",
+      venue_type: "public_livestream", audience_scope: "public_all", channel_id: "console.lab",
       summary_text: "这是公开会话。请用一句话说明你能共享的行程范围。"
     }, "sandbox:console");
     const recall = result?.trace?.steps.step3_memory_recall;

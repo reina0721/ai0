@@ -4,7 +4,7 @@ import { AudienceScopeSchema } from "../core-v0/primitives.js";
 import {
   CapabilityRiskSchema,
   ExtensionCarrierKindSchema,
-  ExtensionDimensionSchema,
+  ExtensionFacetIdSchema,
   ExtensionPermissionsSchema,
   PluginConfigFieldSchema,
   ThemeColorPresetSchema
@@ -235,7 +235,7 @@ export const ExtensionMarketEntrySchema = z.object({
   version: z.string().min(1),
   author: z.string().min(1),
   description: z.string().default(""),
-  dimension: ExtensionDimensionSchema,
+  facets: z.array(ExtensionFacetIdSchema).min(1),
   carrierKind: ExtensionCarrierKindSchema,
   tags: z.array(z.string()).default([]),
   homepage: z.string().optional(),
@@ -247,7 +247,7 @@ export const ExtensionMarketEntrySchema = z.object({
 export type ExtensionMarketEntry = z.infer<typeof ExtensionMarketEntrySchema>;
 
 // ---------------------------------------------------------------------------
-// 2. Plane IV — Downstream Platform & Shell Pool (纯粹的消息平台与躯壳接入池)
+// 2. Plane IV — Downstream Platform & Channel Pool (纯粹的消息平台与通道接入池)
 // ---------------------------------------------------------------------------
 
 export const PlatformAdapterKindSchema = z.enum([
@@ -259,7 +259,7 @@ export const PlatformAdapterKindSchema = z.enum([
   "feishu",
   "telegram",
   "discord",
-  "desktop_shell",
+  "desktop_channel",
   "live2d",
   "webhook"
 ]);
@@ -388,7 +388,7 @@ export const UmoRoutingRuleSchema = z.object({
   id: z.string().min(1),
   priority: z.number().int().min(0).max(1000).default(100),
   label: z.string().min(1),
-  /** Unified Message Object pattern: [platform_or_shell]:[venue_type]:[session_or_principal] (* wildcards supported). */
+  /** Unified Message Object pattern: [platform_or_channel]:[venue_type]:[session_or_principal] (* wildcards supported). */
   umoPattern: z.string().min(1),
   audienceScope: AudienceScopeSchema.default("only_owner"),
   profileId: z.string().min(1),

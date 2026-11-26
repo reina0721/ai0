@@ -59,10 +59,10 @@ test("verifies five-plane navigation and orthogonal Providers, Platforms, and Pr
   await page.getByRole("dialog").getByRole("button", { name: "确认" }).click();
   await expect(tempSourceItem).toHaveCount(0);
 
-  // 3. Reborn Fig 2: 消息平台与躯壳 (/integrations/platforms) — Pure Platform Pool, zero WebChat banner / gate tabs
-  await nav.getByRole("link", { name: "消息平台与躯壳", exact: true }).click();
+  // 3. Reborn Fig 2: 消息平台与交互通道 (/integrations/platforms) — Pure Platform Pool, zero WebChat banner / gate tabs
+  await nav.getByRole("link", { name: "消息平台与交互通道", exact: true }).click();
   await expect(page).toHaveURL(/\/integrations\/platforms$/);
-  await expect(page.getByRole("heading", { name: "消息平台与躯壳", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "消息平台与交互通道", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "打开 WebChat" })).toHaveCount(0);
   await expect(page.locator(".ai0-workspace-tab", { hasText: "注意力焦点仲裁" })).toHaveCount(0);
   await expect(page.locator(".ai0-workspace-tab", { hasText: "话轮防抖与感官门控" })).toHaveCount(0);

@@ -16,7 +16,7 @@ import { RippleButton } from "../primitives/index.js";
 export type NavRailMode = "mini" | "expanded" | "dual";
 
 export interface DynamicPluginNavigationLink extends ConsoleNavigationItem {
-  /** Shell-backed interactive pages (e.g. WebChat) mount directly under "概览与对话". */
+  /** Channel-backed interactive pages (e.g. WebChat) mount directly under "概览与对话". */
   placement?: "overview_chat" | "capabilities_ext";
   icon?: ConsoleIconName;
 }

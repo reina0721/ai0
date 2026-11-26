@@ -6,7 +6,7 @@ import { Output, streamText, type LanguageModelUsage } from "ai";
 import { getSupportedReasoningEfforts, isOpenRouterBaseUrl } from "@ai0/protocol";
 
 import type {
-  ShellTokenUsage,
+  ChannelTokenUsage,
   DiscoveredRemoteModel,
   KeyRotationStrategy,
   ModelCapabilities,
@@ -735,7 +735,7 @@ function detail(value: unknown, field: string): number | undefined {
 }
 
 /** Some adapters fill missing usage with zero. Use the upstream counters to retain absence. */
-function reportedUsage(usage: LanguageModelUsage, messages: boolean): ShellTokenUsage {
+function reportedUsage(usage: LanguageModelUsage, messages: boolean): ChannelTokenUsage {
   const raw = usage.raw ?? {};
   if (messages) return {
     inputTokens: reportedCount(raw.input_tokens) === undefined ? undefined : usage.inputTokens,
@@ -877,7 +877,7 @@ export class UpstreamModelClient {
         });
         let content = "";
         let actualModel = modelId;
-        let usage: ShellTokenUsage = {};
+        let usage: ChannelTokenUsage = {};
         for await (const part of response.fullStream) {
           signal?.throwIfAborted();
           if (part.type === "text-delta") { content += part.text; }
@@ -920,7 +920,7 @@ export interface StructuredModelResponse<T> {
   value: T;
   provider_used: string;
   model_used: string;
-  usage: ShellTokenUsage;
+  usage: ChannelTokenUsage;
 }
 export class ProviderNotConfiguredError extends Error {
   readonly code = "PROVIDER_NOT_READY";

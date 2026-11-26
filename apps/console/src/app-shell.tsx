@@ -138,7 +138,7 @@ function OnboardingWizardOverlay(props: {
         primaryRole: selectedRole
       });
       const updated = await ctx.refreshSnapshot();
-      const pages = registeredPages(updated).filter(page => page.shell_id);
+      const pages = registeredPages(updated).filter(page => page.channel_id);
       const nextPath = pages.length === 1 ? pages[0]!.path : "/integrations/platforms";
       ctx.showToast("初始化配置已保存，正在进入交互工作区");
       props.onClose();
@@ -313,7 +313,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
     id: item.pluginId + item.path,
     path: item.path,
     label: item.title,
-    placement: item.shell_id ? "overview_chat" as const : "capabilities_ext" as const
+    placement: item.channel_id ? "overview_chat" as const : "capabilities_ext" as const
   }));
   const links = [
     ...pageLinks,
@@ -322,7 +322,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
       .map(item => ({ ...item, placement: "capabilities_ext" as const }))
   ];
   const inspectorMode = page ? "mini" : props.inspectorMode ?? ctx?.inspectorMode ?? "mini";
-  const activeDomain = route?.domainId ?? (page?.shell_id ? "overview" : "capabilities");
+  const activeDomain = route?.domainId ?? (page?.channel_id ? "overview" : "capabilities");
   const targetInstance = mode === "live" ? "live" : "sandbox:console";
   const smallNav = useMediaQuery("(max-width: 1079px)");
   const overlayInspector = useMediaQuery(inspectorMode === "sandbox-diff" ? "(max-width: 1450px)" : "(max-width: 1310px)");
@@ -446,7 +446,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
           />
         }
         navigationRail={
-          <div data-shell-slot="navigation">
+          <div data-channel-slot="navigation">
             <PolymorphicNavRail extensionLinks={links}
               mode={smallNav ? "mini" : navRailMode}
               activeDomain={activeDomain}
@@ -459,7 +459,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
           </div>
         }
         main={
-          <div data-shell-slot="main">
+          <div data-channel-slot="main">
             {!page && ctx?.loading ? <LinearProgress className="ai0-bootstrap-progress" aria-label="正在连接守护进程" /> : null}
             {!page && ctx?.error ? (
               <Alert severity={snapshot ? "warning" : "error"} className="ai0-connection-notice"
@@ -476,7 +476,7 @@ function ConsoleShell(props: ConsoleAppOptions): ReactElement {
           </div>
         }
         contextInspector={
-          <div data-shell-slot="inspector">{overlayInspector ? null : inspector}</div>
+          <div data-channel-slot="inspector">{overlayInspector ? null : inspector}</div>
         }
         overlays={
           <div>

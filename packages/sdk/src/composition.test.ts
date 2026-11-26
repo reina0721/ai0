@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ExtensionComposition, type ExtensionScope } from "./composition.js";
+import { ExtensionComposition, type ExtensionScope } from "./index.js";
 
 const actions = { owner: "page", name: "actions", version: 1, parse: String };
 const menu = { owner: "button", name: "menu", version: 1, parse: String };

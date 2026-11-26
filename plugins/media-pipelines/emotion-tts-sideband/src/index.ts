@@ -1,10 +1,14 @@
+import { Ai0ExtensionManifestSchema } from "@ai0/protocol";
+import manifestJson from "../ai0.extension.json" with { type: "json" };
+const manifest = Ai0ExtensionManifestSchema.parse(manifestJson);
+
 import {
   ExtMediaSidebandV1Schema,
   type ExpressionEnvelope,
   type ExtMediaSidebandV1,
   type VisemeFrame
 } from "@ai0/protocol";
-import { defineMediaPipelinePlugin } from "@ai0/sdk";
+import { defineExtensionPackage, expressionMediaTranscoderFacet } from "@ai0/sdk";
 
 const offsetsFor = (text: string): number[] => {
   const chars = Array.from(text);
@@ -50,22 +54,18 @@ export function buildSideband(intent: ExpressionEnvelope): ExtMediaSidebandV1 {
   });
 }
 
-export const emotionTtsSideband = defineMediaPipelinePlugin({
-  extension_id: "builtin.media.emotion-tts-sideband",
-  display_name: "Emotion TTS Sideband",
-  version: "1.0.0",
-  author: "ai0-official",
-  carrier_kind: "native_code_plugin",
-  dimension: "ext.media_pipeline",
-  getSupportedVocabulary: () => ({
-    voice_emotion_tags: ["warm_neutral", "bright", "soft", "curious"],
-    visual_semantic_cues: ["gentle_blink", "small_smile", "concerned_gaze"]
-  }),
-  onUpstreamMediaFrame: (frame: unknown) => frame,
-  onDownstreamExpression: (intent: ExpressionEnvelope) => ({
-    intent,
-    sideband: buildSideband(intent)
-  })
+export const emotionTtsSideband = defineExtensionPackage({
+  manifest,
+  activate(scope) {
+    scope.contributeFacet(expressionMediaTranscoderFacet, {
+      getSupportedVocabulary: () => ({
+        voice_emotion_tags: ["warm_neutral", "bright", "soft", "curious"],
+        visual_semantic_cues: ["gentle_blink", "small_smile", "concerned_gaze"]
+      }),
+      onUpstreamMediaFrame: frame => frame,
+      onDownstreamExpression: (intent: ExpressionEnvelope) => ({ intent, sideband: buildSideband(intent) })
+    });
+  }
 });
 
 export default emotionTtsSideband;

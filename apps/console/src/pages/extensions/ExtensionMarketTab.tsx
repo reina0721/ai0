@@ -1,3 +1,4 @@
+import { FACET_LABELS } from "./facet-labels.js";
 import type { ExtensionMarketEntry } from "@ai0/protocol";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 
@@ -17,14 +18,6 @@ import {
 } from "../workspace-layout.js";
 import { WorkspaceHeader } from "../workspace.js";
 
-const BUS_LABELS: Record<string, string> = {
-  "ext.cognitive_organ": "认知器官",
-  "ext.media_pipeline": "媒体管线",
-  "ext.shell": "交互躯壳",
-  "ext.action_mcp_skill": "工具与技能",
-  "ext.memory_knowledge": "记忆与知识",
-  "ext.soul_asset": "灵魂资产"
-};
 
 export function ExtensionMarketTab(): ReactElement {
   const ctx = useConsole();
@@ -34,7 +27,7 @@ export function ExtensionMarketTab(): ReactElement {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [busFilter, setBusFilter] = useState("all");
+  const [facetFilter, setFacetFilter] = useState("all");
   const [registryUrl, setRegistryUrl] = useState("");
   const [showRegistry, setShowRegistry] = useState(false);
   const [installingId, setInstallingId] = useState<string>();
@@ -61,7 +54,7 @@ export function ExtensionMarketTab(): ReactElement {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter((item) => {
-      if (busFilter !== "all" && item.dimension !== busFilter) return false;
+      if (facetFilter !== "all" && !item.facets.includes(facetFilter)) return false;
       if (!q) return true;
       return (
         item.displayName.toLowerCase().includes(q) ||
@@ -70,7 +63,7 @@ export function ExtensionMarketTab(): ReactElement {
         item.tags.some((t) => t.toLowerCase().includes(q))
       );
     });
-  }, [entries, query, busFilter]);
+  }, [entries, query, facetFilter]);
 
   const handleInstall = async (entry: ExtensionMarketEntry) => {
     if (!ctx || !canWrite || installingId) return;
@@ -140,12 +133,12 @@ export function ExtensionMarketTab(): ReactElement {
         </div>
         <div style={{ minWidth: 160 }}>
           <CompactSelect
-            ariaLabel="按扩展总线筛选市场"
-            value={busFilter}
-            onChange={setBusFilter}
+            ariaLabel="按扩展能力筛选市场"
+            value={facetFilter}
+            onChange={setFacetFilter}
             options={[
               { value: "all", label: "全部扩展分类" },
-              ...Object.entries(BUS_LABELS).map(([value, label]) => ({ value, label }))
+              ...Object.entries(FACET_LABELS).map(([value, label]) => ({ value, label }))
             ]}
           />
         </div>
@@ -170,7 +163,7 @@ export function ExtensionMarketTab(): ReactElement {
 
             <div className="ai0-entity-card__body">
               <div className="ai0-entity-card__badges">
-                <WorkspaceStatus data-tone="info">{BUS_LABELS[entry.dimension] ?? entry.dimension}</WorkspaceStatus>
+                {entry.facets.map(facet => <WorkspaceStatus key={facet} data-tone="info">{FACET_LABELS[facet] ?? facet}</WorkspaceStatus>)}
                 <WorkspaceStatus data-tone={entry.permissions.network_access ? "warn" : "live"}>
                   {entry.permissions.network_access ? "需联网" : "零联网隔离"}
                 </WorkspaceStatus>

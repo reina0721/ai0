@@ -145,9 +145,9 @@ test("capture production workspace comparisons and selector evidence", async ({ 
     { id: "mobile-related-pages", path: "/soul/homeostasis", appearance: "dark", soulTheme: "astral-blue", label: "相关页面", width: 390, height: 844 },
     { id: "desktop-model-routing", path: "/models/routing", appearance: "dark", soulTheme: "astral-blue",
       field: '[data-route-primary="W1_fast_dialogue"]', width: 1440, height: 900 },
-    { id: "desktop-simulator-audience", path: "/shells/simulator?mode=sandbox", appearance: "light", soulTheme: "astral-blue",
+    { id: "desktop-simulator-audience", path: "/channels/simulator?mode=sandbox", appearance: "light", soulTheme: "astral-blue",
       label: "受众", width: 1440, height: 900 },
-    { id: "mobile-simulator-audience", path: "/shells/simulator?mode=sandbox", appearance: "dark", soulTheme: "astral-blue",
+    { id: "mobile-simulator-audience", path: "/channels/simulator?mode=sandbox", appearance: "dark", soulTheme: "astral-blue",
       label: "受众", width: 390, height: 844 }
   ] as const) {
     const entry: (typeof report.interactions)[number] = { id: interaction.id, kind: "unavailable", issues: [] };

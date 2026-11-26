@@ -73,7 +73,7 @@ test("bootstrap retries and a refresh preserves edits behind the route guard", a
 
   const refreshed = page.waitForResponse((response) => response.url().endsWith("/api/admin/v1/snapshot?mode=live"));
   const { ownerToken } = await (await page.request.get("/api/studio/bootstrap")).json();
-  expect((await page.request.post("/protocol/v0/shell/perception", { headers: { "x-ai0-owner-token": ownerToken }, data: { text: "这是一条刷新测试消息。", mode: "live" } })).ok()).toBe(true);
+  expect((await page.request.post("/protocol/v0/channel/perception", { headers: { "x-ai0-owner-token": ownerToken }, data: { text: "这是一条刷新测试消息。", mode: "live" } })).ok()).toBe(true);
   await refreshed;
   await expect(proxy).toHaveValue(draft);
 

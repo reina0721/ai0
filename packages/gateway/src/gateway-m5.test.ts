@@ -1,19 +1,84 @@
 import { describe, expect, it } from "vitest";
 import { VirtualClock } from "@ai0/cognition-core";
+import { ExtensionCoreHost } from "@ai0/extension-core";
+import { perceptionFilterFacet } from "@ai0/perception-core";
 import {
+  CHANNEL_PROTOCOL_PATH,
   PrivilegedAdminServer,
-  ShellProtocolGateway,
+  ChannelProtocolGateway,
   issueScopedCapabilityToken,
-  verifyScopedCapabilityToken
+  verifyScopedCapabilityToken,
+  type ChannelProtocolGatewayOptions
 } from "./index.js";
 
-describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Shell Protocol & Channel B Admin API)", () => {
+describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Protocol & Channel B Admin API)", () => {
+  it("transforms and suppresses perception commits on /protocol/v0/channel through a mounted facet", () => {
+    expect(CHANNEL_PROTOCOL_PATH).toBe("/protocol/v0/channel");
+    const extensionHost = new ExtensionCoreHost();
+    extensionHost.mountPackage({
+      manifest: {
+        manifest_version: "2.0.0", extension_id: "test-filter", display_name: "Test Filter",
+        version: "1", author: "test", carrier_kind: "native_code_plugin",
+        facets: [perceptionFilterFacet.id],
+        permissions: {
+          read_blackboard_domains: [], propose_mutation_domains: [],
+          max_audience_scope: "public_all", network_access: false
+        }
+      },
+      activate(scope) {
+        scope.contributeFacet(perceptionFilterFacet, {
+          onEvent(event, channelId) {
+            if (event.text === "suppress") return { kind: "suppress" };
+            const text = `${channelId}: ${event.text?.toUpperCase()}`;
+            const frame = event.frame && { ...event.frame, interpretation: { ...event.frame.interpretation, primaryCue: text } };
+            return { kind: "pass", event: { ...event, text, frame } };
+          }
+        });
+      }
+    });
+    const gateway = new ChannelProtocolGateway({ extensionHost, debounceWindowMs: 1200 });
+    const channelId = "test.text";
+    const secret = "m5-filter-secret";
+    const { session_id } = gateway.handleInboundHandshake({
+      protocol_version: "0.1.0", channel_id: channelId, channel_kind: "webchat",
+      display_name: "Test Text", venue_type: "private_1on1",
+      current_audience: { scope: "only_owner", member_count: 1 },
+      latency_budget_ms: 100,
+      capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] },
+      auth_token: issueScopedCapabilityToken({
+        channel_id: channelId, max_audience_privacy_ceiling: "only_owner",
+        allowed_modalities: ["text"], expires_at_ts_ms: Date.now() + 60_000
+      }, secret)
+    }, secret);
+    const perception = {
+      event_id: "evt_filtered", timestamp: new Date().toISOString(), lifecycle: "commit",
+      actor: { platform_uid: "viewer", display_name: "Viewer" },
+      modality: "text", summary_text: "hello", confidence: 1, persistence_hint: "permanent", extensions: {}
+    };
+    const transformed = gateway.handlePerception(session_id, perception);
+    expect(transformed.state).toBe("COMMITTED");
+    expect(transformed.envelope.summary_text).toBe("test.text: HELLO");
+    expect(transformed.committed?.text).toBe("test.text: HELLO");
+    expect(transformed.committed?.frames[0]?.interpretation.primaryCue).toBe("test.text: HELLO");
+    expect(gateway.handlePerception(session_id, {
+      ...perception, event_id: "evt_suppressed", summary_text: "suppress"
+    }).committed).toBeUndefined();
+
+    extensionHost.unmountPackage("test-filter");
+    expect(gateway.handlePerception(session_id, {
+      ...perception, event_id: "evt_unmounted"
+    }).state).toBe("BUFFERING");
+  });
+
   it("enforces ScopedCapabilityToken HMAC-SHA256, forced audience downgrade, 1200ms debounce, and audio-ms unsaid_remainder truncation", async () => {
     const clock = new VirtualClock({ targetInstance: "sandbox:m5", initialVirtualTsMs: 1_800_000_000_000 });
+    expect(CHANNEL_PROTOCOL_PATH).toBe("/protocol/v0/channel");
     const capturedInterruptions: Array<{ spoken_char_offset: number; unsaid_remainder: string }> = [];
 
-    const gateway = new ShellProtocolGateway({
+    const options: ChannelProtocolGatewayOptions = {
       clock,
+      debounceWindowMs: 1200,
+      formatRetractedObservation: () => "Draft withdrawn",
       w1: {
         recordInterruption: (rec) => {
           capturedInterruptions.push({
@@ -22,12 +87,13 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Shell Protoc
           });
         }
       }
-    });
+    };
+    const gateway = new ChannelProtocolGateway(options);
 
     const secretKey = "gateway-secret-key-m5";
     const token = issueScopedCapabilityToken(
       {
-        shell_id: "mock.livestream.public",
+        channel_id: "mock.livestream.public",
         max_audience_privacy_ceiling: "public_all",
         allowed_modalities: ["text"],
         expires_at_ts_ms: Date.now() + 3_600_000
@@ -37,13 +103,14 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Shell Protoc
 
     const claims = verifyScopedCapabilityToken(token, secretKey);
     expect(claims.max_audience_privacy_ceiling).toBe("public_all");
+    expect(claims.channel_id).toBe("mock.livestream.public");
 
     const ack = gateway.handleInboundHandshake(
       {
         protocol_version: "0.1.0",
-        shell_id: "mock.livestream.public",
-        shell_kind: "custom.livestream_stage",
-        display_name: "Public Livestream Shell",
+        channel_id: "mock.livestream.public",
+        channel_kind: "custom.livestream_stage",
+        display_name: "Public Livestream Channel",
         auth_token: token,
         venue_type: "public_livestream",
         current_audience: {
@@ -65,7 +132,7 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Shell Protoc
     );
     expect(ack.max_audience_privacy_ceiling).toBe("public_all");
 
-    // Attempt privilege escalation: public shell claims audience_scope = "only_owner" and principal_trust = "owner_verified"
+    // Attempt privilege escalation: public channel claims audience_scope = "only_owner" and principal_trust = "owner_verified"
     const p1 = gateway.handlePerception(ack.session_id, {
       event_id: "evt_pub_1",
       timestamp: new Date(clock.nowMs()).toISOString(),
@@ -88,13 +155,26 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Shell Protoc
 
     expect(p1.envelope.audience_scope).toBe("public_all");
     expect(p1.envelope.principal_trust).toBe("stranger");
-    expect(p1.state).toBe("BUFFERING_1200MS");
+    expect(p1.state).toBe("BUFFERING");
 
     // Advance VirtualClock by 1200ms and flush debounce
     clock.advanceBy(1_200, "active_unattended");
     const batch = gateway.flushDebounce(ack.session_id);
     expect(batch?.text).toContain("Hello from stream");
     expect(gateway.getDebounceState(ack.session_id)).toBe("COMMITTED");
+
+    const retracted = gateway.handlePerception(ack.session_id, {
+      event_id: "evt_pub_retract",
+      timestamp: new Date(clock.nowMs()).toISOString(),
+      lifecycle: "retract",
+      actor: { platform_uid: "viewer", display_name: "Viewer" },
+      modality: "text",
+      summary_text: "",
+      confidence: 1,
+      persistence_hint: "permanent",
+      extensions: {}
+    });
+    expect(retracted.committed?.retracted_observation).toBe("Draft withdrawn");
 
     // Dispatch expression with ext.media.sideband.v1 char_offset_timestamps_ms and test mid-speech interruption
     await gateway.dispatchExpression({
@@ -145,7 +225,7 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Shell Protoc
     // 401 without token
     const unauth = await admin.handleRequest({
       method: "GET",
-      path: "/api/admin/v1/shells/topology"
+      path: "/api/admin/v1/channels/topology"
     });
     expect(unauth.status).toBe(401);
 

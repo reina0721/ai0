@@ -154,11 +154,19 @@ describe("SQLite storage DDL", () => {
           "prospective_commitments",
           "cognitive_state_checkpoints",
           "turn_decision_traces",
+          "channel_action_intents",
+          "channel_principal_bindings",
+          "channel_run_process",
           "knowledge_chunks",
           "soul_milestones_ledger"
         ])
       );
       expect(tables).toContain("memory_lineage_edges");
+      expect(database.prepare("PRAGMA index_info(channel_actions_by_session)").all()).toEqual([
+        expect.objectContaining({ name: "session_id" })
+      ]);
+      expect(database.prepare("SELECT name FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = 'event_log'")
+        .all().map(row => row.name)).toContain("redact_channel_run_process");
 
       const ftsDefinition = database
         .prepare(
@@ -180,7 +188,7 @@ describe("SQLite storage DDL", () => {
         event_id: "evt.roundtrip.1",
         wall_ts_ms: 1_800_000_000_000,
         virtual_ts_ms: 1_800_000_000_000,
-        source_shell_id: "builtin.webchat.default",
+        source_channel_id: "builtin.webchat.default",
         principal_id: "owner",
         principal_trust: "owner_verified",
         venue_type: "private_1on1",
@@ -238,6 +246,7 @@ describe("SQLite storage DDL", () => {
 
       const view: ReadOnlyStorageView = storage.asReadOnlyView();
       expect(view.getEventById(event.event_id)).toEqual(event);
+      expect(view.getEventById(event.event_id)?.source_channel_id).toBe("builtin.webchat.default");
       expect(view.listEvents()).toContainEqual(event);
       expect(
         view.queryMemoriesWithAudienceGuard({
@@ -265,6 +274,15 @@ describe("SQLite storage DDL", () => {
       expect(view.queryKnowledgeChunks("SQLite storage")).toEqual([
         expect.objectContaining({ chunk_id: "chunk.roundtrip.1" })
       ]);
+
+      const process = { stages: [{ stage: "accepted" as const }] };
+      storage.saveChannelRunProcess(event.event_id, process);
+      expect(storage.getChannelRunProcess(event.event_id)).toEqual(process);
+      storage.sqlite.prepare("UPDATE event_log SET redacted_at_ts_ms = ? WHERE event_id = ?")
+        .run(event.wall_ts_ms, event.event_id);
+      expect(storage.getChannelRunProcess(event.event_id)).toBeUndefined();
+      storage.saveChannelRunProcess(event.event_id, process);
+      expect(storage.getChannelRunProcess(event.event_id)).toBeUndefined();
     } finally {
       storage.close();
     }

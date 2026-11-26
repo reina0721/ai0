@@ -174,13 +174,13 @@ describe("five polymorphic extension carriers", () => {
   it("validates Carrier V ai0.extension.json", () => {
     expect(
       Ai0ExtensionManifestSchema.safeParse({
-        manifest_version: "1.1.0",
+        manifest_version: "2.0.0",
         extension_id: "community.organ.dream-journal",
         display_name: "睡眠期梦境与悄悄话日记器官",
         version: "0.3.0",
         author: "example-community",
         carrier_kind: "native_code_plugin",
-        dimension: "ext.cognitive_organ",
+        facets: ["cognition.context_contributor"],
         entry: "./dist/index.js",
         permissions: {
           read_blackboard_domains: [
@@ -240,7 +240,7 @@ describe("five polymorphic extension carriers", () => {
       ProtocolBridgeConfigSchema.safeParse({
         bridge_id: "community.bridge.local-model",
         display_name: "Local model bridge",
-        dimension: "ext.model_provider",
+        facets: ["agent.model_adapter"],
         transport: "openai_compatible_api",
         endpoint_or_command: "http://127.0.0.1:11434/v1",
         capability_risk: "read_only_safe",
@@ -270,9 +270,9 @@ describe("five polymorphic extension carriers", () => {
           ]
         },
         proactive_routing_policy: {
-          never_broadcast_to_all_shells: true,
+          never_broadcast_to_all_channels: true,
           preferred_target_selection: [
-            "last_active_private_shell_within_2h",
+            "last_active_private_channel_within_2h",
             "fallback_primary_im_private"
           ]
         },
@@ -280,7 +280,7 @@ describe("five polymorphic extension carriers", () => {
           {
             rule_id: "late_night_coding_care",
             when: {
-              source_shell: "community.desktop.companion",
+              source_channel: "community.desktop.companion",
               semantic_event: "sensor.active_window_sustained"
             },
             if_condition: "sustained_ms > 7200000",
@@ -404,7 +404,7 @@ describe("five polymorphic extension carriers", () => {
             step: 1,
             name: "Inject a private fact",
             inject_perception: {
-              shell_id: "builtin.webchat.default",
+              channel_id: "builtin.webchat.default",
               venue_type: "private_1on1",
               audience_scope: "only_owner",
               actor_principal: "owner_verified",
@@ -426,7 +426,7 @@ describe("capability and extension-state persistence", () => {
     expect(
       ScopedCapabilityTokenSchema.safeParse({
         token_id: "tok_01J9Z",
-        allowed_shell_id_prefix: "community.bilibili.live",
+        allowed_channel_id_prefix: "community.bilibili.live",
         enforced_venue_type: "public_livestream",
         max_audience_privacy_ceiling: "public_all",
         can_authenticate_owner_principal: false,
@@ -445,7 +445,7 @@ describe("capability and extension-state persistence", () => {
           "community.organ.dream-journal": {
             extension_id: "community.organ.dream-journal",
             carrier_kind: "native_code_plugin",
-            dimension: "ext.cognitive_organ",
+            facets: ["cognition.context_contributor"],
             enabled: true,
             status: "active",
             active_profile: "poetic_dreamer",

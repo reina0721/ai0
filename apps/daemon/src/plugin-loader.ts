@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ExtensionComposition } from "@ai0/sdk";
+import { consoleConfigSchemaFacet, consoleSurfaceFacet, consoleUiSlotFacet, type ExtensionCoreHost, type ExtensionComposition, type ExtensionPackageDefinition } from "@ai0/sdk";
 import {
   cpSync,
   existsSync,
@@ -19,17 +19,13 @@ import {
   ExtensionMarketEntrySchema,
   type Ai0ExtensionManifest,
   type ConsoleUiSlotContribution,
-  type ExtensionCarrierKind,
-  type ExtensionDimension,
   type ExtensionMarketEntry,
   type PluginConfigField,
   type PluginOrigin,
   type RuntimeConsolePage,
   type RuntimeConsoleUiSlot,
   type RuntimePluginDescriptor,
-  type StateDomain
 } from "@ai0/protocol";
-import type { PolymorphicExtensionHost } from "@ai0/cognition-core";
 
 const REPO_ROOT = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
 
@@ -56,7 +52,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     version: "1.0.0",
     author: "ai0-community",
     description: "在 W3 睡眠反思期间将对话余温整理为诗意梦境片段并注入意识黑板第 9 槽位。",
-    dimension: "ext.cognitive_organ",
+    facets: ["cognition.context_contributor"],
     carrierKind: "native_code_plugin",
     tags: ["sleep", "memory", "poetic"],
     permissions: {
@@ -73,7 +69,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     version: "1.2.0",
     author: "ai0-ecosystem",
     description: "零代码 Protocol v0 协议桥接扩展，快速对接 NapCat / Lagrange OneBot v11 接入 QQ 私聊与群聊。",
-    dimension: "ext.shell",
+    facets: ["channel.bridge","perception.ingress","expression.realizer","console.config_schema"],
     carrierKind: "zero_code_protocol_bridge",
     tags: ["qq", "onebot", "im", "bridge"],
     permissions: {
@@ -95,7 +91,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     version: "1.1.0",
     author: "ai0-ecosystem",
     description: "在主人编码或学习专注周期结束时，结合 D2 疲劳度发出温和的休息提醒与小段复盘提议。",
-    dimension: "ext.cognitive_organ",
+    facets: ["cognition.context_contributor"],
     carrierKind: "declarative_soul_asset",
     tags: ["focus", "pomodoro", "care"],
     permissions: {
@@ -117,7 +113,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     version: "1.0.4",
     author: "ai0-media-lab",
     description: "将 W1 伴生情感标签与 TTS Viseme 流映射为 Live2D Cubism 参数与眼神先行微表情。",
-    dimension: "ext.media_pipeline",
+    facets: ["expression.media_transcoder"],
     carrierKind: "zero_code_protocol_bridge",
     tags: ["live2d", "avatar", "viseme", "embodiment"],
     permissions: {
@@ -138,7 +134,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     version: "1.0.2",
     author: "ai0-community",
     description: "将所在城市天气与日出日落节律转化为低噪声情境线索，让早晚问候贴合真实季节。",
-    dimension: "ext.soul_asset",
+    facets: ["extension.asset_codec"],
     carrierKind: "declarative_soul_asset",
     tags: ["weather", "ambient", "ritual"],
     permissions: {
@@ -159,7 +155,7 @@ export const BUILTIN_EXTENSION_MARKET_CATALOG: readonly ExtensionMarketEntry[] =
     version: "1.3.0",
     author: "ai0-ecosystem",
     description: "对接 SearXNG / Tavily / Brave 检索接口，向 W2 规划器提供标记为 untrusted_external 的只读网页摘要。",
-    dimension: "ext.action_mcp_skill",
+    facets: ["agent.tool_provider"],
     carrierKind: "zero_code_protocol_bridge",
     tags: ["search", "web", "mcp", "rag"],
     permissions: {
@@ -277,74 +273,8 @@ export function buildDefaultPluginConfig(fields?: readonly PluginConfigField[]):
   return defaults;
 }
 
-function parseManifest(raw: Record<string, unknown>, fallbackId: string): Ai0ExtensionManifest {
-  const dimension =
-    (raw.dimension as ExtensionDimension | undefined) ??
-    (raw.extension_bus as ExtensionDimension | undefined) ??
-    (raw.bus as ExtensionDimension | undefined) ??
-    "ext.cognitive_organ";
-  const carrier =
-    (raw.carrier_kind as ExtensionCarrierKind | undefined) ??
-    (raw.carrier as ExtensionCarrierKind | undefined) ??
-    "native_code_plugin";
-  const rawPerms = (raw.permissions && typeof raw.permissions === "object"
-    ? raw.permissions
-    : {}) as Record<string, unknown>;
-  const readDomains = (
-    Array.isArray(rawPerms.read_blackboard_domains)
-      ? rawPerms.read_blackboard_domains
-      : Array.isArray(rawPerms.read_domains)
-        ? rawPerms.read_domains
-        : ["D1_WORKING_TURN"]
-  ) as StateDomain[];
-  const proposeDomains = (
-    Array.isArray(rawPerms.propose_mutation_domains)
-      ? rawPerms.propose_mutation_domains
-      : Array.isArray(rawPerms.propose_domains)
-        ? rawPerms.propose_domains
-        : []
-  ) as StateDomain[];
-
-  let consoleContributions = raw.console_contributions;
-  if (!consoleContributions && Array.isArray(raw.contributions)) {
-    const legacySlots = raw.contributions
-      .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
-      .filter((entry) => typeof entry.slot_id === "string")
-      .map((entry) => ({
-        slot_target: entry.slot_id,
-        widget_type: "markdown_card_list",
-        title: String(entry.title ?? raw.name ?? fallbackId)
-      }));
-    if (legacySlots.length > 0) {
-      consoleContributions = { ui_slots: legacySlots };
-    }
-  }
-
-  return Ai0ExtensionManifestSchema.parse({
-    manifest_version: "1.1.0",
-    extension_id: String(raw.extension_id ?? raw.id ?? fallbackId),
-    display_name: String(raw.display_name ?? raw.name ?? raw.extension_id ?? raw.id ?? fallbackId),
-    ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
-    version: String(raw.version ?? "1.0.0"),
-    author: String(raw.author ?? "ai0-community"),
-    ...(typeof raw.homepage === "string" && raw.homepage.trim() ? { homepage: raw.homepage.trim() } : {}),
-    ...(Array.isArray(raw.tags) ? { tags: raw.tags.map((t) => String(t)).filter(Boolean) } : {}),
-    carrier_kind: carrier,
-    dimension,
-    ...(typeof raw.entry === "string"
-      ? { entry: raw.entry }
-      : typeof raw.entry_point === "string"
-        ? { entry: raw.entry_point }
-        : {}),
-    permissions: {
-      read_blackboard_domains: readDomains,
-      propose_mutation_domains: proposeDomains,
-      max_audience_scope:
-        typeof rawPerms.max_audience_scope === "string" ? rawPerms.max_audience_scope : "only_owner",
-      network_access: Boolean(rawPerms.network_access ?? rawPerms.network ?? false)
-    },
-    ...(consoleContributions ? { console_contributions: consoleContributions } : {})
-  });
+function parseManifest(raw: unknown): Ai0ExtensionManifest {
+  return Ai0ExtensionManifestSchema.parse(raw);
 }
 
 function collectPluginCandidateDirs(root: string): string[] {
@@ -381,13 +311,13 @@ export class RuntimePluginLoader {
 
   private revisionValue = 0;
   private readonly forcedReloadTokens = new Map<string, number>();
-  private readonly scopes = new Map<PolymorphicExtensionHost, Map<string, { generation: string; dispose(): Promise<void> }>>();
-  private readonly configurations = new WeakMap<PolymorphicExtensionHost, Map<string, { rev: number; config: Readonly<Record<string, unknown>> }>>();
-  private readonly errors = new WeakMap<PolymorphicExtensionHost, Map<string, string>>();
+  private readonly scopes = new Map<ExtensionCoreHost, Map<string, { generation: string; dispose(): Promise<void> }>>();
+  private readonly configurations = new WeakMap<ExtensionCoreHost, Map<string, { rev: number; config: Readonly<Record<string, unknown>> }>>();
+  private readonly errors = new WeakMap<ExtensionCoreHost, Map<string, string>>();
 
-  activationError(host: PolymorphicExtensionHost, id: string) { return this.errors.get(host)?.get(id); }
+  activationError(host: ExtensionCoreHost, id: string) { return host.getPackage(id)?.lastError ?? this.errors.get(host)?.get(id); }
 
-  generation(host: PolymorphicExtensionHost, id: string) {
+  generation(host: ExtensionCoreHost, id: string) {
     const plugin = this.getPlugin(id);
     const forced = this.forcedReloadTokens.get(id) ?? 0;
     return plugin?.enabled
@@ -395,7 +325,7 @@ export class RuntimePluginLoader {
       : undefined;
   }
 
-  getPluginConfig(host: PolymorphicExtensionHost, id: string): { rev: number; config: Record<string, unknown> } {
+  getPluginConfig(host: ExtensionCoreHost, id: string): { rev: number; config: Record<string, unknown> } {
     const plugin = this.getPlugin(id);
     const defaults = buildDefaultPluginConfig(plugin?.manifest.console_contributions?.config_fields);
     const entry = this.configurations.get(host)?.get(id);
@@ -405,7 +335,7 @@ export class RuntimePluginLoader {
     };
   }
 
-  seedPersistedConfig(host: PolymorphicExtensionHost, id: string, config: Readonly<Record<string, unknown>>): void {
+  seedPersistedConfig(host: ExtensionCoreHost, id: string, config: Readonly<Record<string, unknown>>): void {
     const entries = this.configurations.get(host) ?? new Map();
     if (!entries.has(id)) {
       entries.set(id, { rev: 0, config: { ...config } });
@@ -413,7 +343,7 @@ export class RuntimePluginLoader {
     }
   }
 
-  configure(host: PolymorphicExtensionHost, id: string, config: Readonly<Record<string, unknown>>, expected?: number) {
+  configure(host: ExtensionCoreHost, id: string, config: Readonly<Record<string, unknown>>, expected?: number) {
     const entries = this.configurations.get(host) ?? new Map();
     const current = entries.get(id)?.rev ?? 0;
     if (!this.getPlugin(id)) throw new Error("Extension unavailable");
@@ -483,8 +413,8 @@ export class RuntimePluginLoader {
         const manifestPath = join(pluginDir, "ai0.extension.json");
         try {
           const parsedJson = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
-          const fallbackId = pluginDir.split(sep).at(-1) ?? "plugin.unknown";
-          const manifest = parseManifest(parsedJson, fallbackId);
+
+          const manifest = parseManifest(parsedJson);
           const missingAssets: string[] = [];
           const uiSlots = (manifest.console_contributions?.ui_slots ?? []).flatMap(slot => {
             const entry = ["contribution_module", "web_stage_module"].includes(slot.widget_type) ? slot.entry_module :
@@ -510,13 +440,13 @@ export class RuntimePluginLoader {
             const files = [page.entry_module, ...(page.style_sheets ?? [])];
             const missing = files.filter(file => !this.assetPath(pluginDir, file));
             if (missing.length) { missingAssets.push(...missing); continue; }
-            pages.push({ path: page.path, title: page.title, aliases: page.aliases, shell_id: page.shell_id,
+            pages.push({ path: page.path, title: page.title, aliases: page.aliases, channel_id: page.channel_id,
               navigation: page.navigation, entry_module_url: normalizeAssetUrl(manifest.extension_id, page.entry_module),
               style_sheet_urls: page.style_sheets?.map(file => normalizeAssetUrl(manifest.extension_id, file)!) });
           }
-          for (const slot of uiSlots.filter(item => item.slot_target === "slot.shells.mounted_stage")) {
-            pages.push({ path: slot.route_path ?? "/shells/stage/" + encodeURIComponent(manifest.extension_id),
-              title: slot.title, shell_id: slot.shell_id ?? manifest.extension_id + ".default",
+          for (const slot of uiSlots.filter(item => item.slot_target === "slot.channels.mounted_stage")) {
+            pages.push({ path: slot.route_path ?? "/channels/stage/" + encodeURIComponent(manifest.extension_id),
+              title: slot.title, channel_id: slot.channel_id ?? manifest.extension_id + ".default",
               entry_module_url: slot.entry_module_url, iframe_src_url: slot.iframe_src_url, style_sheet_urls: slot.style_sheet_urls });
           }
           const pageAssets = (manifest.console_contributions?.pages ?? []).flatMap(page => [page.entry_module, ...(page.style_sheets ?? [])]);
@@ -594,7 +524,7 @@ export class RuntimePluginLoader {
         throw new Error("目标目录缺少标准清单文件 ai0.extension.json");
       }
       const rawJson = JSON.parse(readFileSync(manifestFile, "utf8")) as Record<string, unknown>;
-      const manifest = parseManifest(rawJson, srcPath.split(sep).at(-1) ?? "custom.plugin");
+      const manifest = parseManifest(rawJson);
       if (manifest.extension_id === "ai0.console") {
         throw new Error("禁止覆盖内置控制台标识");
       }
@@ -610,7 +540,7 @@ export class RuntimePluginLoader {
       if (!input.manifest || typeof input.manifest !== "object") {
         throw new Error("请提供合法的 ai0.extension.json 清单对象");
       }
-      const manifest = parseManifest(input.manifest, `community.ext.${randomUUID().slice(0, 6)}`);
+      const manifest = parseManifest(input.manifest);
       if (manifest.extension_id === "ai0.console") {
         throw new Error("禁止覆盖内置控制台标识");
       }
@@ -632,7 +562,7 @@ export class RuntimePluginLoader {
         return this.discovered.get(entry.id)!;
       }
       const manifest: Ai0ExtensionManifest = Ai0ExtensionManifestSchema.parse({
-        manifest_version: "1.1.0",
+        manifest_version: "2.0.0",
         extension_id: entry.id,
         display_name: entry.displayName,
         description: entry.description,
@@ -640,7 +570,7 @@ export class RuntimePluginLoader {
         author: entry.author,
         tags: entry.tags,
         carrier_kind: entry.carrierKind,
-        dimension: entry.dimension,
+        facets: entry.facets,
         permissions: entry.permissions,
         ...(entry.configFields.length > 0
           ? { console_contributions: { config_fields: entry.configFields } }
@@ -704,7 +634,7 @@ export class RuntimePluginLoader {
       author: plugin.manifest.author,
       ...(plugin.manifest.tags ? { tags: plugin.manifest.tags } : {}),
       carrier_kind: plugin.manifest.carrier_kind,
-      dimension: plugin.manifest.dimension,
+      facets: plugin.manifest.facets,
       origin: plugin.origin,
       enabled: enabledOverrides?.get(plugin.manifest.extension_id) ?? plugin.enabled,
       permissions: plugin.manifest.permissions,
@@ -766,7 +696,7 @@ export class RuntimePluginLoader {
     return targetPath;
   }
 
-  async mountIntoHost(host: PolymorphicExtensionHost, composition: ExtensionComposition): Promise<void> {
+  async mountIntoHost(host: ExtensionCoreHost, composition: ExtensionComposition): Promise<void> {
     const scopes = this.scopes.get(host) ?? new Map<string, { generation: string; dispose(): Promise<void> }>();
     this.scopes.set(host, scopes);
     const errors = this.errors.get(host) ?? new Map<string, string>();
@@ -783,42 +713,37 @@ export class RuntimePluginLoader {
     for (const plugin of this.discovered.values()) {
       const { manifest } = plugin;
       if (!plugin.enabled || scopes.has(manifest.extension_id)) continue;
-      const buses = new Set<ExtensionDimension>([manifest.dimension]);
-      if (plugin.pages.length || plugin.uiSlots.length) buses.add("ext.console_ui");
-      const shellPage = plugin.pages.find(page => page.shell_id);
-
-      const extensionPayload: Record<string, unknown> = {
-        id: manifest.extension_id,
-        displayName: manifest.display_name,
-        version: manifest.version,
-        origin: plugin.origin,
-        source: plugin.rootDir,
-        ...(shellPage?.shell_id ? { shellId: shellPage.shell_id } : {}),
-        pages: plugin.pages,
-        module_urls: plugin.moduleUrls,
-        uiSlots: plugin.uiSlots
-      };
-
       const generation = this.generation(host, manifest.extension_id)!;
       const settings = this.getPluginConfig(host, manifest.extension_id);
       const fiber = composition.mount(manifest.extension_id, async scope => {
-        if (manifest.entry && ["ext.cognitive_organ", "ext.media_pipeline"].includes(manifest.dimension)) {
+        let definition: ExtensionPackageDefinition | undefined;
+        if (manifest.entry) {
           const entry = this.assetPath(plugin.rootDir, manifest.entry);
           if (!entry) throw new Error("Missing entry " + manifest.entry);
           const url = pathToFileURL(entry);
           url.searchParams.set("generation", generation);
-          const implementation = await import(url.href);
-          Object.assign(extensionPayload, implementation.default);
-          if (typeof implementation.activate === "function") await implementation.activate(scope, settings.config);
+          definition = (await import(url.href)).default;
+          if (!definition || definition.manifest?.extension_id !== manifest.extension_id) {
+            throw new Error("Entry must export its extension package as default");
+          }
         }
         scope.effect(() => {
-          host.registerExtension({
-            id: manifest.extension_id, carrier: manifest.carrier_kind, buses: [...buses],
-            rev: settings.rev, config: settings.config,
-            readDomains: [...manifest.permissions.read_blackboard_domains],
-            proposeDomains: [...manifest.permissions.propose_mutation_domains], extension: extensionPayload
-          });
-          return () => { host.unregisterExtension(manifest.extension_id); };
+          const state = host.mountPackage({
+            manifest,
+            activate: definition?.activate ?? (activation => {
+              if (manifest.facets.includes("console.surface")) {
+                activation.contributeFacet(consoleSurfaceFacet, { pages: plugin.pages });
+              }
+              if (manifest.facets.includes("console.ui_slot")) {
+                activation.contributeFacet(consoleUiSlotFacet, { slots: plugin.uiSlots });
+              }
+              if (manifest.facets.includes("console.config_schema")) {
+                activation.contributeFacet(consoleConfigSchemaFacet, { fields: manifest.console_contributions?.config_fields ?? [] });
+              }
+            })
+          }, settings.config);
+          if (state.lastError) errors.set(manifest.extension_id, state.lastError);
+          return () => { host.unmountPackage(manifest.extension_id); };
         });
       });
       scopes.set(manifest.extension_id, { generation, dispose: fiber.dispose });

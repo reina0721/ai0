@@ -1,59 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { ExtensionCoreHost } from "@ai0/extension-core";
+import { describe, expect, it, vi } from "vitest";
 import {
   AssertionUndefinedPathError,
-  AuthoritativeStateCoordinator,
   BrainRegionRouter,
   GOLDEN_REGRESSION_SCENARIO_V1,
-  PolymorphicExtensionHost,
-  VirtualClock,
+  ScenarioReplayRunner,
   bundlePrivacyScrubbedCreatorAsset,
   distillSillyTavernCard,
-  evaluateMultiShellAttentionAndEca,
+  cognitionSleepOrganFacet,
+  evaluateMultiChannelAttentionAndEca,
   evaluateScenarioAssertion,
   resolveStrictPropertyPath,
-  runScenarioPlaybook,
   simulateLorebookActivation
 } from "../index.js";
 
 describe("Milestone M4 Quality Audit: Extension Host, Brain Router, SDK & Scenario Replay Runner", () => {
-  it("runs PolymorphicExtensionHost 8-Bus lifecycle, ablation toggle, hot-reload, SillyTavern distiller, Lorebook simulator, Attention/ECA, and Privacy Scrubber", async () => {
-    const host = new PolymorphicExtensionHost();
-
-    host.registerExtension({
-      id: "community.organ.dream-journal",
-      carrier: "native_code_plugin",
-      buses: ["ext.cognitive_organ"],
-      readDomains: ["D1_WORKING_TURN", "D2_HOMEOSTASIS_AFFECT"],
-      proposeDomains: ["D2_HOMEOSTASIS_AFFECT"],
-      extension: {
-        organId: "community.organ.dream-journal",
-        defaultEnabled: true,
-        contributeToBlackboard: () => ({
-          slot_id: "organ.dream_journal.residue",
-          text: "Dream residue: quiet library corridor."
-        })
-      }
-    });
-
-    const clock = new VirtualClock({ targetInstance: "sandbox:m4" });
-    const coordinator = new AuthoritativeStateCoordinator(clock, {
-      getEventById: () => undefined,
-      saveTurnDecisionTrace: () => undefined
-    });
-    const dummySnapshot = coordinator.getSnapshot();
-
-    const contribution = await host.contributeOrgan("community.organ.dream-journal", dummySnapshot, 120);
-    expect(contribution?.slot_id).toBe("organ.dream_journal.residue");
-
-    // Ablation toggle -> neutral constant slot injection
-    host.setOrganEnabled("community.organ.dream-journal", false);
-    const ablatedContribution = await host.contributeOrgan("community.organ.dream-journal", dummySnapshot, 120);
-    expect(ablatedContribution?.text).toContain("已消融认知器官");
-
-    // Hot-reload
-    const nextRev = host.hotReloadExtension("community.organ.dream-journal", { sensitivity: 0.8 }, 0);
-    expect(nextRev).toBe(1);
-
+  it("distills cards, matches lore, evaluates attention and scrubs creator assets", () => {
     // SillyTavern Distiller
     const distilled = distillSillyTavernCard({
       name: "Aoi",
@@ -86,25 +48,25 @@ describe("Milestone M4 Quality Audit: Extension Host, Brain Router, SDK & Scenar
     expect(loreSim.map((e) => e.id)).toContain("lore_station");
     expect(loreSim.map((e) => e.id)).toContain("lore_quartz");
 
-    // Multi-Shell Attention & ECA
-    const attention = evaluateMultiShellAttentionAndEca({
+    // Multi-Channel Attention & ECA
+    const attention = evaluateMultiChannelAttentionAndEca({
       candidates: [
-        { shell_id: "builtin.webchat.default", salience: 0.9, preferred: true },
-        { shell_id: "mock.livestream.public", salience: 0.4 }
+        { channel_id: "builtin.webchat.default", salience: 0.9, preferred: true },
+        { channel_id: "mock.livestream.public", salience: 0.4 }
       ],
-      current_shell_id: "mock.livestream.public",
+      current_channel_id: "mock.livestream.public",
       last_switch_ts_ms: 1_000,
       now_ts_ms: 10_000,
-      events: [{ shell_id: "builtin.webchat.default", event_type: "owner_message" }],
+      events: [{ channel_id: "builtin.webchat.default", event_type: "owner_message" }],
       rules: [
         {
           when: { event_type: "owner_message" },
-          if: { selected_shell_id: "builtin.webchat.default" },
-          then: { action: "mute_secondary_shells", target_shell_id: "mock.livestream.public" }
+          if: { selected_channel_id: "builtin.webchat.default" },
+          then: { action: "mute_secondary_channels", target_channel_id: "mock.livestream.public" }
         }
       ]
     });
-    expect(attention.selected_shell_id).toBe("builtin.webchat.default");
+    expect(attention.selected_channel_id).toBe("builtin.webchat.default");
     expect(attention.switched).toBe(true);
     expect(attention.actions).toHaveLength(1);
 
@@ -161,10 +123,28 @@ describe("Milestone M4 Quality Audit: Extension Host, Brain Router, SDK & Scenar
     expect(failedAssertion.passed).toBe(false);
     expect(failedAssertion.error).toContain("Assertion path");
 
-    const report = await runScenarioPlaybook(GOLDEN_REGRESSION_SCENARIO_V1);
+    const onSleepCycleWakeup = vi.fn(() => []);
+    const runner = new ScenarioReplayRunner(runName => {
+      const host = new ExtensionCoreHost();
+      host.mountPackage({
+        manifest: {
+          manifest_version: "2.0.0", extension_id: "test.sleep", display_name: runName,
+          version: "1", author: "test", carrier_kind: "native_code_plugin",
+          facets: [cognitionSleepOrganFacet.id],
+          permissions: {
+            read_blackboard_domains: [], propose_mutation_domains: [],
+            max_audience_scope: "only_owner", network_access: false
+          }
+        },
+        activate(scope) { scope.contributeFacet(cognitionSleepOrganFacet, { onSleepCycleWakeup }); }
+      });
+      return host;
+    });
+    const report = await runner.run(GOLDEN_REGRESSION_SCENARIO_V1);
     expect(report.passed).toBe(true);
     expect(report.runs).toHaveLength(2);
     expect(report.summary.failed_assertions).toBe(0);
     expect(report.summary.pass_rate).toBe(1);
+    expect(onSleepCycleWakeup).toHaveBeenCalledTimes(report.runs.length);
   });
 });

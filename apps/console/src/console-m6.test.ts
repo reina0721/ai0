@@ -69,9 +69,9 @@ describe("ai0 compact Material console", () => {
 
     // Legacy paths resolve cleanly to canonical orthogonal routes
     expect(resolveConsoleRoute("/models/providers")?.path).toBe("/integrations/providers");
-    expect(resolveConsoleRoute("/shells/topology")?.path).toBe("/integrations/platforms");
+    expect(resolveConsoleRoute("/channels/topology")?.path).toBe("/integrations/platforms");
     expect(resolveConsoleRoute("/profiles/rules")?.path).toBe("/config/routing");
-    expect(resolveConsoleRoute("/shells/media-pipeline")?.path).toBe("/capabilities/multimodal");
+    expect(resolveConsoleRoute("/channels/media-pipeline")?.path).toBe("/capabilities/multimodal");
 
     // DirtyRouteGuard check
     const guard = new DirtyRouteGuard({ hasUnsavedChanges: true });
@@ -80,7 +80,7 @@ describe("ai0 compact Material console", () => {
 
     // Without a plugin snapshot even old bookmarks must resolve to the unavailable page.
     const webchatDoc = renderConsoleDocumentHtml({
-      pathname: "/shells/stage/builtin.webchat",
+      pathname: "/channels/stage/builtin.webchat",
       soulTheme: "sakura-pink",
       mode: "live",
       inspectorMode: "trace"

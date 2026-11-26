@@ -335,9 +335,9 @@ export function createDefaultSoulArchiveConfig(createdAt: string, displayName: s
         ]
       },
       proactive_routing_policy: {
-        never_broadcast_to_all_shells: true,
+        never_broadcast_to_all_channels: true,
         preferred_target_selection: [
-          "last_active_private_shell_within_2h",
+          "last_active_private_channel_within_2h",
           "fallback_primary_im_private"
         ]
       },

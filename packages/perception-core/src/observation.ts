@@ -3,7 +3,7 @@ import { ExtPerceptionV1Schema, type AudienceScope, type BodyAnchorDescriptor, t
 import type { PerceptionClockPort } from "./sensory.js";
 
 export interface ObservationAdmission {
-  shellId: string;
+  channelId: string;
   principalId: string;
   audienceScope: AudienceScope;
   observedAtMs: number;
@@ -16,7 +16,7 @@ export function normalizePerceptionEnvelopeToFrame(envelope: PerceptionEnvelope,
   const sensory = extension.success ? extension.data : undefined;
   return {
     ...frame,
-    channel: { ...frame?.channel, modality: envelope.modality, shellId: admission.shellId,
+    channel: { ...frame?.channel, modality: envelope.modality, channelId: admission.channelId,
       sensorCoverage: sensory?.coverage ?? frame?.channel.sensorCoverage ?? "live_foveal", sourceKey: sensory?.source_key ?? frame?.channel.sourceKey },
     attribution: { ...frame?.attribution, subjectAnchor: frame?.attribution.subjectAnchor ?? envelope.actor.platform_uid,
       principalId: admission.principalId },
@@ -38,7 +38,7 @@ export class ObservationNormalizer {
 }
 
 export class EmbodimentAffordanceRegistry {
-  private readonly shells = new Map<string, { manifest: HandshakeManifest; anchors: BodyAnchorDescriptor[] }>();
+  private readonly channels = new Map<string, { manifest: HandshakeManifest; anchors: BodyAnchorDescriptor[] }>();
 
   mount(manifest: HandshakeManifest, cardAnchors: readonly BodyAnchorDescriptor[] = []) {
     const capabilities = manifest.capabilities;
@@ -46,22 +46,22 @@ export class EmbodimentAffordanceRegistry {
     for (const id of capabilities.embodiment_anchors ?? []) anchors.set(id, { id });
     for (const anchor of capabilities.supports_card_assets ? cardAnchors : []) anchors.set(anchor.id, anchor);
     for (const anchor of capabilities.body_anchors ?? []) anchors.set(anchor.id, anchor);
-    this.shells.set(manifest.shell_id, structuredClone({ manifest, anchors: [...anchors.values()] }));
+    this.channels.set(manifest.channel_id, structuredClone({ manifest, anchors: [...anchors.values()] }));
   }
 
-  unmount(shellId: string) { this.shells.delete(shellId); }
-  disconnect(shellId: string) { this.unmount(shellId); }
+  unmount(channelId: string) { this.channels.delete(channelId); }
+  disconnect(channelId: string) { this.unmount(channelId); }
 
-  coverage(shellId: string, modality: string, sourceKey?: string) {
-    const capabilities = this.shells.get(shellId)?.manifest.capabilities;
+  coverage(channelId: string, modality: string, sourceKey?: string) {
+    const capabilities = this.channels.get(channelId)?.manifest.capabilities;
     if (!capabilities) return "disconnected" as const;
     if (!capabilities.sensors.includes(modality)) return "blind" as const;
     return capabilities.sensor_affordances?.find(sensor => sensor.modality === modality
       && (sourceKey === undefined || sourceKey === sensor.source_key))?.coverage ?? "on_demand";
   }
 
-  connectedShells(audience?: AudienceScope) {
-    return structuredClone([...this.shells.values()].filter(({ manifest }) =>
+  connectedChannels(audience?: AudienceScope) {
+    return structuredClone([...this.channels.values()].filter(({ manifest }) =>
       audience === undefined || manifest.current_audience.scope === audience));
   }
 }
@@ -80,7 +80,7 @@ export class ChronoceptiveSignalSynthesizer {
     const now = this.clock.nowMs();
     const unattendedMs = this.unattendedMs(now);
     return {
-      channel: { modality: "system_chronoception", shellId: "cognition.internal", sensorCoverage: "live_foveal", primitive: "endogenous_chronoception" },
+      channel: { modality: "system_chronoception", channelId: "cognition.internal", sensorCoverage: "live_foveal", primitive: "endogenous_chronoception" },
       attribution: { subjectAnchor: "self", principalId: "system" },
       contextFrame: { socialFrame: "internal_background", audienceScope },
       provenance: { epistemicTier: "system_chronoception", trustedGrant: true },

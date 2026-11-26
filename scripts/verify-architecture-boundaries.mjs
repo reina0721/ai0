@@ -1,20 +1,21 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const CORE_PACKAGES = ["agent-core", "cognition-core", "expression-core", "gateway", "perception-core", "protocol", "sdk", "storage"];
-const HEADLESS_CORES = ["agent-core", "perception-core", "expression-core", "cognition-core"];
+const CORE_PACKAGES = ["agent-core", "cognition-core", "extension-core", "expression-core", "gateway", "perception-core", "protocol", "sdk", "storage"];
+const HEADLESS_CORES = ["agent-core", "perception-core", "expression-core", "cognition-core", "extension-core"];
 const INTERNAL_ALLOWLIST = {
   protocol: [],
-  "agent-core": ["protocol"],
-  "perception-core": ["protocol"],
-  "expression-core": ["protocol"],
+  "extension-core": ["protocol"],
+  "agent-core": ["protocol", "extension-core"],
+  "perception-core": ["protocol", "extension-core"],
+  "expression-core": ["protocol", "extension-core"],
   storage: ["protocol"],
-  sdk: ["protocol"],
-  "cognition-core": ["protocol", "agent-core", "perception-core", "expression-core", "storage"],
-  gateway: ["protocol", "perception-core", "cognition-core", "expression-core", "storage"]
+  sdk: ["protocol", "extension-core"],
+  "cognition-core": ["protocol", "extension-core", "agent-core", "perception-core", "expression-core", "storage"],
+  gateway: ["protocol", "extension-core", "perception-core", "cognition-core", "expression-core", "storage"]
 };
 const PLUGIN_ALLOWED_INTERNAL_DEPENDENCIES = new Set(["@ai0/protocol", "@ai0/sdk"]);
 const AGENT_DOMAIN_TERMS = /D2_HOMEOSTASIS_AFFECT|SoulArchive|Lorebook|blush_level|user_eyes|local-persona-synthesizer/u;
@@ -359,7 +360,7 @@ function moduleSpecifiers(source) {
 }
 
 async function verifyCorePackageLock() {
-  const rule = "Invariant 1: packages/ eight-package lock";
+  const rule = "Invariant 1: packages/ nine-package lock";
   const packagesDirectory = path.join(repoRoot, "packages");
   const info = await pathInfo(packagesDirectory);
   if (!info?.isDirectory()) {
@@ -380,7 +381,7 @@ async function verifyCorePackageLock() {
     report(rule, `Missing core package directories: ${missingDirectories.join(", ")}.`);
   }
   if (unexpectedFiles.length > 0) {
-    report(rule, `packages/ may contain only the eight core package directories; unexpected entries: ${unexpectedFiles.join(", ")}.`);
+    report(rule, `packages/ may contain only the nine core package directories; unexpected entries: ${unexpectedFiles.join(", ")}.`);
   }
 }
 
@@ -656,7 +657,7 @@ async function verifyHostZeroPluginPollution() {
         if (/\b(?:listWebChat|markWebChat|handleWebChat)[A-Za-z0-9_]*\b/.test(code)) {
           report(
             rule,
-            `${relFile} defines or calls a WebChat-specific method; core package APIs must be parameterized by generic shell_id.`,
+            `${relFile} defines or calls a WebChat-specific method; core package APIs must be parameterized by generic channel_id.`,
           );
         }
       }
@@ -664,18 +665,28 @@ async function verifyHostZeroPluginPollution() {
   }
 }
 
-await verifyCorePackageLock();
-await verifyProtocolBoundaries();
-await verifyPluginBoundaries();
-await verifyCoreDependencies();
-await verifyDesignSystemModularity();
-await verifyNoStaticSchemas();
-await verifyHostZeroPluginPollution();
+let verification;
+export function verifyArchitectureBoundaries() {
+  verification ??= (async () => {
+    await verifyCorePackageLock();
+    await verifyProtocolBoundaries();
+    await verifyPluginBoundaries();
+    await verifyCoreDependencies();
+    await verifyDesignSystemModularity();
+    await verifyNoStaticSchemas();
+    await verifyHostZeroPluginPollution();
+    return Object.freeze([...violations]);
+  })();
+  return verification;
+}
 
-if (violations.length > 0) {
-  console.error(`Architecture boundary verification failed with ${violations.length} violation(s):`);
-  for (const violation of violations) console.error(`  - ${violation}`);
-  process.exitCode = 1;
-} else {
-  console.log("Architecture boundary verification passed: all 7 invariants hold.");
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  const result = await verifyArchitectureBoundaries();
+  if (result.length > 0) {
+    console.error(`Architecture boundary verification failed with ${result.length} violation(s):`);
+    for (const violation of result) console.error(`  - ${violation}`);
+    process.exitCode = 1;
+  } else {
+    console.log("Architecture boundary verification passed: all 7 invariants hold.");
+  }
 }

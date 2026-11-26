@@ -38,7 +38,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       const eventId = "evt_test_" + i;
       const now = runtime.virtualClock.nowMs();
       runtime.storage.appendEvent({
-        event_id: eventId, wall_ts_ms: now, virtual_ts_ms: now, source_shell_id: "test.shell",
+        event_id: eventId, wall_ts_ms: now, virtual_ts_ms: now, source_channel_id: "test.channel",
         principal_id: "owner:local", principal_trust: "owner_verified", venue_type: "private_1on1",
         audience_scope: "only_owner", event_category: "perception_committed", modality: "text",
         summary_text: observation, payload_json: "{}", state_rev_after: i + 1, active_modules_mask: 1
@@ -92,7 +92,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(runtime.storage.listEvents({ limit: 1 })).toHaveLength(1);
 
     // 2. Real Channel A WebChat dialogue (private vs public social mask)
-    const chatRes = await fetch(`${baseUrl}/protocol/v0/shell/perception`, {
+    const chatRes = await fetch(`${baseUrl}/protocol/v0/channel/perception`, {
       method: "POST",
       headers: adminHeaders,
       body: JSON.stringify({
@@ -110,7 +110,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(chatData.trace.steps.step5_strategy_proposal.theatrical_subtext.raw_text.length).toBeGreaterThan(5);
 
     // 3. Real Channel A barge-in interruption receipt
-    const interruptRes = await fetch(`${baseUrl}/protocol/v0/shell/receipt`, {
+    const interruptRes = await fetch(`${baseUrl}/protocol/v0/channel/receipt`, {
       method: "POST",
       headers: adminHeaders,
       body: JSON.stringify({
@@ -180,7 +180,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(bootstrap.ownerToken).toBe(ownerToken);
     expect(bootstrap.snapshot.eventsCount).toBeGreaterThanOrEqual(5);
 
-    const htmlRes = await fetch(`${baseUrl}/shells/stage/builtin.webchat?theme=astral-blue&inspector=trace`);
+    const htmlRes = await fetch(`${baseUrl}/channels/stage/builtin.webchat?theme=astral-blue&inspector=trace`);
     expect(htmlRes.status).toBe(200);
     const html = await htmlRes.text();
     expect(html.toLowerCase()).toContain("<!doctype html>");
@@ -281,7 +281,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       })
     });
     expect(distillRes.status).toBe(200);
-    const mioWhoRes = await fetch(`${baseUrl}/protocol/v0/shell/perception`, {
+    const mioWhoRes = await fetch(`${baseUrl}/protocol/v0/channel/perception`, {
       method: "POST",
       headers: adminHeaders,
       body: JSON.stringify({
@@ -429,7 +429,7 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
       method: "POST",
       headers: adminHeaders,
       body: JSON.stringify({
-        shellId: "qq.napcat.dev",
+        channelId: "qq.napcat.dev",
         venueType: "group_chat",
         sessionKey: "room_99",
         maxAudienceCeiling: "group:dev"
@@ -443,12 +443,12 @@ describe("Phase 2 Masterwork Full-Stack E2E Audit: Real Daemon + Gateway + Kerne
     expect(testRouteBody.route.primaryChat).toEqual({ providerId: "prov_custom_relay", modelId: "gpt-4.1-mini" });
     expect(testRouteBody.route.effectiveAudienceScope).toBe("group:dev");
 
-    // 7. Execute a real shell turn and confirm runtime actually resolved prof_qq_collab & prov_custom_relay
-    const turnRes = await fetch(`${baseUrl}/protocol/v0/shell/perception`, {
+    // 7. Execute a real channel turn and confirm runtime actually resolved prof_qq_collab & prov_custom_relay
+    const turnRes = await fetch(`${baseUrl}/protocol/v0/channel/perception`, {
       method: "POST",
       headers: adminHeaders,
       body: JSON.stringify({
-        shell_id: "qq.napcat.dev",
+        channel_id: "qq.napcat.dev",
         venue_type: "group_chat",
         audience_scope: "group:dev",
         thread: "room_99",

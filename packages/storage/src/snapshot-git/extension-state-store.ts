@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import {
   ExtensionsStateJsonSchema,
   type ExtensionCarrierKind,
-  type ExtensionDimension,
+  type ExtensionFacetId,
   type ExtensionPermissions,
   type ExtensionPersistentState,
   type ExtensionsStateJson
@@ -43,13 +43,13 @@ export function readExtensionsState(soulDirPath: string): ExtensionsStateJson {
 
 export interface WriteExtensionRuntimeConfigMeta {
   carrier_kind?: ExtensionCarrierKind;
-  dimension?: ExtensionDimension;
+  facets?: ExtensionFacetId[];
   enabled?: boolean;
   permissions?: ExtensionPermissions;
 }
 
 const DEFAULT_EXTENSION_PERMISSIONS: ExtensionPermissions = {
-  read_blackboard_domains: ["D1_WORKING_TURN"],
+  read_blackboard_domains: [],
   propose_mutation_domains: [],
   max_audience_scope: "only_owner",
   network_access: false
@@ -67,10 +67,12 @@ export function writeExtensionRuntimeConfig(
     typeof enabledOrMeta === "boolean" ? { enabled: enabledOrMeta } : (enabledOrMeta ?? {});
   const enabled = meta.enabled ?? existing?.enabled ?? true;
 
+  const facets = meta.facets ?? existing?.facets;
+  if (!facets?.length) throw new TypeError("Extension state requires at least one facet");
   const entry: ExtensionPersistentState = {
     extension_id: extensionId,
     carrier_kind: meta.carrier_kind ?? existing?.carrier_kind ?? "native_code_plugin",
-    dimension: meta.dimension ?? existing?.dimension ?? "ext.cognitive_organ",
+    facets,
     enabled,
     status: enabled ? "active" : "disabled",
     ...(existing?.active_profile ? { active_profile: existing.active_profile } : {}),

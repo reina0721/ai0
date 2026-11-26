@@ -714,7 +714,7 @@ function appendTombstone(
   });
   sql.run(
     `INSERT INTO event_log (
-       event_id, wall_ts_ms, virtual_ts_ms, source_shell_id, principal_id,
+       event_id, wall_ts_ms, virtual_ts_ms, source_channel_id, principal_id,
        principal_trust, venue_type, audience_scope, event_category, modality,
        summary_text, payload_json, state_rev_after, active_modules_mask
      ) VALUES (?, ?, ?, 'kernel.internal', 'system', 'tool_output',
@@ -795,13 +795,13 @@ function mutateFromPlan(
   }
 
   const tainted = new Set(plan.tainted_memory_ids);
-  const hasShellProcess = sql.tableExists("shell_run_process");
+  const hasChannelProcess = sql.tableExists("channel_run_process");
   for (const trace of plan.traces) {
-    if (hasShellProcess) {
-      sql.run("DELETE FROM shell_run_process WHERE event_id=?", [trace.turn_event_id]);
+    if (hasChannelProcess) {
+      sql.run("DELETE FROM channel_run_process WHERE event_id=?", [trace.turn_event_id]);
       // A turn which recalled the forgotten memory can still be delivering its reply.
       // Prevent a late delivery snapshot from restoring its withdrawn reasoning.
-      sql.run("UPDATE event_log SET payload_json=json_set(payload_json,'$.shell_process_redacted',1) WHERE event_id=? AND redacted_at_ts_ms IS NULL",
+      sql.run("UPDATE event_log SET payload_json=json_set(payload_json,'$.channel_process_redacted',1) WHERE event_id=? AND redacted_at_ts_ms IS NULL",
         [trace.turn_event_id]);
     }
     sql.run(

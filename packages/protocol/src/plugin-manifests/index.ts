@@ -16,18 +16,32 @@ export const StateDomainSchema = z.enum([
 ]);
 export type StateDomain = z.infer<typeof StateDomainSchema>;
 
-/** The eight extension buses on which an extension may be mounted. */
-export const ExtensionDimensionSchema = z.enum([
-  "ext.shell",
-  "ext.media_pipeline",
-  "ext.cognitive_organ",
-  "ext.action_mcp_skill",
-  "ext.memory_knowledge",
-  "ext.model_provider",
-  "ext.soul_asset",
-  "ext.console_ui"
+export const WellKnownExtensionFacetIdSchema = z.enum([
+  "channel.bridge",
+  "agent.tool_provider",
+  "agent.skill_manual",
+  "agent.model_adapter",
+  "perception.ingress",
+  "perception.filter",
+  "cognition.state_dynamics",
+  "cognition.attention_arbitrator",
+  "cognition.context_contributor",
+  "cognition.sleep_organ",
+  "expression.realizer",
+  "expression.media_transcoder",
+  "expression.intent_decorator",
+  "console.surface",
+  "console.ui_slot",
+  "console.config_schema",
+  "extension.asset_codec"
 ]);
-export type ExtensionDimension = z.infer<typeof ExtensionDimensionSchema>;
+export type WellKnownExtensionFacetId = z.infer<typeof WellKnownExtensionFacetIdSchema>;
+
+export const ExtensionFacetIdSchema = z.union([
+  WellKnownExtensionFacetIdSchema,
+  z.string().regex(/^(?:channel|agent|perception|cognition|expression|console|extension)\.[a-z][a-z0-9_]*$/)
+]);
+export type ExtensionFacetId = z.infer<typeof ExtensionFacetIdSchema>;
 
 export const ExtensionCarrierKindSchema = z.enum([
   "declarative_soul_asset",
@@ -66,7 +80,7 @@ export const ConsoleUiSlotContributionSchema = z.object({
   title: z.string(),
   data_endpoint: z.string().optional(),
   route_path: z.string().optional(),
-  shell_id: z.string().optional(),
+  channel_id: z.string().optional(),
   entry_module: z.string().optional(),
   style_sheets: z.array(z.string()).optional(),
   iframe_src: z.string().optional()
@@ -89,7 +103,7 @@ const PagePathSchema = z.string().regex(/^\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9._-]+)*
   .refine(path => !path.split("/").some(part => part === "." || part === ".."));
 export const ConsolePageSchema = z.object({
   path: PagePathSchema, title: z.string().min(1), aliases: z.array(PagePathSchema).optional(),
-  navigation: z.boolean().optional(), shell_id: z.string().min(1).optional(),
+  navigation: z.boolean().optional(), channel_id: z.string().min(1).optional(),
   entry_module: z.string().min(1), style_sheets: z.array(z.string()).optional()
 });
 export interface RuntimeConsolePage {
@@ -97,7 +111,7 @@ export interface RuntimeConsolePage {
   title: string;
   navigation?: boolean;
   aliases?: string[];
-  shell_id?: string;
+  channel_id?: string;
   entry_module_url?: string;
   iframe_src_url?: string;
   style_sheet_urls?: string[];
@@ -130,7 +144,7 @@ export const RuntimePluginDescriptorSchema = z.object({
   author: z.string(),
   tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
-  dimension: ExtensionDimensionSchema,
+  facets: z.array(ExtensionFacetIdSchema).min(1),
   origin: PluginOriginSchema,
   enabled: z.boolean(),
   permissions: ExtensionPermissionsSchema.optional(),
@@ -159,7 +173,7 @@ export type ConsoleContributions = z.infer<typeof ConsoleContributionsSchema>;
 
 /** Carrier V: ai0.extension.json for a native code plugin. */
 export const Ai0ExtensionManifestSchema = z.object({
-  manifest_version: z.literal("1.1.0"),
+  manifest_version: z.literal("2.0.0"),
   extension_id: z.string(),
   display_name: z.string(),
   description: z.string().optional(),
@@ -168,7 +182,7 @@ export const Ai0ExtensionManifestSchema = z.object({
   homepage: z.string().optional(),
   tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
-  dimension: ExtensionDimensionSchema,
+  facets: z.array(ExtensionFacetIdSchema).min(1),
   entry: z.string().optional(),
   permissions: ExtensionPermissionsSchema,
   console_contributions: ConsoleContributionsSchema.optional()
@@ -216,7 +230,7 @@ export type ProtocolBridgeTransport = z.infer<
 export const ProtocolBridgeConfigSchema = z.object({
   bridge_id: z.string(),
   display_name: z.string(),
-  dimension: ExtensionDimensionSchema,
+  facets: z.array(ExtensionFacetIdSchema).min(1),
   transport: ProtocolBridgeTransportSchema,
   endpoint_or_command: z.string(),
   capability_risk: CapabilityRiskSchema.optional(),
@@ -235,7 +249,7 @@ export type AttentionPriorityRule = z.infer<typeof AttentionPriorityRuleSchema>;
 export const CrossPluginTriggerSchema = z.object({
   rule_id: z.string(),
   when: z.object({
-    source_shell: z.string(),
+    source_channel: z.string(),
     semantic_event: z.string()
   }),
   if_condition: z.string(),
@@ -250,7 +264,7 @@ export const OrchestrationRulesSchema = z.object({
     priority_order: z.array(AttentionPriorityRuleSchema)
   }),
   proactive_routing_policy: z.object({
-    never_broadcast_to_all_shells: z.literal(true),
+    never_broadcast_to_all_channels: z.literal(true),
     preferred_target_selection: z.array(z.string())
   }),
   cross_plugin_triggers: z.array(CrossPluginTriggerSchema)
@@ -409,7 +423,7 @@ export type ScenarioRollbackMode = z.infer<typeof ScenarioRollbackModeSchema>;
 
 /** The declarative perception shape used by a .scenario.yaml test step. */
 export const ScenarioPerceptionInjectionSchema = z.object({
-  shell_id: z.string(),
+  channel_id: z.string(),
   venue_type: VenueTypeSchema,
   audience_scope: AudienceScopeSchema,
   actor_principal: z.string(),
@@ -456,7 +470,7 @@ export type ScenarioPlaybook = z.infer<typeof ScenarioPlaybookSchema>;
 
 export const ScopedCapabilityTokenSchema = z.object({
   token_id: z.string(),
-  allowed_shell_id_prefix: z.string(),
+  allowed_channel_id_prefix: z.string(),
   enforced_venue_type: VenueTypeSchema,
   max_audience_privacy_ceiling: AudienceScopeSchema,
   can_authenticate_owner_principal: z.boolean(),
@@ -469,7 +483,7 @@ export type ScopedCapabilityToken = z.infer<typeof ScopedCapabilityTokenSchema>;
 export const ExtensionPersistentStateSchema = z.object({
   extension_id: z.string(),
   carrier_kind: ExtensionCarrierKindSchema,
-  dimension: ExtensionDimensionSchema,
+  facets: z.array(ExtensionFacetIdSchema).min(1),
   enabled: z.boolean(),
   status: z.enum(["active", "disabled", "faulted_isolated"]),
   active_profile: z.string().optional(),

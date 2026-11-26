@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HostInfrastructureConfigSchema } from "@ai0/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveHostDefaultChatBinding } from "./soul-model-binding.js";
@@ -40,6 +41,16 @@ import {
 } from "./soul-profile-store.js";
 
 describe("orthogonal host infrastructure & soul profile stores", () => {
+  it("parses the repository host infrastructure configuration directly", () => {
+    const file = new URL("../../../../souls/host/infrastructure.json", import.meta.url);
+    const raw = JSON.parse(readFileSync(file, "utf8"));
+    expect(HostInfrastructureConfigSchema.parse(raw)).toMatchObject({
+      schemaVersion: 2,
+      providerSources: expect.any(Array),
+      modelInstances: expect.any(Array),
+      platforms: expect.any(Array)
+    });
+  });
   const dirs: string[] = [];
 
   afterEach(() => {
@@ -256,9 +267,10 @@ describe("orthogonal host infrastructure & soul profile stores", () => {
     expect(listAgentSkills(soulDir, bundledDir).some((s) => s.id === created.id)).toBe(false);
 
     // Extension state persistence
-    writeExtensionRuntimeConfig(soulDir, "community.organ.dream-journal", { poetic_style: "starlight", max_fragments: 4 }, true);
+    writeExtensionRuntimeConfig(soulDir, "community.organ.dream-journal", { poetic_style: "starlight", max_fragments: 4 }, { facets: ["cognition.context_contributor"] });
     const extState = readExtensionsState(soulDir);
     expect(extState.extensions["community.organ.dream-journal"]?.config_values.poetic_style).toBe("starlight");
+    expect(extState.extensions["community.organ.dream-journal"]?.facets).toEqual(["cognition.context_contributor"]);
     deleteExtensionRuntimeState(soulDir, "community.organ.dream-journal");
     expect(readExtensionsState(soulDir).extensions["community.organ.dream-journal"]).toBeUndefined();
   });

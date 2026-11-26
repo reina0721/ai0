@@ -1,3 +1,4 @@
+import { FACET_LABELS } from "./facet-labels.js";
 import type { PluginConfigField } from "@ai0/protocol";
 import Drawer from "@mui/material/Drawer";
 import { useEffect, useState, type ReactElement } from "react";
@@ -364,7 +365,7 @@ export function PluginDetailsDrawer(props: {
               <WorkspaceRow><small>作者</small><span>{ext.author ?? "ai0-community"}</span></WorkspaceRow>
               <WorkspaceRow><small>安装来源</small><WorkspaceTag>{ext.origin === "builtin" ? "官方内置 (只读保护)" : ext.origin === "soul" ? "灵魂实例目录" : "用户外部扩展 (user-plugins)"}</WorkspaceTag></WorkspaceRow>
               <WorkspaceRow><small>载体形态</small><code>{ext.carrier}</code></WorkspaceRow>
-              <WorkspaceRow><small>挂载总线</small><div className="ai0-entity-card__badges">{ext.buses.map((b) => <WorkspaceTag key={b}>{b}</WorkspaceTag>)}</div></WorkspaceRow>
+              <WorkspaceRow><small>扩展能力</small><div className="ai0-entity-card__badges">{ext.facets.map((b) => <WorkspaceTag key={b}>{FACET_LABELS[b] ?? b}</WorkspaceTag>)}</div></WorkspaceRow>
               <WorkspaceRow><small>运行代际 / 配置版本</small><code>rev {ext.rev} · {ext.generation ?? "未激活"}</code></WorkspaceRow>
             </WorkspaceItem>
 

@@ -21,14 +21,14 @@ import {
   PerceptionEnvelopeSchema,
   ProtocolRpcMessageSchema,
   SensorModalitySchema,
-  ShellKindSchema,
+  ChannelKindSchema,
   computeSpokenCharOffsetFromAudioMs
 } from "./primitives.js";
 
 const handshakeManifest = {
   protocol_version: "0.1.0",
-  shell_id: "community.avatar.desktop",
-  shell_kind: "custom.live2d_avatar",
+  channel_id: "community.avatar.desktop",
+  channel_kind: "custom.live2d_avatar",
   display_name: "Desktop avatar",
   venue_type: "private_1on1",
   current_audience: {
@@ -99,7 +99,7 @@ const deliveryReceipt = {
 
 const controlSignal = {
   signal_type: "focus_shifted",
-  active_focus_shell_id: "community.avatar.desktop",
+  active_focus_channel_id: "community.avatar.desktop",
   payload: { reason: "window-activated" }
 };
 
@@ -157,7 +157,7 @@ describe("Protocol v0 primitives", () => {
   it("validates the handshake manifest and acknowledgement", () => {
     expect(HandshakeManifestSchema.parse(handshakeManifest)).toMatchObject({
       protocol_version: "0.1.0",
-      shell_kind: "custom.live2d_avatar"
+      channel_kind: "custom.live2d_avatar"
     });
 
     expect(
@@ -206,9 +206,9 @@ describe("Protocol v0 primitives", () => {
     });
   });
 
-  it("accepts well-known and open custom shell kinds and sensor modalities", () => {
-    expect(ShellKindSchema.parse("webchat")).toBe("webchat");
-    expect(ShellKindSchema.parse("custom.community.avatar")).toBe(
+  it("accepts well-known and open custom channel kinds and sensor modalities", () => {
+    expect(ChannelKindSchema.parse("webchat")).toBe("webchat");
+    expect(ChannelKindSchema.parse("custom.community.avatar")).toBe(
       "custom.community.avatar"
     );
     expect(SensorModalitySchema.parse("audio_transcript")).toBe(
@@ -217,7 +217,7 @@ describe("Protocol v0 primitives", () => {
     expect(SensorModalitySchema.parse("custom.depth_camera")).toBe(
       "custom.depth_camera"
     );
-    expect(ShellKindSchema.safeParse("unknown").success).toBe(false);
+    expect(ChannelKindSchema.safeParse("unknown").success).toBe(false);
     expect(SensorModalitySchema.safeParse("custom.").success).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ export * from "./BlackboardSlotComposer.js";
 export * from "./EmbodimentStarMapCard.js";
 export * from "./ThalamicGateDebounceTuner.js";
 export * from "./EmbodiedKeyframeTimeline.js";
-export * from "./MockShellSensorSimulator.js";
+export * from "./MockChannelSensorSimulator.js";
 export * from "./PluginPageHost.js";
 export * from "./EdibleSoulDistillerWizard.js";
 export * from "./LorebookActivationSimulator.js";

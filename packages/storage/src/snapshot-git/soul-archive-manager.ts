@@ -147,7 +147,7 @@ export class SoulArchiveManager {
         event_id: `evt_rollback_${snapshotId}_${virtualTsMs}`,
         wall_ts_ms: virtualTsMs,
         virtual_ts_ms: virtualTsMs,
-        source_shell_id: "kernel.internal",
+        source_channel_id: "kernel.internal",
         principal_id: "system",
         principal_trust: "owner_verified",
         venue_type: "internal_background",

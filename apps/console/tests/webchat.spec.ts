@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const stagePath = "/webchat";
-const runPath = "/protocol/v0/shell/runs";
+const runPath = "/api/channel-runs";
 
 test("persists one private WebChat turn and keeps drafts isolated by target", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -133,7 +133,7 @@ test("records only the delivered prefix when WebChat is stopped", async ({ page 
   const { requestId } = (await sent).postDataJSON() as { requestId: string };
   const assistant = sandbox.locator(`[data-message-turn-id="${requestId}"][data-message-role="assistant"]`);
   await expect(assistant.locator(".ai0-chat-markdown")).toBeVisible();
-  const stop = page.waitForResponse((response) => response.url().endsWith(`/runs/${requestId}/stop`));
+  const stop = page.waitForResponse((response) => response.url().endsWith(`${runPath}/${requestId}/stop`));
   await sandbox.getByRole("button", { name: "停止", exact: true }).click();
   const response = await stop;
   expect(response.ok()).toBe(true);
@@ -153,7 +153,7 @@ test("confirms Markdown links and preserves table actions in themed overlays", a
   const reply = `[服务文档](${destination})\n\n| 名称 | 数量 |\n| --- | --- |\n| 示例 | 42 |`;
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.context().route(destination, (route) => route.fulfill({ body: "Documentation" }));
-  await page.route("**/protocol/v0/shell/history?*", (route) => route.fulfill({ json: { turns: [{
+  await page.route("**/protocol/v0/channel/history?*", (route) => route.fulfill({ json: { turns: [{
     eventId: "evt-browser-markdown", traceId: "trace-browser-markdown", targetInstance: "live", userText: "示例文档",
     assistantText: reply, timestamp: "2026-11-23T10:00:00.000Z",
     receipt: { status: "completed", spokenCharOffset: Array.from(reply).length }
@@ -205,11 +205,11 @@ test("keeps streamed reasoning separate across recovery, copying, and mobile his
   };
   let requestId: string | undefined;
   let delivered = false;
-  await page.route("**/protocol/v0/shell/history?*", route => route.fulfill({ json: { turns: delivered ? [{
+  await page.route("**/protocol/v0/channel/history?*", route => route.fulfill({ json: { turns: delivered ? [{
     requestId, eventId: "evt_" + requestId, targetInstance: "live", userText: "核对用量", assistantText: reply,
     process, receipt: { status: "completed", spokenCharOffset: Array.from(reply).length }, timestamp: new Date().toISOString()
   }] : [] } }));
-  await page.route("**/protocol/v0/shell/runs/**", route => {
+  await page.route("**/api/channel-runs/**", route => {
     const url = new URL(route.request().url());
     const receipt = url.pathname.endsWith("/receipt");
     requestId = url.pathname.split("/").at(receipt ? -2 : -1);
@@ -279,7 +279,7 @@ test("distinguishes missing and zero usage counters", async ({ page }) => {
     { usage: { inputTokens: 0, cachedInputTokens: 0 }, context: "0", cache: "未提供" }
   ];
   let sample = samples[0]!;
-  await page.route("**/protocol/v0/shell/history?*", route => route.fulfill({ json: { turns: [{
+  await page.route("**/protocol/v0/channel/history?*", route => route.fulfill({ json: { turns: [{
     eventId: "fixture", targetInstance: "live", userText: "用量", assistantText: "已完成",
     receipt: { status: "completed", spokenCharOffset: 3 }, timestamp: new Date().toISOString(),
     process: { provider: { name: "upstream", model: "test" }, stages: [], usage: sample.usage }
@@ -300,7 +300,7 @@ test("rebinds turn history and usage when the host switches soul", async ({ page
     const snapshot = await response.json();
     await route.fulfill({ json: switched ? { ...snapshot, soulId: "second.soul", personaName: "第二个角色" } : snapshot });
   });
-  await page.route("**/protocol/v0/shell/history?*", route => route.fulfill({ json: { turns: switched ? [] : [{
+  await page.route("**/protocol/v0/channel/history?*", route => route.fulfill({ json: { turns: switched ? [] : [{
     eventId: "first-soul", targetInstance: "live", assistantText: "旧角色回复", userText: "旧角色对话",
     receipt: { status: "completed", spokenCharOffset: 5 }, timestamp: new Date().toISOString(),
     process: { stages: [], usage: { inputTokens: 100, cachedInputTokens: 81 } }
@@ -309,7 +309,7 @@ test("rebinds turn history and usage when the host switches soul", async ({ page
   const live = page.locator('[data-webchat-target="live"]');
   const summary = live.locator(".ai0-chat-usage summary");
   await expect(summary).toContainText("81%");
-  const renewed = page.waitForRequest(request => /\/(?:shell|stage)-token\?/.test(request.url()));
+  const renewed = page.waitForRequest(request => /\/(?:channel|stage)-token\?/.test(request.url()));
   switched = true;
   await renewed;
   await expect(live.getByText("旧角色回复")).toHaveCount(0);

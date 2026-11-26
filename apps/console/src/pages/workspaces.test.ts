@@ -33,7 +33,7 @@ const workspaces = {
 
   // 4. External Integrations (Pure Resource Pools)
   "/integrations/providers": "服务提供商",
-  "/integrations/platforms": "消息平台与躯壳",
+  "/integrations/platforms": "消息平台与交互通道",
 
   // 5. Observability & System
   "/system/observability": "链路追踪与日志",
@@ -45,7 +45,7 @@ const workspaces = {
 
   // Legacy URL compatibility redirects
   "/models/providers": "服务提供商",
-  "/shells/topology": "消息平台与躯壳",
+  "/channels/topology": "消息平台与交互通道",
   "/profiles/rules": "会话路由规则 (UMO)",
   "/capabilities/extensions/config": "指令与自动化",
   "/capabilities/extensions/flows": "指令与自动化",
@@ -62,10 +62,10 @@ describe("console workspace content", () => {
   });
 
   it("shows the identifier for an unregistered dynamic workspace", () => {
-    const shell = renderToHtml(renderRoutePageView("/shells/stage/not-mounted"));
+    const channel = renderToHtml(renderRoutePageView("/channels/stage/not-mounted"));
     const extension = renderToHtml(renderRoutePageView("/extensions/custom/unknown-plugin"));
-    expect(shell).toContain("页面不可用");
-    expect(shell).toContain("not-mounted");
+    expect(channel).toContain("页面不可用");
+    expect(channel).toContain("not-mounted");
     expect(extension).toContain("页面不可用");
     expect(extension).toContain("unknown-plugin");
   });

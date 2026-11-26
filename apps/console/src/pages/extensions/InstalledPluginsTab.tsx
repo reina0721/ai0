@@ -1,3 +1,4 @@
+import { FACET_LABELS } from "./facet-labels.js";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
@@ -23,27 +24,17 @@ import {
 import { WorkspaceHeader } from "../workspace.js";
 import { PluginConfigDrawer, PluginDetailsDrawer } from "./PluginDrawers.js";
 
-const BUS_LABELS: Record<string, string> = {
-  "ext.cognitive_organ": "认知器官",
-  "ext.media_pipeline": "媒体管线",
-  "ext.shell": "交互躯壳",
-  "ext.action_mcp_skill": "工具与技能",
-  "ext.memory_knowledge": "记忆与知识",
-  "ext.model_provider": "模型适配",
-  "ext.soul_asset": "灵魂资产",
-  "ext.console_ui": "控制台界面"
-};
 
 const SAMPLE_MANIFEST_JSON = JSON.stringify(
   {
-    manifest_version: "1.1.0",
+    manifest_version: "2.0.0",
     extension_id: "community.asset.custom-greeting",
     display_name: "自定义晨间问候包",
     description: "在每日首次对话时附上柔和的晨间问候提示",
     version: "1.0.0",
     author: "me",
     carrier_kind: "declarative_soul_asset",
-    dimension: "ext.soul_asset",
+    facets: ["extension.asset_codec"],
     permissions: {
       read_blackboard_domains: ["D2_HOMEOSTASIS_AFFECT"],
       propose_mutation_domains: [],
@@ -70,7 +61,7 @@ export function InstalledPluginsTab(props: { snapshot?: ConsoleLiveSnapshot }): 
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled" | "error">("all");
-  const [busFilter, setBusFilter] = useState<string>("all");
+  const [facetFilter, setFacetFilter] = useState<string>("all");
   const [pendingId, setPendingId] = useState<string>();
   const [reloadingAll, setReloadingAll] = useState(false);
 
@@ -107,17 +98,17 @@ export function InstalledPluginsTab(props: { snapshot?: ConsoleLiveSnapshot }): 
       if (statusFilter === "active" && (!ext.enabled || Boolean(ext.activationError))) return false;
       if (statusFilter === "disabled" && ext.enabled) return false;
       if (statusFilter === "error" && !ext.activationError) return false;
-      if (busFilter !== "all" && !ext.buses.includes(busFilter)) return false;
+      if (facetFilter !== "all" && !ext.facets.includes(facetFilter)) return false;
       if (!q) return true;
       return (
         ext.displayName.toLowerCase().includes(q) ||
         ext.id.toLowerCase().includes(q) ||
         ext.description.toLowerCase().includes(q) ||
         (ext.author ?? "").toLowerCase().includes(q) ||
-        ext.buses.some((b) => b.toLowerCase().includes(q))
+        ext.facets.some((b) => b.toLowerCase().includes(q))
       );
     });
-  }, [normalizedList, query, statusFilter, busFilter]);
+  }, [normalizedList, query, statusFilter, facetFilter]);
 
   const handleToggle = async (id: string, enabled: boolean) => {
     if (!ctx || !canWrite || pendingId) return;
@@ -240,7 +231,7 @@ export function InstalledPluginsTab(props: { snapshot?: ConsoleLiveSnapshot }): 
             type="search"
             ariaLabel="过滤已安装插件"
             value={query}
-            placeholder="搜索插件名称、扩展 ID、作者或总线…"
+            placeholder="搜索插件名称、扩展 ID、作者或扩展能力…"
             onInput={setQuery}
           />
         </div>
@@ -265,12 +256,12 @@ export function InstalledPluginsTab(props: { snapshot?: ConsoleLiveSnapshot }): 
         </div>
         <div style={{ minWidth: 150 }}>
           <CompactSelect
-            ariaLabel="按总线筛选插件"
-            value={busFilter}
-            onChange={setBusFilter}
+            ariaLabel="按扩展能力筛选插件"
+            value={facetFilter}
+            onChange={setFacetFilter}
             options={[
-              { value: "all", label: "全部扩展总线" },
-              ...Object.entries(BUS_LABELS).map(([value, label]) => ({ value, label }))
+              { value: "all", label: "全部扩展能力" },
+              ...Object.entries(FACET_LABELS).map(([value, label]) => ({ value, label }))
             ]}
           />
         </div>
@@ -315,9 +306,9 @@ export function InstalledPluginsTab(props: { snapshot?: ConsoleLiveSnapshot }): 
 
                 <div className="ai0-entity-card__body">
                   <div className="ai0-entity-card__badges">
-                    {ext.buses.map((bus) => (
-                      <WorkspaceStatus key={bus} data-tone="info">
-                        {BUS_LABELS[bus] ?? bus}
+                    {ext.facets.map((facet) => (
+                      <WorkspaceStatus key={facet} data-tone="info">
+                        {FACET_LABELS[facet] ?? facet}
                       </WorkspaceStatus>
                     ))}
                     {ext.networkAccess ? <WorkspaceStatus data-tone="warn">需联网</WorkspaceStatus> : null}

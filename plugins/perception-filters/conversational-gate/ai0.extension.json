@@ -1,0 +1,44 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.conversational-gate",
+  "display_name": "对话感知门控",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "native_code_plugin",
+  "facets": [
+    "perception.filter",
+    "console.config_schema"
+  ],
+  "entry": "./dist/index.js",
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  },
+  "console_contributions": {
+    "config_fields": [
+      {
+        "key": "debounce_window_ms",
+        "label": "对话合并窗口 (ms)",
+        "type": "int",
+        "default": 1200,
+        "min": 0
+      },
+      {
+        "key": "enable_retract_hesitation",
+        "label": "感知撤回时的犹豫",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "key": "min_salience_confidence",
+        "label": "环境感知置信度阈值",
+        "type": "float",
+        "default": 0.6,
+        "min": 0,
+        "max": 1
+      }
+    ]
+  }
+}

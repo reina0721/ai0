@@ -138,11 +138,11 @@ test("a narrow reduced-motion console keeps focus and the WebChat composer usabl
   await consolePreferences.set({ appearance: "dark" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.route("**/protocol/v0/shell/history?*", (route) => route.fulfill({ json: { turns: [] } }));
-  await page.route((url) => url.pathname === "/protocol/v0/shell/runs", (route) =>
+  await page.route("**/protocol/v0/channel/history?*", (route) => route.fulfill({ json: { turns: [] } }));
+  await page.route((url) => url.pathname === "/api/channel-runs", (route) =>
     route.fulfill({ status: 502, json: { error: "UPSTREAM_CONNECT_FAILED" } }));
-  await page.route((url) => /^\/protocol\/v0\/shell\/runs\/[^/]+$/u.test(url.pathname), (route) =>
-    route.fulfill({ status: 404, json: { error: "SHELL_RUN_NOT_FOUND" } }));
+  await page.route((url) => /^\/protocol\/v0\/channel\/runs\/[^/]+$/u.test(url.pathname), (route) =>
+    route.fulfill({ status: 404, json: { error: "CHANNEL_RUN_NOT_FOUND" } }));
   await page.goto("/webchat");
 
   const root = page.locator("[data-console-root]");
@@ -170,13 +170,13 @@ test("a narrow reduced-motion console keeps focus and the WebChat composer usabl
   await restore.click();
   await expect(composer).toHaveValue(prompt);
   await expect(composer).toBeFocused();
-  const shellBounds = await root.evaluate((element) => {
+  const channelBounds = await root.evaluate((element) => {
     const topBar = element.querySelector(".ai0-hybrid-top-bar")!;
     const main = element.querySelector("main")!;
     return { topBar: topBar.scrollWidth - topBar.clientWidth, main: main.scrollWidth - main.clientWidth };
   });
-  expect(shellBounds.topBar).toBeLessThanOrEqual(1);
-  expect(shellBounds.main).toBeLessThanOrEqual(1);
+  expect(channelBounds.topBar).toBeLessThanOrEqual(1);
+  expect(channelBounds.main).toBeLessThanOrEqual(1);
   await attachView("mobile-webchat-recovered-draft", root);
 });
 

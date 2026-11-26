@@ -25,7 +25,7 @@ export class ContinuousStateMetaEngine {
   private readonly impulseIds = new Set<string>();
   private readonly states = new Map<string, State>();
 
-  constructor(descriptors: readonly ContinuousStateDescriptor[] = STANDARD_STATE_DESCRIPTORS, private nowMs = 0) {
+  constructor(descriptors: readonly ContinuousStateDescriptor[] = [], private nowMs = 0) {
     if (!Number.isFinite(nowMs)) throw new RangeError("Invalid initial clock");
     for (const descriptor of descriptors) this.register(descriptor);
   }
@@ -82,7 +82,7 @@ export class ContinuousStateMetaEngine {
   }
 }
 
-export const STANDARD_STATE_DESCRIPTORS: readonly ContinuousStateDescriptor[] = [
+export const COMPANION_HOMEOSTASIS_DESCRIPTORS: readonly ContinuousStateDescriptor[] = [
   { id: "instant_valence", topology: "bipolar_tanh", baseline: 0, halfLifeMs: 3_600_000, wakeupThresholds: [] },
   { id: "instant_arousal", topology: "unipolar_sigmoid", baseline: 0.35, halfLifeMs: 3_600_000, wakeupThresholds: [] },
   { id: "mood_baseline_val", topology: "bipolar_tanh", baseline: 0, halfLifeMs: 43_200_000, wakeupThresholds: [] },

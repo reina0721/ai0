@@ -1,0 +1,38 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.attention-arbitrator",
+  "display_name": "注意力仲裁",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "native_code_plugin",
+  "facets": [
+    "cognition.attention_arbitrator",
+    "expression.intent_decorator",
+    "console.config_schema"
+  ],
+  "entry": "./dist/index.js",
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  },
+  "console_contributions": {
+    "config_fields": [
+      {
+        "key": "focus_hysteresis_window_ms",
+        "label": "焦点锁定窗口 (ms)",
+        "type": "int",
+        "default": 4000,
+        "min": 0
+      },
+      {
+        "key": "gaze_lead_ms",
+        "label": "视线先行 (ms)",
+        "type": "int",
+        "default": 180,
+        "min": 0
+      }
+    ]
+  }
+}

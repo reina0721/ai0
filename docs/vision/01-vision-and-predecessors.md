@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（问题域规范）
 >
-> 本文档界定系统的核心愿景命题与两大架构立基公理，并以现世最具代表性的五大真实先行体系——**Project AIRI**、**Neuro-sama (`VedalAI/neuro-sdk`)**、**Letta (MemGPT)**、**SAIBA 虚拟人框架** 以及 **SillyTavern (`Character Card V2/V3 & Lorebook`) 与开源 Agent 运维控制台生态（OpenClaw / AstrBot / NapCat / Koishi 等）**——为外部对比参照系，剖析先行者做对了什么、踩过什么坑，以及本架构“无头认知微内核 + 极小冻结协议 + 八大维度社区扩展生态 + 多态悬浮卡片式 WebUI 控制台”的本质分野与跨代升维。
+> 本文档界定系统的核心愿景命题与两大架构立基公理，并以现世最具代表性的五大真实先行体系——**Project AIRI**、**Neuro-sama (`VedalAI/neuro-sdk`)**、**Letta (MemGPT)**、**SAIBA 虚拟人框架** 以及 **SillyTavern (`Character Card V2/V3 & Lorebook`) 与开源 Agent 运维控制台生态（OpenClaw / AstrBot / NapCat / Koishi 等）**——为外部对比参照系，剖析先行者做对了什么、踩过什么坑，以及本架构“无头认知微内核 + 极小冻结协议 + 一包多切面社区扩展生态 + 多态悬浮卡片式 WebUI 控制台”的本质分野与跨代升维。
 >
 > **证据等级标注约定**：
 > * **`[文献/先行项目佐证]`**：有学术论文、法规条文、成熟行业标准或开源项目实证支撑；
@@ -19,20 +19,20 @@
 
 ### 1.1 公理一：灵魂存档彻底独立，运行时具身情境结构化感知
 
-* **常见朴素误区**：“把灵魂和躯壳彻底解耦，让大脑在运行时完全无视当前附身的躯壳是什么。”
-* **架构立基公理**：**灵魂的持久化“存档”（身份、记忆、关系、事件真相源）必须彻底独立于任何躯壳；但运行时的认知内核绝不能对当前附身的躯壳一无所知。** **`[文献/先行项目佐证]`**
+* **常见朴素误区**：“把灵魂和交互通道彻底解耦，让大脑在运行时完全无视当前附身的交互通道是什么。”
+* **架构立基公理**：**灵魂的持久化“存档”（身份、记忆、关系、事件真相源）必须彻底独立于任何交互通道；但运行时的认知内核绝不能对当前附身的交互通道一无所知。** **`[文献/先行项目佐证]`**
 * **深度论证**：
   1. **具身与情境依附性（Situated & Embodied Affordances）**：认知科学中的具身认知理论表明，智能体的感知解读与行为规划高度依赖其当前身体的能力边界（Affordances）与所处社交场合（Situated Context）。
-  2. **表达与能动性约束**：当前躯壳能不能看画面、能不能发语音、网络与渲染延迟预算多大（实时语音要求 $<600\text{ms}$，异步文字可容忍 $5\text{s}$），直接决定了她该组织长句还是短句、能不能发起视觉互动。
+  2. **表达与能动性约束**：当前交互通道能不能看画面、能不能发语音、网络与渲染延迟预算多大（实时语音要求 $<600\text{ms}$，异步文字可容忍 $5\text{s}$），直接决定了她该组织长句还是短句、能不能发起视觉互动。
   3. **社交场合与隐私边界**：当前所处的场合是“私密一对一桌面/私聊”还是“多人群聊”或“千人公开直播间”，以及在场的受众是谁，直接决定了她**能说什么、该以什么分寸表达、能调用什么工具、以及什么内容可以进入哪一级别的记忆**。
 * **架构推论** **`[架构推断]`**：
-  * **持久化层（Soul Archive `.soul`）**：零躯壳耦合。今天卸载桌宠换到 Telegram 或新 3D 引擎，无需迁移任何一行记忆或关系数据。
-  * **将“躯壳（Shell）”正式定义为具有能力边界的《具身运行环境（Embodied Runtime Environment）》**：
-    Shell 绝不是一个简单的 UI 消息转发器或皮肤适配器。不同的 Shell 驻留在不同的端侧或宿主环境中（桌面 Shell 驻留操作系统桌面、手机 Shell 驻留移动设备、游戏 Shell 驻留游戏世界、浏览器 Shell 驻留 DOM 环境）。每个 Shell 在握手与运行时，通过标准协议向内核暴露三大具身能力平面并承担对应的端侧设备权限管理：
-    1. **环境与交互感知（`Sensors`）**：如桌面 Shell 感知活动窗口、鼠标轨迹与键盘空闲状态；手机 Shell 感知系统通知、地理位置变化与传感器；游戏 Shell 感知血量、坐标与周围实体；浏览器 Shell 感知当前网页 DOM 与阅读上下文。
+  * **持久化层（Soul Archive `.soul`）**：零交互通道耦合。今天卸载桌宠换到 Telegram 或新 3D 引擎，无需迁移任何一行记忆或关系数据。
+  * **将“交互通道（InteractionChannel）”正式定义为具有能力边界的《具身运行环境（Embodied Runtime Environment）》**：
+    InteractionChannel 绝不是一个简单的 UI 消息转发器或皮肤适配器。不同的 InteractionChannel 驻留在不同的端侧或宿主环境中（桌面 InteractionChannel 驻留操作系统桌面、手机 InteractionChannel 驻留移动设备、游戏 InteractionChannel 驻留游戏世界、浏览器 InteractionChannel 驻留 DOM 环境）。每个 InteractionChannel 在握手与运行时，通过标准协议向内核暴露三大具身能力平面并承担对应的端侧设备权限管理：
+    1. **环境与交互感知（`Sensors`）**：如桌面 InteractionChannel 感知活动窗口、鼠标轨迹与键盘空闲状态；手机 InteractionChannel 感知系统通知、地理位置变化与传感器；游戏 InteractionChannel 感知血量、坐标与周围实体；浏览器 InteractionChannel 感知当前网页 DOM 与阅读上下文。
     2. **多模态表达渲染（`Realizers`）**：将内核下发的抽象表达意图翻译为文字、TTS 语音、Live2D/3D 骨骼动画，并向内核回传精确的播放/打断状态反馈。
-    3. **端侧具身执行器（`Actuators`）**：暴露当前宿主环境中可执行的操作原语（如游戏 Shell 的“移动/使用物品”、浏览器 Shell 的“滚动/高亮页面”、桌面 Shell 的“经授权查看当前窗口截图”），供大脑的一等行动认知环调用并反馈执行结果。
-  * **运行时上下文层（Runtime Embodiment Envelope）**：躯壳在握手与事件上报时，必须以**标准化结构**向内核声明自身的《三平面能力清单（Sensors / Realizers / Actuators）》、《场合类型（Venue）》与《在场受众（Audience）》，作为大脑推理、行动规划与检索过滤的一等输入变量。
+    3. **端侧具身执行器（`Actuators`）**：暴露当前宿主环境中可执行的操作原语（如游戏 InteractionChannel 的“移动/使用物品”、浏览器 InteractionChannel 的“滚动/高亮页面”、桌面 InteractionChannel 的“经授权查看当前窗口截图”），供大脑的一等行动认知环调用并反馈执行结果。
+  * **运行时上下文层（Runtime Embodiment Envelope）**：交互通道在握手与事件上报时，必须以**标准化结构**向内核声明自身的《三平面能力清单（Sensors / Realizers / Actuators）》、《场合类型（Venue）》与《在场受众（Audience）》，作为大脑推理、行动规划与检索过滤的一等输入变量。
 
 ### 1.2 公理二：将“反留存操控与有边界的伙伴关系”确立为系统一级本体
 
@@ -47,19 +47,21 @@
 
 ### 1.3 三级渐进派生方法论
 
-**Clean-Slate V1 始终保持第一版，零历史沉积、零预设默认角色卡、三级渐进派生、四核正交分立。** 从愿景直接跳到终局 Schema 或封闭枚举，会把示例模态、人形器官和心理维度固化为协议与数据库债务。预装角色种子会跳过主权认领与资产选择，正则模板冒充离线模型回复会掩盖凭据、连通性与授权缺口。仓库分发从空部署验收，实验夹具和兼容垫片不进入生产路径。
+**Clean-Slate V1 始终保持第一版，零历史沉积、零预设默认角色卡、三级渐进派生、五核正交分立。** 从愿景直接跳到终局 Schema 或封闭枚举，会把示例模态、人形器官和心理维度固化为协议与数据库债务。预装角色种子会跳过主权认领与资产选择，正则模板冒充离线模型回复会掩盖凭据、连通性与授权缺口。仓库分发从空部署验收，实验夹具和兼容垫片不进入生产路径。
 
 | 层级 | 推导任务 | 收敛产物 |
 | --- | --- | --- |
 | Level 1 顶层实体边界与零预设部署生命周期边界 | 先固定资产、运行身份、硬件权限和宿主主权的所有权。 | 四层实体物理分离和 L0–L5 Deploy-to-Live 闭环。 |
-| Level 2 跨场景消去法与四核正交分立 | 跨文本、语音、桌宠、机器人、游戏和私密手环消去设备细节与场景策略。 | 通用机械执行归 `@ai0/agent-core`，感知、认知、表达分别归无头同级包 `@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`，场景规则与驱动归 `plugins/**`。 |
-| Level 3 渐进证伪与主仓第一版收敛 | 按 Stage 0–4 运行可执行纸面轨迹和最小原型，先寻找反例，再固化接口。 | 通过场景轨迹后才将共性收敛进主仓 `packages/`，生产冷启动另有端到端验收。 |
+| Level 2 跨场景消去法与五核正交分立 | 跨文本、语音、桌宠、机器人、游戏和私密手环消去设备细节与场景策略。 | 通用机械执行归 `@ai0/agent-core`，感知、认知、表达分别归无头同级包 `@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`，`@ai0/extension-core` 治理跨核切面，场景规则与驱动归 `plugins/**`。 |
+| Level 3 渐进证伪与主仓第一版收敛 | 按 Stage 0–6 运行可执行纸面轨迹和最小原型，先寻找反例，再固化接口。 | 通过场景轨迹后才将共性收敛进主仓 `packages/`，生产冷启动另有端到端验收。 |
 
 - [`stage0-paper-traces`](../../labs/stage0-paper-traces) 固定接地、所有权与部署状态转移的不变量。
 - [`stage1-agent-core`](../../labs/stage1-agent-core) 验证权限分栏、有序工具结算、取消与未核验目标。
 - [`stage2-airi-dissection`](../../labs/stage2-airi-dissection) 从真实源码提取角色卡解析、观察准入与上下文分桶。
-- [`stage3-perception-expression`](../../labs/stage3-perception-expression) 冻结执行环，验证跨壳观察、话轮、隐私与打断回执。
-- [`stage4-universal-derivation`](../../labs/stage4-universal-derivation) 用可替换器官、声明式连续状态和跨具身场景验证四核组合。
+- [`stage3-perception-expression`](../../labs/stage3-perception-expression) 冻结执行环，验证跨交互通道观察、话轮、隐私与打断回执。
+- [`stage4-universal-derivation`](../../labs/stage4-universal-derivation) 用可替换器官、声明式连续状态和跨具身场景验证跨具身组合。
+- [`stage5-composite-channel-facets`](../../labs/stage5-composite-channel-facets) 验证通道与具身词表的独立演化以及包级隔离。
+- [`stage6-mechanism-policy-ablation`](../../labs/stage6-mechanism-policy-ablation) 验证同一五核机制支持陪伴与无情感策略开销的任务话轮。
 
 ### 1.4 四层实体物理分离法则
 
@@ -68,7 +70,7 @@
 | 宿主机基础设施（Host Infrastructure） | `souls/host/` 与加密 Secrets Vault 管理 Owner 凭据、已安装插件、宿主 Provider Pool 与全局模块默认值 `consciousness`、`vision`、`speech`，均独立于角色。 | Provider 选项包括 OpenCode Go（如 `deepseek-v4.1-flash`）、OpenAI-compatible、Anthropic、DeepSeek 与 Ollama。Owner 显式配置并实测，调用方以引用访问 Vault。 |
 | 静态角色卡资产（Static Character Card Asset） | `Character Card V3`（`chara_card_v3`）保存人格设定、对白样例、`character_book` Lorebook、可选具身锚点与资产元数据、声明式状态描述和可选 `Inherit / Override` 模型选择。私聊记录与运行密钥均留在卡外。 | 编辑和往返导出保留未知 `extensions.<namespace>` 的完整嵌套值。角色选择按回合解析，禁止回写宿主默认。 |
 | 活体灵魂实例（Awakened Soul Instance） | `*.soul` 拥有不可变 `event_log`、四级认知溯源 `memories`、`memory_lineage_edges`、`continuous_states_json`、`prospective_commitments` 与 `redaction_ledger.json`。 | 通过 `origin_card_id` 引用来源卡。一张卡可在宿主唤醒多个相互独立的实例，各自拥有经历与状态，零客户端渲染耦合。 |
-| 具身交互躯壳与扩展（Mounted Shells & Extensions） | 端侧或外部运行时持有设备权限、渲染资源与操作实现。 | 通过 `Scoped Capability Token` 挂载，动态声明 `Sensors / Realizers / Actuators` 与当前生效的具身锚点。 |
+| 具身交互通道与扩展（Mounted Channels & Extensions） | 端侧或外部运行时持有设备权限、渲染资源与操作实现。 | 通过 `Scoped Capability Token` 挂载，动态声明 `Sensors / Realizers / Actuators` 与当前生效的具身锚点。 |
 
 ### 1.5 零预设 L0–L5 Deploy-to-Live
 
@@ -80,10 +82,10 @@
 | `L1_CLAIMED_NO_PROVIDER` | 写入 Vault 并实测真实模型调用与所需能力，保存宿主全局默认引用。未就绪时展示缺口。 |
 | `L2_PROVIDER_READY_NO_SOUL` | Owner 预览 CCv3 或从空白创建，并显式唤醒独立的 `*.soul`。实例绑定可用推理模型。 |
 | `L3_SOUL_AWAKENED_CONFIG_NEEDED` | 按需配置扩展和媒体管线，端侧显式授予设备权限。未授权模态维持 `blind`。 |
-| `L4_SOUL_AWAKENED_NO_SHELL` | Owner 签发绑定目标灵魂、场合与受众的受限令牌。跨端主体身份经显式绑定。 |
+| `L4_SOUL_AWAKENED_NO_CHANNEL` | Owner 签发绑定目标灵魂、场合与受众的受限令牌。跨端主体身份经显式绑定。 |
 | `L5_LIVE_READY` | Vault、可用模型、有效挂载和 Tier 0 披露能力全部通过门禁，认知循环开始提供服务。 |
 
-撤销 Provider 或最后一个有效 Shell 时，守护进程撤下就绪标记并报告对应缺口。休眠以独立运行状态及时间区间记账。Stage 0 的原型在 L4 标记上线、用 L5 表示休眠，主仓 V1 在 L5 表示上线就绪。
+撤销 Provider 或最后一个有效 InteractionChannel 时，守护进程撤下就绪标记并报告对应缺口。休眠以独立运行状态及时间区间记账。
 
 ---
 
@@ -97,10 +99,10 @@
   * VTuber 直播推流软件与弹幕抓取器；
   * 微信 / QQ / Discord / Telegram / Slack 等具体 IM 平台交互插件。
 * **专注打磨的核心（认知中枢本体）**：
-  1. **无头四核与协议层**：机械执行、上行结构化感知、认知裁决与下行语义表达及回执；
-  2. **八大维度微内核扩展总线**：由后台无头运行时宿主执行的全链路扩展接口（涵盖具身躯壳、音视频媒体管线、认知器官、MCP/Skill 行动工具、记忆与知识连接器、模型推理后端、灵魂模板与世界观资产包）；
+  1. **无头五核与协议层**：扩展治理、机械执行、上行结构化感知、认知裁决与下行语义表达及回执；
+  2. **微内核能力切面**：由后台无头运行时宿主执行的全链路扩展接口（涵盖具身交互通道、音视频媒体管线、认知器官、MCP/Skill 行动工具、记忆与知识连接器、模型推理后端、灵魂模板与世界观资产包）；
 * **随项目官方提供的配套管理与实验设施**：
-  * **`WebUI 控制台` 与内置参考 `WebChat`**：官方随项目提供的浏览器管理界面（独立于后台内核运行，关闭浏览器不影响数字生命与已启用扩展的持续运转），以及一个**严格走外部标准协议、零内部后门的内置 WebChat Shell 插件（既供开箱日常相处，也作社区躯壳插件的官方参考样板）**。
+  * **`WebUI 控制台` 与内置参考 `WebChat`**：官方随项目提供的浏览器管理界面（独立于后台内核运行，关闭浏览器不影响数字生命与已启用扩展的持续运转），以及一个**严格走外部标准协议、零内部后门的内置 WebChat InteractionChannel 插件（既供开箱日常相处，也作社区交互通道插件的官方参考样板）**。
 
 ---
 
@@ -171,7 +173,7 @@
    * `neuro-sdk` 仅是面向单一主播场景的轻量游戏外设接口，其 `action/result` 往往在动作指令刚发出时就提前回报，未严格区分“动作已派发”与“动作在环境中已产生真实效果”；且协议本身不包含多主体认证（`Principal`）、多受众隐私边界（`Audience`）与语音流式打断字符偏移回执（`spoken_char_offset`）。
 
 3. **本架构（`ai0`）对 Neuro-sama 精髓的吸收与超越**：
-   * 在 Protocol v0 的 `ControlSignal` 中原生支持 **`capabilities_updated`（运行期动态注册/注销端侧具身执行器 `actuators`）**，让任何游戏或桌面 Shell 都能随场景状态动态变更数字生命的可执行动作空间；
+   * 在 Protocol v0 的 `ControlSignal` 中原生支持 **`capabilities_updated`（运行期动态注册/注销端侧具身执行器 `actuators`）**，让任何游戏或桌面 InteractionChannel 都能随场景状态动态变更数字生命的可执行动作空间；
    * 在认知内核中将“喜剧留白与表里反差”升维为确定性与涌现结合的认知机制：**有界发言机会池（`InteractionOpportunity` 等待气口/急事作废）**、**语用结界（`InteractionFrame`: 玩笑吐槽不污染事实记忆）**，以及**“潜台词（`theatrical_subtext`）驱动微表情、表层策略驱动台词”的非共线表里张力演出律**。
 
 ---
@@ -191,9 +193,9 @@
    * 原生消费级 Material Design 3 控件往往偏大、留白松散，若不经高密度紧凑化裁剪直接搬入科研级控制台，会造成严重的信息密度下降。
 
 3. **本架构（`ai0`）的吸收融合与跨代升维（Borrow & Ascend）**：
-   * **八大功能扩展总线 × 五阶多态异构扩展载体（The 8-Bus × 5-Carrier Polymorphic Ecosystem）**：打破“只有单一编译型 TS 代码插件”的局限，同时支持 **① 零代码声明式资产包（SillyTavern V2/V3 角色卡四步蒸馏料理与越狱清洗、`.soul-template`、`Lorebook`、关系里程碑与正向剧情触发器 `milestones_and_rituals.yaml`）**、**② Agent `SKILL.md` 自然语言技能手册与沙盒脚本（含角色内执行姿态提示）**、**③ 免代码标准协议与跨进程热挂载器（`MCP / Protocol v0 WebSocket / Webhook / OpenAPI`）**、**④ 可视化认知管线、受控好奇心外部世界冲浪子代理与跨插件 ECA 联动蓝图（`.flow.yaml`）**、以及 **⑤ 微内核原生代码插件与动态控制台 UI 视图包（`ai0.extension.json + ext.console_ui`）**；
-   * 躯壳协议支持独立载体。控制台导航会随插件声明的页面变化，WebChat 与社区客户端分别管理自己的界面。
-   * **后端全量机制 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/曲线层 -> Tier-V2 结构化紧凑表单层 -> Tier-V3 权威源码/审计层`）**：通过 **`ai0` 第一方紧凑二次封装 MD3 组件库（5 子目录 4 层 45 项纯语义组件，`32px` 紧凑控件高度与 5 级动态灵魂色调表面）**，把后端深邃的 `<2500 Token` 认知黑板积木编排器、三层人格演化双栏 Diff、24h 作息生物钟与二阶耦合情绪拖拽曲线、五脑区异构算力代谢水位仪、双向具身 `Shell` 三平面星图、内建混合 RAG 知识库与四级溯源血缘 DAG 真遗忘手术台、以及四轨融合遥测终端 100% 无损且直观地呈现在使用者面前。
+   * **一包多切面 × 五类载体**。包统一部署、配置与隔离，能力按各核接点声明。五类载体覆盖声明式资产、`SKILL.md`、跨进程桥、可视化认知流与原生插件。详见[多切面扩展规范](../architecture/05-eight-dimension-extension-system.md)。
+   * 交互通道协议支持独立载体。控制台导航会随插件声明的页面变化，WebChat 与社区客户端分别管理自己的界面。
+   * **后端全量机制 100% 零阉割投射与三层渐进式降维视觉表达（`Tier-V1 直觉图形/曲线层 -> Tier-V2 结构化紧凑表单层 -> Tier-V3 权威源码/审计层`）**：通过 **`ai0` 第一方紧凑二次封装 MD3 组件库（5 子目录 4 层 45 项纯语义组件，`32px` 紧凑控件高度与 5 级动态灵魂色调表面）**，把后端深邃的 `<2500 Token` 认知黑板积木编排器、三层人格演化双栏 Diff、24h 作息生物钟与二阶耦合情绪拖拽曲线、五脑区异构算力代谢水位仪、双向具身 `InteractionChannel` 三平面星图、内建混合 RAG 知识库与四级溯源血缘 DAG 真遗忘手术台、以及四轨融合遥测终端 100% 无损且直观地呈现在使用者面前。
 
 ---
 
@@ -201,7 +203,7 @@
 
 综合以上三大对照系的成败经验，本架构确立以下四条不可动摇的工程建构铁律 **`[架构推断]`**：
 
-1. **绝不染指躯壳渲染与平台适配**：把每一分复杂度预算都留给认知内核、标准协议与白盒控制台；内置 WebChat 必须像外部二等公民一样走标准 WebSocket 协议，用“吃自己狗粮”保证协议完备性。
+1. **绝不染指交互通道渲染与平台适配**：把每一分复杂度预算都留给认知内核、标准协议与白盒控制台；内置 WebChat 与外部通道共用公开协议、授权和回执契约，部署通过 HTTP/SSE 桥。
 2. **主循环热路径与后台睡眠冷路径严格读写分离**：交互热路径（System 1）严禁执行耗时数据库重写或复杂多跳反思，只读内存中的《认知状态黑板》并在单次流式生成中完成响应；一切重度整理由异步冷路径（System 2）提议、经确定性防火墙裁决后更新黑板。
 3. **事件日志为唯一真相，记忆带血缘可溯源、可连根擦除**：绝不允许 LLM 静默原地覆写核心状态而不留血缘证据链。
-4. **核心协议极小化且冻结，表现力通过命名空间扩展与优雅降级实现**：既不让纯文本 Bot 背负 3D 骨骼协议包袱，也不剥夺高阶 3D/Live2D 躯壳渲染微表情与眼神同步的空间。
+4. **核心协议极小化且冻结，表现力通过命名空间扩展与优雅降级实现**：既不让纯文本 Bot 背负 3D 骨骼协议包袱，也不剥夺高阶 3D/Live2D 交互通道渲染微表情与眼神同步的空间。

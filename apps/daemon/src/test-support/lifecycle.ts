@@ -24,13 +24,13 @@ export function lifecycleFixture(ctx: TestContext, prepare?: (soulsRoot: string)
   const app = createUnifiedDaemonHttpApp(runtime);
 
   async function request<T = unknown>(
-    path: string, method = "GET", body?: unknown, status = 200, shellToken?: string
+    path: string, method = "GET", body?: unknown, status = 200, channelToken?: string
   ): Promise<T> {
     const response = await app.request(path, {
       method,
       headers: {
         "content-type": "application/json",
-        ...(shellToken ? { authorization: "Bearer " + shellToken } : { "x-ai0-owner-token": ownerMasterToken })
+        ...(channelToken ? { authorization: "Bearer " + channelToken } : { "x-ai0-owner-token": ownerMasterToken })
       },
       body: body === undefined ? undefined : JSON.stringify(body)
     });
@@ -45,19 +45,19 @@ export function lifecycleFixture(ctx: TestContext, prepare?: (soulsRoot: string)
     return report;
   }
 
-  async function connectShell() {
-    const shellId = "lifecycle.terminal";
-    const { token } = await request<{ token: string }>("/api/studio/shell-grants", "POST", {
-      shellId, audience: "only_owner", principalId: "owner:local", externalUserId: "lifecycle-user"
+  async function connectChannel() {
+    const channelId = "lifecycle.terminal";
+    const { token } = await request<{ token: string }>("/api/studio/channel-grants", "POST", {
+      channelId, audience: "only_owner", principalId: "owner:local", externalUserId: "lifecycle-user"
     });
-    const { session_id: sessionId } = await request<{ session_id: string }>("/protocol/v0/shell/connections", "POST", {
-      protocol_version: "0.1.0", shell_id: shellId, shell_kind: "im_bridge", display_name: "Lifecycle terminal",
+    const { session_id: sessionId } = await request<{ session_id: string }>("/protocol/v0/channel/connections", "POST", {
+      protocol_version: "0.1.0", channel_id: channelId, channel_kind: "im_bridge", display_name: "Lifecycle terminal",
       venue_type: "private_1on1", current_audience: { scope: "only_owner", member_count: 1 }, latency_budget_ms: 300,
       capabilities: { sensors: ["text"], actuators: [], supported_extensions: [] }
     }, 200, token);
     expect(sessionId).toEqual(expect.any(String));
-    return { shellId, sessionId, token };
+    return { channelId, sessionId, token };
   }
 
-  return { soulsRoot, runtime, request, readiness, connectShell };
+  return { soulsRoot, runtime, request, readiness, connectChannel };
 }

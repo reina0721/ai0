@@ -10,7 +10,7 @@
 
 本架构摒弃了“单线程串行死锁”与“多实例无共享分身”两种极端模式，采用 **单一认知主体（Unified Subject） + 权威状态事务协调器（Authoritative State Coordinator with Domain-Scoped MVCC） + 四路异步并发工作者（4 Concurrent Workers）** 架构。
 
-### 1.1 Clean-Slate V1 四核职责
+### 1.1 Clean-Slate V1 五核职责
 
 | 核 | 运行契约 |
 | :--- | :--- |
@@ -18,15 +18,27 @@
 | **`@ai0/perception-core`** | 接纳并解释结构化观测，维护来源级能力、可用性与新鲜度，输出 `UniversalObservationFrame` 和 `system_chronoception`。 |
 | **`@ai0/cognition-core`** | 持有单一认知主体、五域 MVCC `AuthoritativeStateCoordinator` 与 `BlackboardCompiler`。`W1` 负责实时对话，`W2` 运行八步行动认知环，`W3` 执行睡眠巩固、有界好奇心探索与里程碑检定，`W4` 异步分析多模态输入并提交带来源的提案。 |
 | **`@ai0/expression-core`** | 将认知意图协商为合规端侧表达，管理交付、打断与共同默契所需的回执证据。 |
+| **`@ai0/extension-core`** | `ExtensionCoreHost` 负责扩展包级治理，`defineFacetPoint` 定义并校验切面契约，`ExtensionComposition` 管理 Fiber 生命周期并在故障时以 `faulted_isolated` 熔断隔离。 |
 
 `agent-core` 将 `AuthorityRole` 投影到独立的 `system_invariant`、`developer_frame` 与 `untrusted_observation` 通道。角色由宿主入口赋予，观测载荷及其中自称的角色始终保留为不可信数据，模型适配器也必须保持隔离。每个 `Round` 流式读取模型输出并按权限执行工具链。到达 `maxSteps` 时仍须结算最后一个允许的轮次及其已授权结果，并结束当前 `Turn`。`goalVerification: "verified" | "unverified" | "not_applicable"` 中，有验证目标且证据满足才可标记 `verified`，证据不足为 `unverified`，无验证目标才使用 `not_applicable`。瞬态 HTTP 408、429、5xx 仅可在首次文本增量与首次工具副作用均未发生时重试，任一发生即关闭重试窗口。上游传输支持 `opencode_go`（`deepseek-v4.1-flash`）、OpenAI-compatible、Anthropic、DeepSeek 与 Ollama。
+
+`ContinuousStateMetaEngine` 默认 `descriptors = []`，状态为 `{}` 且无状态唤醒期限。`PerceptionFilterPipeline` 无过滤切面时直通，撤稿只触发中性取消。Stage 6 在同一套五核实验机制上验证陪伴配置和 Task Agent 配置。CLI 话轮在输入的虚拟时间立即执行，策略等待为 0 ms，工具结果仍需证据核验。
+
+| 内置策略包 | 切面与行为 |
+| --- | --- |
+| `plugins/perception-filters/conversational-gate`（`builtin.conversational-gate`） | `perception.filter` 合并 1200 ms 窗口内的聊天碎片，将撤稿映射为犹豫提示，并按显著性抑制重复背景刺激。 |
+| `plugins/cognitive-organs/companion-homeostasis`（`builtin.companion-homeostasis`） | `cognition.state_dynamics` 提供 24 小时作息曲线、情感与社交驱力的耦合描述符。 |
+| `plugins/cognitive-organs/attention-arbitrator`（`builtin.attention-arbitrator`） | `cognition.attention_arbitrator` 使用多通道焦点迟滞锁，具身动作词表允许时才请求 `gaze_lead`。 |
+| `plugins/cognitive-organs/lorebook-contributor`（`builtin.lorebook-contributor`） | `cognition.context_contributor` 按关键词触发世界书，递归扩展引用并遵守去重与上下文预算。 |
+
+宿主组装 `ExtensionCoreHost` 并向各核提供切面，认知消费切面并提交五域提案。角色资产解析见认知包的 `soul-codecs`，生命周期归扩展核。详见[05 多切面扩展规范](05-eight-dimension-extension-system.md)。
 
 ### 1.2 宿主 Provider Pool 与角色话轮解析
 
 宿主用 `(cardId, hostModuleDefaults)` 为每个话轮分别解析 `consciousness`、`vision` 和 `speech` 的模型或语音配置。`Inherit`（含未设置或空值）取对应宿主默认值，`Override` 使用角色卡显式配置并在宿主 Provider Pool 中验证。解析结果冻结为当轮快照并传给对应核，无须改写全局运行时存储。无效覆盖返回配置错误。
 ```mermaid
 sequenceDiagram
-    participant User as 具身 Shell
+    participant User as 具身 InteractionChannel
     participant Coord as 权威状态事务协调器
     participant W1 as W1 实时对话快环
     participant W2 as W2 八步行动认知环
@@ -59,7 +71,7 @@ sequenceDiagram
 
 ## 二、权威状态事务协调器（`AuthoritativeStateCoordinator`）与域级 MVCC 裁决规范
 
-所有并发工作者（`W1`~`W4`）以及所有认知器官扩展（`ext.cognitive_organ`）均**零数据库直写权限**。它们只能接收只读快照 `ReadOnlyCognitiveSnapshot(rev = v_N)`，并向协调器提交结构化变更提案 `StateMutationProposal`。
+所有并发工作者（`W1`~`W4`）以及所有认知器官扩展（`cognition.context_contributor`）均**零数据库直写权限**。它们只能接收只读快照 `ReadOnlyCognitiveSnapshot(rev = v_N)`，并向协调器提交结构化变更提案 `StateMutationProposal`。
 
 ### 2.1 状态域划分（State Domains）与乐观并发冲突矩阵
 
@@ -67,7 +79,7 @@ sequenceDiagram
 
 | 状态域标识 (`StateDomain`) | 包含的核心状态 | 并发冲突与合并裁决规则（MVCC Resolution Rule） |
 | :--- | :--- | :--- |
-| **`D1_WORKING_TURN`** | 当前话轮上下文窗口、被打断未说完的腹稿（`unsaid_remainder`）、当前注意力焦点 `active_focus_shell_id`、有界发言机会池（`pending_opportunities[]`）、按来源刷新的瞬态感官覆盖桶（`sensory_coverage_buckets`） | **强排他最新优先与机会气口仲裁（Last-Turn-Wins with Barge-in Cancel & Opportunity Expiration）**：仅允许前台 `W1`、感官门控（含经校验的 `W4` 提案）与播放回执修改；若新话轮打断旧话轮，旧 `W1` 提案直接通过 `CancellationToken` 作废；池中过期的 `InteractionOpportunity` 或因急事/话题切换失效的旧包袱在提交前自动标记为 `expired / withdrawn`。 |
+| **`D1_WORKING_TURN`** | 当前话轮上下文窗口、被打断未说完的腹稿（`unsaid_remainder`）、当前注意力焦点 `active_focus_channel_id`、有界发言机会池（`pending_opportunities[]`）、按来源刷新的瞬态感官覆盖桶（`sensory_coverage_buckets`） | **强排他最新优先与机会气口仲裁（Last-Turn-Wins with Barge-in Cancel & Opportunity Expiration）**：仅允许前台 `W1`、感官门控（含经校验的 `W4` 提案）与播放回执修改；若新话轮打断旧话轮，旧 `W1` 提案直接通过 `CancellationToken` 作废；池中过期的 `InteractionOpportunity` 或因急事/话题切换失效的旧包袱在提交前自动标记为 `expired / withdrawn`。 |
 | **`D2_HOMEOSTASIS_AFFECT`** | `ContinuousStateMetaEngine` 注册状态与 `continuous_states_json` 检查点 | 按状态 ID 合并带唯一 ID 和有效时刻的潜空间冲量，使用第 3 节的解析演化规则。 |
 | **`D3_MEMORY_PROJECTION`** | `memories` 表、`memory_lineage_edges` 血缘与更替图 | **基于源事件血缘与双时态更替的乐观校验（Lineage & Bitemporal OCC）**：后台 `W3`（睡眠整理）提交新记忆或双时态更替（`supersedes`）提案时，协调器检查其引用的 `source_event_ids[]` 在 `W3` 运行期间是否被主人在前台执行了 `Hard Forget`（真遗忘擦除）。若源事件完好无损，则直接安全合入；若源事件已被擦除，则拒绝该条记忆提案！ |
 | **`D4_COMMITMENTS_TASKS`** | 前瞻承诺状态机、正在运行的 8 步行动任务状态树 | **按对象 ID 细粒度乐观锁（Entity-Level Revision Lock）**：只要前台没有取消该 `task_id` / `commitment_id`，后台 `W2` 的步骤进度更新直接合入。 |
@@ -94,12 +106,12 @@ sequenceDiagram
    * `slot.tier0_safety_invariants`（**强制置顶锁死，物理不可关闭或缩减**）；
    * `slot.tier1_core_dna`（核心性格、存在论契约、声线签名与 Few-Shot 黄金样本锚点）；
    * `slot.tier2_narrative_self`（按当前 `Audience` 硬过滤后的自我叙事段落）；
-   * `slot.embodiment_and_sensory_buckets`（当前附身 `Shell` 的三平面能力、动态注册的 `expression_vocabulary` 表现力词典、以及 `live_foveal / ambient_peripheral` 视神经感官覆盖桶）；
+   * `slot.embodiment_and_sensory_buckets`（当前附身 `InteractionChannel` 的三平面能力、动态注册的 `expression_vocabulary` 表现力词典、以及 `live_foveal / ambient_peripheral` 视神经感官覆盖桶）；
    * `slot.homeostasis_and_vitality`（显著偏离基线的情绪/心境体感与双轨精力状态；按 `state_attributions_json` 的 `visibility_scope` 删除当前受众无权看到的归因、证据引用及其衍生文本；当 `Audience != only_owner` 时，**`Social Mask Damper`** 再将可公开的情绪偏离基线幅值衰减 $70\%$（保留 $30\%$），仅作用于编译视图）；
    * `slot.recalled_memories_and_rag`（显著性竞争上岗的 Top-$K$ 长期记忆与内建混合 RAG 切片）；
    * `slot.prospective_commitments_and_tasks`（到期承诺、活跃 `W2` 8 步行动任务 100 字进度、被打断未说完的腹稿 `unsaid_remainder` 与候选发言机会 `InteractionOpportunity`）；
    * `slot.lorebook_triggered`（按关键词/递归激活的动态世界观词条）；
-   * `slot.custom_organs.*`（由第三方 `ext.cognitive_organ` 插件通过 `contributeToBlackboard` 注入的自定义认知槽位）。
+   * `slot.custom_organs.*`（由第三方 `cognition.context_contributor` 插件通过 `contributeToBlackboard` 注入的自定义认知槽位）。
 2. **多场景语境预设（Context Presets）**：
    支持在 `blackboard_policy.yaml` 与控制台 `/dashboard/blackboard` 页面中动态切换或自定义不同场景的槽位预算配比（如 `日常陪伴标准预设 ≤2200 Tokens`、`深度灵魂长谈预设 ≤3600 Tokens`、`游戏并肩作战超低延迟预设 ≤1200 Tokens`）。
 
@@ -115,7 +127,7 @@ sequenceDiagram
 
 ### 3.2 声明式连续状态与时间演进三分法
 
-1. **确定性演化**。角色卡或认知器官注册 `StateDescriptor`，字段为 `id`、`topology: "bipolar_tanh" | "unipolar_sigmoid"`、`baseline`、`halfLifeMs` 或 `decayRatePerSec`、`wakeupThresholds`。检查点 `continuous_states_json` 保存各注册状态的潜变量及其有效时刻。基线和阈值必须位于拓扑开区间。双极状态用 $f(x)=\operatorname{atanh}(x)$ 编码 $(-1,1)$，用 $\tanh$ 解码。单极状态用 $f(x)=\operatorname{logit}(x)$ 编码 $(0,1)$，用 $\sigma$ 解码。令 $b=f(\text{baseline})$，$d_0=f(x(t_0))-b$，秒为时间单位，$\lambda=\ln 2/(\text{halfLifeMs}/1000)$ 或 `decayRatePerSec`。闭式演化为
+1. **确定性演化**。角色卡或认知器官注册 `ContinuousStateDescriptor`，字段为 `id`、`topology: "bipolar_tanh" | "unipolar_sigmoid"`、`baseline`、`halfLifeMs` 或 `decayRatePerSec`、`wakeupThresholds`。检查点 `continuous_states_json` 保存各注册状态的潜变量及其有效时刻。基线和阈值必须位于拓扑开区间。双极状态用 $f(x)=\operatorname{atanh}(x)$ 编码 $(-1,1)$，用 $\tanh$ 解码。单极状态用 $f(x)=\operatorname{logit}(x)$ 编码 $(0,1)$，用 $\sigma$ 解码。令 $b=f(\text{baseline})$，$d_0=f(x(t_0))-b$，秒为时间单位，$\lambda=\ln 2/(\text{halfLifeMs}/1000)$ 或 `decayRatePerSec`。闭式演化为
    $$x(t) = f^{-1}(b + d_0 e^{-\lambda(t - t_0)})$$
    同一有效时刻的冲量在潜空间按实数加法合成，构成可交换的 Abelian 群，解码后自然软饱和。协调器对 `W1/W2/W3` 的冲量按 ID 去重并原子合入；不同时刻按有效时间演化，迟到冲量按其有效时刻重算或传播到同一参考时刻，避免旧快照覆盖与丢失更新。认知器官可选择注册快慢耦合动力学并提供对应的演化与阈值求解规则。
    对独立状态的阈值 $h$，令 $q=f(h)-b$。仅在 $\lambda>0$、$d_0$ 与 $q$ 同号且 $0<|q|<|d_0|$ 时存在初始时刻之后的有限穿越：
@@ -143,7 +155,7 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> Step1_GoalComprehension: 用户提出任务或内在好奇心触发
     Step1_GoalComprehension --> Step2_EnvObservation: 解析出明确目标与约束
-    Step2_EnvObservation --> Step3_StepwisePlanning: 采集端侧 Shell 探针或只读上下文
+    Step2_EnvObservation --> Step3_StepwisePlanning: 采集端侧 InteractionChannel 探针或只读上下文
     Step3_StepwisePlanning --> Step4_3DAuthorization: 生成行动步骤 DAG (ActionStep[])
     
     Step4_3DAuthorization --> Step5_Actuation: Policy(Principal, Audience, Capability) == ALLOW
@@ -153,7 +165,7 @@ stateDiagram-v2
     WaitingOwnerApproval --> Step5_Actuation: 主人批准
     WaitingOwnerApproval --> CancelledByOwner: 主人拒绝或取消
     
-    Step5_Actuation --> Step6_PerceiveOutcome: 调用内核 MCP/Skill 或下发 Shell invoke_actuator
+    Step5_Actuation --> Step6_PerceiveOutcome: 调用内核 MCP/Skill 或下发 InteractionChannel invoke_actuator
     Step6_PerceiveOutcome --> Step7_VerifyAndAdapt: 收到工具结果或执行验证回执
     
     Step7_VerifyAndAdapt --> Step3_StepwisePlanning: 步骤失败/环境变化 → 动态重规划 (限 N 次)

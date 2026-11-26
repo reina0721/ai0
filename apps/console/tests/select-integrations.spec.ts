@@ -38,7 +38,7 @@ async function expectListbox(root: Locator, trigger: Locator, page: Page) {
   return listbox;
 }
 
-test("dark shell select opens a themed listbox, takes keyboard selection, and restores focus", async ({ page, consolePreferences }) => {
+test("dark channel select opens a themed listbox, takes keyboard selection, and restores focus", async ({ page, consolePreferences }) => {
   const browser = watchBrowser(page);
   await consolePreferences.set({ appearance: "dark", soulTheme: "astral-blue" });
   await page.goto("/dashboard");

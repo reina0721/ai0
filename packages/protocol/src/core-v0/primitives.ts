@@ -16,28 +16,28 @@ export type VenueType = z.infer<typeof VenueTypeSchema>;
 
 export { AudienceScopeSchema, type AudienceScope } from "./audience.js";
 
-export const WellKnownShellKindSchema = z.enum([
+export const WellKnownChannelKindSchema = z.enum([
   "webchat",
-  "desktop_avatar",
+  "desktop_stage",
   "im_bridge",
   "game_embodied",
   "hardware_iot",
   "cli"
 ]);
-export type WellKnownShellKind = z.infer<typeof WellKnownShellKindSchema>;
+export type WellKnownChannelKind = z.infer<typeof WellKnownChannelKindSchema>;
 
-const CustomShellKindSchema = z
+const CustomChannelKindSchema = z
   .string()
   .regex(/^custom\..+$/)
   .refine(
-    (shellKind): shellKind is `custom.${string}` => shellKind.startsWith("custom.")
+    (channelKind): channelKind is `custom.${string}` => channelKind.startsWith("custom.")
   );
 
-export const ShellKindSchema = z.union([
-  WellKnownShellKindSchema,
-  CustomShellKindSchema
+export const ChannelKindSchema = z.union([
+  WellKnownChannelKindSchema,
+  CustomChannelKindSchema
 ]);
-export type ShellKind = z.infer<typeof ShellKindSchema>;
+export type ChannelKind = z.infer<typeof ChannelKindSchema>;
 
 export const WellKnownSensorModalitySchema = z.enum([
   "text",
@@ -83,10 +83,16 @@ export type ActuatorDeclaration = z.infer<
   typeof ActuatorDeclarationSchema
 >;
 
+export const EmbodimentSurfaceDescriptorSchema = z.object({
+  surface_id: z.string().min(1),
+  supported_tokens: z.array(RealizerAffordanceDescriptorSchema).default([])
+}).nullable().optional();
+export type EmbodimentSurfaceDescriptor = z.infer<typeof EmbodimentSurfaceDescriptorSchema>;
+
 export const HandshakeManifestSchema = z.object({
   protocol_version: ProtocolVersionSchema,
-  shell_id: z.string(),
-  shell_kind: ShellKindSchema,
+  channel_id: z.string(),
+  channel_kind: ChannelKindSchema,
   display_name: z.string(),
   venue_type: VenueTypeSchema,
   current_audience: z.object({
@@ -100,7 +106,7 @@ export const HandshakeManifestSchema = z.object({
     embodiment_anchors: z.array(z.string()).optional(),
     body_anchors: z.array(BodyAnchorDescriptorSchema).optional(),
     sensor_affordances: z.array(SensorAffordanceDescriptorSchema).optional(),
-    realizer_affordances: z.array(RealizerAffordanceDescriptorSchema).optional(),
+    embodiment_surface: EmbodimentSurfaceDescriptorSchema,
     sensors: z.array(SensorModalitySchema),
     supported_extensions: z.array(z.string()),
     expression_vocabulary: ExpressionVocabularySchema.optional(),
@@ -109,6 +115,9 @@ export const HandshakeManifestSchema = z.object({
   auth_token: z.string()
 });
 export type HandshakeManifest = z.infer<typeof HandshakeManifestSchema>;
+
+export const InteractionChannelSchema = HandshakeManifestSchema.omit({ auth_token: true });
+export type InteractionChannel = z.infer<typeof InteractionChannelSchema>;
 
 export const HandshakeAckSchema = z.object({
   session_id: z.string(),
@@ -205,7 +214,7 @@ export const ControlSignalSchema = z.object({
     "crisis_intervention_card"
   ]),
   target_intent_id: z.string().optional(),
-  active_focus_shell_id: z.string().optional(),
+  active_focus_channel_id: z.string().optional(),
   payload: z.record(z.unknown()).optional()
 });
 export type ControlSignal = z.infer<typeof ControlSignalSchema>;

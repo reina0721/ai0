@@ -8,7 +8,9 @@ export function createCompositionFixtures(scratch) {
     const dir = join(root, id);
     mkdirSync(join(dir, "dist"), { recursive: true });
     writeFileSync(join(dir, "ai0.extension.json"), JSON.stringify({
-      extension_id: id, dimension: "ext.console_ui", console_contributions: widget === "page"
+      manifest_version: "2.0.0", extension_id: id, display_name: id, version: "1.0.0", author: "test",
+      carrier_kind: "native_code_plugin", facets: [widget === "page" ? "console.surface" : "console.ui_slot"],
+      permissions: { read_blackboard_domains: [], propose_mutation_domains: [], max_audience_scope: "only_owner", network_access: false }, console_contributions: widget === "page"
         ? { pages: [{ path: "/community/conversation", navigation: true, title: "社区会话", entry_module: "./dist/index.mjs" }] }
         : { modules: ["./dist/index.mjs"] }
     }));
@@ -25,7 +27,7 @@ export function createCompositionFixtures(scratch) {
   `;
   install("community.page", "page", contracts + `
     export function mountPage(container, host) {
-      if (host.shell || "authToken" in host.getState()) throw new Error("Unexpected shell grant on a generic page");
+      if (host.channel || "authToken" in host.getState()) throw new Error("Unexpected channel grant on a generic page");
       const form = document.createElement("form");
       form.append(document.createElement("input"));
       container.append(form);

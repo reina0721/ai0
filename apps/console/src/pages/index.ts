@@ -16,7 +16,7 @@ import { IntegrationsProvidersPage } from "./integrations-providers-page.js";
 export * from "./capabilities-multimodal-page.js";
 export * from "./config-profiles-page.js";
 export * from "./domain1-dashboard.js";
-export * from "./domain2-shells.js";
+export * from "./domain2-channels.js";
 export * from "./domain3-soul.js";
 export * from "./domain4-memory.js";
 export * from "./domain5-models.js";

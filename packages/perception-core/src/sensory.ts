@@ -10,7 +10,7 @@ export function computeSensoryHabituation(sRaw: number, unchangedElapsedMs: numb
 export type SensoryCoverage = UniversalObservationFrame["channel"]["sensorCoverage"];
 export interface CompetingHypothesis { text: string; confidence: number }
 export interface SensoryCoverageBucket {
-  shell_id: string; modality: string; source_key: string; coverage: SensoryCoverage;
+  channel_id: string; modality: string; source_key: string; coverage: SensoryCoverage;
   summary_text: string; frame_span_ms: number; freshness_ttl_ms: number;
   audience_scope?: AudienceScope; updated_at_virtual_ts: number; static_frame_motion_lock: boolean;
   competing_hypotheses: CompetingHypothesis[]; anti_hallucination_lock?: string;
@@ -18,17 +18,19 @@ export interface SensoryCoverageBucket {
 export type SensoryCoverageUpdate = Omit<SensoryCoverageBucket,
   "static_frame_motion_lock" | "anti_hallucination_lock"> & { perception_confidence?: number; authorized?: boolean };
 export interface SensoryCoverageUpdateResult {
-  bucket: Readonly<SensoryCoverageBucket>; predictive_coding_revision_directive?: string;
+  bucket: Readonly<SensoryCoverageBucket>;
+  predictive_coding_revision?: { previous_hypothesis: string; actual_summary: string };
+  predictive_coding_revision_directive?: string;
 }
-const scopedKey = (shell: string, modality: string, source: string): string =>
-  JSON.stringify([shell, modality, source]);
+const scopedKey = (channel: string, modality: string, source: string): string =>
+  JSON.stringify([channel, modality, source]);
 
 export class SensoryCoverageBucketManager {
   private readonly blind = new Map<string, string>();
   private readonly buckets = new Map<string, SensoryCoverageBucket>();
   constructor(private readonly clock: PerceptionClockPort) {}
-  upsert(update: SensoryCoverageUpdate): SensoryCoverageUpdateResult {
-    const key = scopedKey(update.shell_id, update.modality, update.source_key);
+  upsert(update: SensoryCoverageUpdate, formatRevisionDirective?: (actual: string) => string): SensoryCoverageUpdateResult {
+    const key = scopedKey(update.channel_id, update.modality, update.source_key);
     const age = this.clock.nowMs() - update.updated_at_virtual_ts;
     if (update.authorized && age >= 0 && age <= update.freshness_ttl_ms && !["blind", "stale", "disconnected"].includes(update.coverage)) this.blind.delete(key);
     const previous = this.buckets.get(key);
@@ -42,22 +44,26 @@ export class SensoryCoverageBucketManager {
       competing_hypotheses: [...update.competing_hypotheses],
       static_frame_motion_lock: update.frame_span_ms === 0 };
     this.buckets.set(key, bucket);
-    return { bucket: this.refresh(bucket), ...(contradicted && !this.blind.has(key) && {
-      predictive_coding_revision_directive:
-        `[感知纠错：刚才看走眼/听岔了，实际是 ${update.summary_text}]` }) };
+    const refreshed = this.refresh(bucket);
+    if (!contradicted || ["blind", "stale", "disconnected"].includes(refreshed.coverage)) return { bucket: refreshed };
+    return {
+      bucket: refreshed,
+      predictive_coding_revision: { previous_hypothesis: contradicted.text, actual_summary: update.summary_text },
+      ...(formatRevisionDirective && { predictive_coding_revision_directive: formatRevisionDirective(update.summary_text) })
+    };
   }
-  get(shell: string, modality: string, source: string): Readonly<SensoryCoverageBucket> | undefined {
-    const bucket = this.buckets.get(scopedKey(shell, modality, source));
+  get(channel: string, modality: string, source: string): Readonly<SensoryCoverageBucket> | undefined {
+    const bucket = this.buckets.get(scopedKey(channel, modality, source));
     return bucket && this.refresh(bucket);
   }
-  lockBlindness(shell: string, modality: string, source: string, reason: string): void {
-    this.blind.set(scopedKey(shell, modality, source), reason);
+  lockBlindness(channel: string, modality: string, source: string, reason: string): void {
+    this.blind.set(scopedKey(channel, modality, source), reason);
   }
   list(audience?: AudienceScope): ReadonlyArray<Readonly<SensoryCoverageBucket>> {
     return [...this.buckets.values()].filter(bucket => audience === undefined || bucket.audience_scope === "public_all" || bucket.audience_scope === audience).map(bucket => this.refresh(bucket));
   }
   private refresh(bucket: SensoryCoverageBucket): SensoryCoverageBucket {
-    const blind = this.blind.get(scopedKey(bucket.shell_id, bucket.modality, bucket.source_key));
+    const blind = this.blind.get(scopedKey(bucket.channel_id, bucket.modality, bucket.source_key));
     const age = this.clock.nowMs() - bucket.updated_at_virtual_ts;
     const coverage = blind !== undefined ? "blind" :
       bucket.coverage !== "disconnected" && bucket.coverage !== "blind" && (age < 0 || age > bucket.freshness_ttl_ms) ? "stale" : bucket.coverage;
@@ -70,7 +76,7 @@ export class SensoryCoverageBucketManager {
 }
 
 export interface EphemeralBiometricEntry {
-  shell_id: string; modality: string; source_key: string; summary_text: string;
+  channel_id: string; modality: string; source_key: string; summary_text: string;
   virtual_ts_ms: number; value?: unknown;
 }
 export class EphemeralBiometricWindow {
@@ -91,7 +97,7 @@ export class EphemeralBiometricWindow {
 }
 
 export interface ThalamicSignal {
-  shell_id: string; modality: string; source_key: string; summary_text: string;
+  channel_id: string; modality: string; source_key: string; summary_text: string;
   raw_salience: number; confidence: number; sustained_ms: number;
   persistence_hint?: "ephemeral_blackboard" | "durable"; value?: unknown;
 }
@@ -108,7 +114,7 @@ export class ThalamicSalienceGate {
   evaluate(signal: ThalamicSignal, minConfidence = 0.6,
     minSustainedMs = 500): ThalamicSalienceResult {
     const now = this.clock.nowMs();
-    const key = scopedKey(signal.shell_id, signal.modality, signal.source_key);
+    const key = scopedKey(signal.channel_id, signal.modality, signal.source_key);
     const prior = this.unchanged.get(key);
     const since = prior?.summary === signal.summary_text ? prior.since : now;
     this.unchanged.set(key, { summary: signal.summary_text, since });
@@ -137,14 +143,16 @@ export interface DebounceBatch {
 export class TurnDebounceAggregator {
   private pending: DebounceBatch | null = null;
   private draft = "";
-  constructor(private readonly clock: PerceptionClockPort, readonly debounceWindowMs = 1200) {}
-  ingest(event: DebounceInputEvent): DebounceBatch | null {
+  constructor(private readonly clock: PerceptionClockPort, readonly debounceWindowMs = 0,
+    private readonly formatRetractedObservation?: () => string | undefined) {}
+  ingest(event: DebounceInputEvent, useConfiguredPolicy = true): DebounceBatch | null {
     const now = event.virtual_ts_ms ?? this.clock.nowMs();
     if (event.lifecycle === "retract") {
       this.draft = "";
-      return { frames: [], text: "", debounce_merged_events: 0, first_virtual_ts_ms: now,
-        last_virtual_ts_ms: now,
-        retracted_observation: "[观察：对方刚才似乎想说什么（打字良久、欲言又止），但最终删掉了]" };
+      this.pending = null;
+      const observation = useConfiguredPolicy ? this.formatRetractedObservation?.() : undefined;
+      return observation === undefined ? null : { frames: [], text: "", debounce_merged_events: 0,
+        first_virtual_ts_ms: now, last_virtual_ts_ms: now, retracted_observation: observation };
     }
     if (event.lifecycle !== "commit") {
       if (event.text !== undefined) this.draft = event.text;
@@ -152,7 +160,7 @@ export class TurnDebounceAggregator {
     }
     const text = (event.text ?? this.draft).trim(); this.draft = "";
     if (!text && !event.frame) return null;
-    if (this.pending && now - this.pending.last_virtual_ts_ms <= this.debounceWindowMs) {
+    if (useConfiguredPolicy && this.debounceWindowMs > 0 && this.pending && now - this.pending.last_virtual_ts_ms <= this.debounceWindowMs) {
       if (event.frame) this.pending.frames.push(structuredClone(event.frame));
       this.pending.text = `${this.pending.text}\n${text}`;
       this.pending.last_virtual_ts_ms = now;

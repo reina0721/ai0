@@ -14,7 +14,7 @@ export const ObservationPrimitiveSchema = z.enum([
 ]);
 export const ObservationTargetSchema = z.object({ anchor: z.string().min(1), kind: z.string().optional() }).passthrough();
 export const UniversalObservationFrameSchema = z.object({
-  channel: z.object({ modality: z.string().min(1), shellId: z.string().min(1), sensorCoverage: SensoryCoverageSchema,
+  channel: z.object({ modality: z.string().min(1), channelId: z.string().min(1), sensorCoverage: SensoryCoverageSchema,
     sourceKey: z.string().optional(), primitive: ObservationPrimitiveSchema.optional() }).passthrough(),
   attribution: z.object({ subjectAnchor: z.string(), principalId: z.string() }).passthrough(),
   contextFrame: z.object({ socialFrame: z.string(), audienceScope: AudienceScopeSchema }).passthrough(),

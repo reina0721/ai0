@@ -15,7 +15,7 @@ PRAGMA secure_delete = ON;
  * foreign-key, or CHECK constraint.
  */
 export const SQLITE_SCHEMA_DDL = `
-CREATE TABLE IF NOT EXISTS shell_action_intents (
+CREATE TABLE IF NOT EXISTS channel_action_intents (
     intent_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     actuator_id TEXT NOT NULL,
@@ -23,12 +23,12 @@ CREATE TABLE IF NOT EXISTS shell_action_intents (
     arguments_json TEXT,
     evidence_id TEXT
 );
-CREATE INDEX IF NOT EXISTS shell_actions_by_session ON shell_action_intents(session_id);
-CREATE TABLE IF NOT EXISTS shell_principal_bindings (
-    shell_id TEXT NOT NULL,
+CREATE INDEX IF NOT EXISTS channel_actions_by_session ON channel_action_intents(session_id);
+CREATE TABLE IF NOT EXISTS channel_principal_bindings (
+    channel_id TEXT NOT NULL,
     external_id TEXT NOT NULL,
     principal_id TEXT NOT NULL,
-    PRIMARY KEY(shell_id, external_id)
+    PRIMARY KEY(channel_id, external_id)
 );
 
 CREATE TABLE IF NOT EXISTS event_log (
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS event_log (
     event_id            TEXT NOT NULL UNIQUE,
     wall_ts_ms          INTEGER NOT NULL,
     virtual_ts_ms       INTEGER NOT NULL,
-    source_shell_id     TEXT NOT NULL,
+    source_channel_id     TEXT NOT NULL,
     principal_id        TEXT NOT NULL,
     principal_trust     TEXT NOT NULL CHECK (principal_trust IN ('owner_verified', 'bound_friend', 'stranger', 'environment_sensor', 'tool_output')),
     venue_type          TEXT NOT NULL CHECK (venue_type IN ('private_1on1', 'group_chat', 'public_livestream', 'local_ambient', 'internal_background')),
@@ -64,13 +64,13 @@ CREATE INDEX IF NOT EXISTS idx_event_log_virtual_ts ON event_log(virtual_ts_ms);
 CREATE INDEX IF NOT EXISTS idx_event_log_audience ON event_log(audience_scope, virtual_ts_ms);
 CREATE INDEX IF NOT EXISTS idx_event_log_category ON event_log(event_category, virtual_ts_ms);
 
-CREATE TABLE IF NOT EXISTS shell_run_process (
+CREATE TABLE IF NOT EXISTS channel_run_process (
     event_id TEXT PRIMARY KEY REFERENCES event_log(event_id) ON DELETE CASCADE,
     snapshot_json TEXT NOT NULL
 );
-CREATE TRIGGER IF NOT EXISTS redact_shell_run_process AFTER UPDATE OF redacted_at_ts_ms ON event_log
+CREATE TRIGGER IF NOT EXISTS redact_channel_run_process AFTER UPDATE OF redacted_at_ts_ms ON event_log
 WHEN NEW.redacted_at_ts_ms IS NOT NULL BEGIN
-    DELETE FROM shell_run_process WHERE event_id = NEW.event_id;
+    DELETE FROM channel_run_process WHERE event_id = NEW.event_id;
 END;
 
 CREATE TABLE IF NOT EXISTS memories (

@@ -42,7 +42,7 @@ export const ModelProviderEntrySchema = z.object({
 });
 export type ModelProviderEntry = z.infer<typeof ModelProviderEntrySchema>;
 
-export const PlatformShellEntrySchema = z.object({
+export const PlatformChannelEntrySchema = z.object({
   id: z.string().min(1),
   kind: z.enum(["webchat", "desktop", "qq_onebot", "wechat", "feishu", "telegram", "discord", "livestream", "live2d"]),
   name: z.string().min(1),
@@ -58,7 +58,7 @@ export const PlatformShellEntrySchema = z.object({
   debounceMs: z.number().int().min(0).max(10000).default(1200),
   messagesToday: z.number().int().nonnegative().default(0)
 });
-export type PlatformShellEntry = z.infer<typeof PlatformShellEntrySchema>;
+export type PlatformChannelEntry = z.infer<typeof PlatformChannelEntrySchema>;
 
 export const SceneProfileEntrySchema = z.object({
   id: z.string().min(1),
@@ -213,7 +213,7 @@ export const SoulConsoleStudioConfigSchema = z.object({
     emergencyReservePct: z.number().int().min(1).max(15).default(5),
     autoDowngradeEnabled: z.boolean().default(true)
   }),
-  platforms: z.array(PlatformShellEntrySchema),
+  platforms: z.array(PlatformChannelEntrySchema),
   attentionPolicy: z.object({
     focusHysteresisMs: z.number().int().min(500).max(30000).default(4000),
     neverBroadcastAll: z.boolean().default(true),
@@ -498,7 +498,7 @@ export function createDefaultConsoleStudioConfig(displayName = "Soul", onboardin
         {
           id: "brick_sensory_buckets",
           title: "05. 实时感官快照与 TTL 新鲜度锁",
-          icon: "shells",
+          icon: "channels",
           maxTokens: 180,
           enabled: true,
           locked: false,

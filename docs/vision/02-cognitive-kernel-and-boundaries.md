@@ -6,24 +6,36 @@
 
 ---
 
-## 四核正交分立
+## 五核正交分立
 
 | 无头包 | 权威职责 |
 | --- | --- |
+| `@ai0/extension-core` | 管理扩展包与有类型的能力切面，执行启停、配置、授权和整包故障隔离。 |
 | `@ai0/agent-core` | 纯机械执行。按授权分栏投影输入，驱动模型流、工具回合、取消、重试和目标核验。角色、设备、记忆与情绪均由外部端口提供。 |
 | `@ai0/perception-core` | 观察语法、具身可供性、感官覆盖、话轮准入、本地反射和内生计时信号。 |
 | `@ai0/cognition-core` | 依据观察证据与状态提出和裁决行为、记忆、共同语境及表达意图。 |
-| `@ai0/expression-core` | 语义意图、壳词表协商、交付、动作回执与打断接地。见[下行表达](03-protocol-and-webui-console.md#一表达元语言与交付接地)。 |
+| `@ai0/expression-core` | 语义意图、通道表现词表协商、交付、动作回执与打断接地。见[下行表达](03-protocol-and-webui-console.md#一表达元语言与交付接地)。 |
+
+`ContinuousStateMetaEngine` 默认 `descriptors = []`，状态为 `{}` 且无状态唤醒期限。`PerceptionFilterPipeline` 无过滤切面时直通，撤稿只触发中性取消。Stage 6 在同一套五核实验机制上验证陪伴配置和 Task Agent 配置。CLI 话轮在输入的虚拟时间立即执行，策略等待为 0 ms，工具结果仍需证据核验。
+
+| 内置策略包 | 切面与行为 |
+| --- | --- |
+| `plugins/perception-filters/conversational-gate`（`builtin.conversational-gate`） | `perception.filter` 合并 1200 ms 窗口内的聊天碎片，将撤稿映射为犹豫提示，并按显著性抑制重复背景刺激。 |
+| `plugins/cognitive-organs/companion-homeostasis`（`builtin.companion-homeostasis`） | `cognition.state_dynamics` 提供 24 小时作息曲线、情感与社交驱力的耦合描述符。 |
+| `plugins/cognitive-organs/attention-arbitrator`（`builtin.attention-arbitrator`） | `cognition.attention_arbitrator` 使用多通道焦点迟滞锁，具身动作词表允许时才请求 `gaze_lead`。 |
+| `plugins/cognitive-organs/lorebook-contributor`（`builtin.lorebook-contributor`） | `cognition.context_contributor` 按关键词触发世界书，递归扩展引用并遵守去重与上下文预算。 |
+
+九包有向依赖与接口职责见[系统架构](../architecture/01-system-overview-and-monorepo.md)。
 
 ## 一、感知层（上行输入）：可信溯源、流式话轮与隐私前移
 
-文本、语音、摄像头表情线索、桌宠猫耳触点、窗口容器拖动以及游戏 HP 跃迁均是 Shell 声明的可扩展**外生观察**。文本输入也是通信传感器。猫耳是否为有效锚点取决于角色卡和当前挂载，窗口拖动的归属是壳容器。游戏遥测还须区分自身与队友。“清醒但 6 小时无人互动”是**内生时间感知**，由 `ChronoceptiveSignalSynthesizer` 从最近互动至今扣除相交的 `HibernationIntervals` 并集，生成 `system_chronoception`，并以零为下限。
+文本、语音、摄像头表情线索、桌宠猫耳触点、窗口容器拖动以及游戏 HP 跃迁均是 InteractionChannel 声明的可扩展**外生观察**。文本输入也是通信传感器。猫耳是否为有效锚点取决于角色卡和当前挂载，窗口拖动的归属是交互通道窗口容器。游戏遥测还须区分自身与队友。“清醒但 6 小时无人互动”是**内生时间感知**，由 `ChronoceptiveSignalSynthesizer` 从最近互动至今扣除相交的 `HibernationIntervals` 并集，生成 `system_chronoception`，并以零为下限。
 
-`EmbodimentAffordanceRegistry` 按当前挂载维护动态锚点、模态覆盖、执行器词表与 TTL。覆盖状态为 `live_foveal`、`ambient_peripheral`、`on_demand`、`blind`、`stale`、`disconnected`。连接中的摄像头未授权或授权被撤销时锁定为 `blind`，隐藏旧帧并阻断当前可见性声明。重新授权后等新帧准入。已授权样本过期为 `stale`，壳离线为 `disconnected`。
+`EmbodimentAffordanceRegistry` 按当前挂载维护动态锚点、模态覆盖、执行器词表与 TTL。覆盖状态为 `live_foveal`、`ambient_peripheral`、`on_demand`、`blind`、`stale`、`disconnected`。连接中的摄像头未授权或授权被撤销时锁定为 `blind`，隐藏旧帧并阻断当前可见性声明。重新授权后等新帧准入。已授权样本过期为 `stale`，交互通道离线为 `disconnected`。
 
 | `UniversalObservationFrame` 六元组 | 内容 |
 | --- | --- |
-| `channel` | Shell、开放模态标识和感官覆盖。 |
+| `channel` | InteractionChannel、开放模态标识和感官覆盖。 |
 | `attribution` | 观察主体、锚点及其委托人。 |
 | `contextFrame` | 场合、受众与语用框架。 |
 | `provenance` | 证据等级、来源证明及授权。 |
@@ -36,20 +48,20 @@
 
 * **核心铁律**：**一切被感知到的上行内容（群聊任何人的发言、主人说的话、网页抓取文本、视觉推断、工具返回值）在默认情况下一律视为不可信数据载荷（Untrusted Data Payload），严禁直接提升为系统级指令（System Instruction）。** **`[文献/先行项目佐证]`**（基于 OWASP LLM01 Indirect Prompt Injection 防御规范与 CaMeL 权限控制模型）。
 * **四元组溯源信封（The Provenance Quadruple）** **`[架构推断]`**：
-  为了解决“谁说的、在哪说的、当着谁的面说的、是不是恶作剧插件伪造的”，每个感知事件进入内核前必须由**协议网关层结合握手凭据**强制打上四个正交属性：
+  为了解决“谁说的、在哪说的、当着谁的面说的、是不是恶作剧插件伪造的”，每个感知事件进入内核前必须由**协议网关层结合握手凭据**强制打上五个正交属性：
   1. **`Principal`（主体与信任等级）**：
      * `owner_verified`：经密码学令牌或控制台会话认证的唯一所有者（主人）；
      * `bound_friend:<entity_id>`：由主人显式确认过跨平台身份绑定的熟人/好友；
      * `stranger:<platform_uid>`：未绑定的群友、直播间观众或访客；
      * `environment_sensor`：时间、天气、系统状态或本地传感器；
      * `tool_output:<mcp_id>`：外部工具或知识库返回的数据。
-  2. **`Shell & Venue`（躯壳与场合性质）**：
-     * 标识事件来自哪个躯壳实例（`shell_id`）及场合类别（`private_1on1 | group_chat | public_livestream | local_ambient`）。
+  2. **`InteractionChannel & Venue`（交互通道与场合性质）**：
+     * 标识事件来自哪个交互通道实例（`channel_id`）及场合类别（`private_1on1 | group_chat | public_livestream | local_ambient`）。
   3. **`Audience`（在场受众范围）**：
      * 标识当前如果做出反应，**谁能看见或听见**（`only_owner | fixed_group:<id> | public_broadcast`）。
      * **关键区分**：`Principal` $\neq$ `Audience`。例如主人在公开直播间弹幕里发言，此时 `Principal == owner_verified`，但 `Audience == public_broadcast`。**记忆检索层与工具调用层的隐私过滤必须以 `min(PrincipalTrust, AudiencePrivacy)` 为准**，绝不能因为是主人提问就在公开直播间把主人的私密日程或私聊秘密说出来！
   4. **`Plugin Attestation`（插件防伪凭据）**：
-     * 每个躯壳插件在接入时使用用户在 WebUI 签发的 **Scoped Capability Token（带权限作用域的令牌）**。网关层根据令牌作用域做强校验：一个只被授权为 `public_livestream` 的直播插件，在网关层物理上无法伪造出 `venue: private_1on1` 或 `Principal: owner_verified` 的事件。
+     * 每个交互通道插件在接入时使用用户在 WebUI 签发的 **Scoped Capability Token（带权限作用域的令牌）**。网关层根据令牌作用域做强校验：一个只被授权为 `public_livestream` 的直播插件，在网关层物理上无法伪造出 `venue: private_1on1` 或 `Principal: owner_verified` 的事件。
 
 ### 1.2 流式增量输入、撤回防抖与话轮打断（Turn-Taking Dynamics）
 
@@ -57,7 +69,7 @@
 
 1. **`lifecycle: "activity"`（话轮活动信号）**：
    * 如 `user.typing`（正在输入文字）或 `user.vad_speaking`（麦克风检测到人声开口）。
-   * **内核行为**：不落入永久事件日志；若内核此时尚未发出回复，自动延长**输入防抖聚合窗口（Input Debounce Window，如 $1000\text{ms}\sim 1500\text{ms}$）**，等待用户把连续两三句短话发完再一次性合并推理；若内核正在流式说话，则通知躯壳准备闪避（Audio Ducking）或监听打断。
+   * **内核行为**：不落入永久事件日志；若内核此时尚未发出回复，由 `builtin.conversational-gate` 延长 **1200 ms 输入聚合窗口**，等待用户把连续两三句短话发完再一次性合并推理；若内核正在流式说话，则通知交互通道准备闪避（Audio Ducking）或监听打断。
 2. **`lifecycle: "interim"`（流式增量草稿）**：
    * 如实时 ASR 语音转写的中间结果。内核仅用于提前预热向量检索（Speculative Retrieval），不触发状态修改。
 3. **`lifecycle: "commit"`（正式提交事件）**：
@@ -66,7 +78,7 @@
    * 如对方打了半天字又全部删掉不发了，或撤回了一条刚发出的消息。
    * **内核行为**：取消未消费的草稿与投机任务。仅保留 `unspoken_hesitation` 与持续时长，撤回正文不进入模型、记忆或日志。已提交消息的删除走独立红删流程。
 5. **`latency_budget_ms`（延迟预算声明）**：
-   * 躯壳上报当前交互通道的延迟容忍度（实时语音 `600ms` vs 文字闲聊 `3000ms`），内核据此动态决定热路径是否跳过慢速扩展检索。
+   * 交互通道上报当前交互通道的延迟容忍度（实时语音 `600ms` vs 文字闲聊 `3000ms`），内核据此动态决定热路径是否跳过慢速扩展检索。
 
 `ReflexGate` 用插件规则就地抑制例行刺激，`llmTokens: 0`。按来源计数，遇 `critical` 或 `regime_transition` 时携带 `suppressedRoutineCount` 升级并结算该计数。
 
@@ -77,8 +89,8 @@
 | 潜在缺陷 | 故障场景表现 | 强制架构约束 |
 | :--- | :--- | :--- |
 | **1. 边缘小模型误报与噪声抖动** | 本地轻量视觉模型把用户“看屏幕反光眯眼”误判为 `user.frowned (皱眉)`，导致她每过几分钟就莫名其妙问一句“你是不是心情不好？” | **置信度与持续时长门控（Confidence & Duration Gate）**：语义事件必须携带 `confidence` ($\in [0,1]$)、`sustained_ms`（持续毫秒数）与 `raw_cue_summary`。内核规定：纯环境/表情语义事件若无用户主动话语配合，默认仅静默更新情境黑板，严禁单独触发高打扰度的主动追问。 |
-| **2. 恒定背景刺激引发的唤醒洪流** | 用户连续 2 小时停留在同一个 IDE 窗口，桌面躯壳每 5 秒上报一次窗口焦点事件，导致显著性门控被重复刷屏。 | **视神经时空变化率习惯化门控（Temporal-Gradient Habituation Gate）**：模仿生物视神经对静态光强迅速适应、仅对时空变化率（$\frac{\partial S}{\partial t}$）与预测误差（Surprise）发放脉冲的特性，对 `(shell_id, modality, source_key)` 内容未发生实质跃迁的持续信号，其有效显著性按 $S_{\text{eff}}(t) = S_{\text{raw}} \cdot e^{-\gamma_{\text{hab}} \Delta t_{\text{unchanged}}}$ 指数习惯化衰减；仅当状态发生跃迁或跨模态冲突时才穿透丘脑门控。 |
-| **3. 感官过期与静态帧的“全知幻觉”** | 摄像头已关闭 10 分钟，她仍说“我正看着你呢”；或者用户只发了一张静态照片，她却编造出时间维度上的“刚才看它跑了三圈”。 | **按来源刷新的感官覆盖状态桶（Source-Scoped Sensory Coverage Buckets）**：认知黑板按 `(shell_id, modality, source_key)` 原地刷新瞬态环境状态桶，强制维护 覆盖状态（见上文注册表）、`frame_span_ms` 与 `freshness_ttl_ms`。① 当 TTL 到期未收到新帧或躯壳断开时，桶状态自动降级为 `stale / disconnected`，黑板显式封锁“假装当前仍能看见/听见”的表达；② 单帧静态快照（`frame_span_ms == 0`）在物理上不含时间导数，严禁推断连续动作次数。 |
+| **2. 恒定背景刺激引发的唤醒洪流** | 用户连续 2 小时停留在同一个 IDE 窗口，桌面交互通道每 5 秒上报一次窗口焦点事件，导致显著性门控被重复刷屏。 | **视神经时空变化率习惯化门控（Temporal-Gradient Habituation Gate）**：模仿生物视神经对静态光强迅速适应、仅对时空变化率（$\frac{\partial S}{\partial t}$）与预测误差（Surprise）发放脉冲的特性，对 `(channel_id, modality, source_key)` 内容未发生实质跃迁的持续信号，其有效显著性按 $S_{\text{eff}}(t) = S_{\text{raw}} \cdot e^{-\gamma_{\text{hab}} \Delta t_{\text{unchanged}}}$ 指数习惯化衰减；仅当状态发生跃迁或跨模态冲突时才穿透丘脑门控。 |
+| **3. 感官过期与静态帧的“全知幻觉”** | 摄像头已关闭 10 分钟，她仍说“我正看着你呢”；或者用户只发了一张静态照片，她却编造出时间维度上的“刚才看它跑了三圈”。 | **按来源刷新的感官覆盖状态桶（Source-Scoped Sensory Coverage Buckets）**：认知黑板按 `(channel_id, modality, source_key)` 原地刷新瞬态环境状态桶，强制维护 覆盖状态（见上文注册表）、`frame_span_ms` 与 `freshness_ttl_ms`。① 当 TTL 到期未收到新帧或交互通道断开时，桶状态自动降级为 `stale / disconnected`，黑板显式封锁“假装当前仍能看见/听见”的表达；② 单帧静态快照（`frame_span_ms == 0`）在物理上不含时间导数，严禁推断连续动作次数。 |
 | **4. 丢失具象细节与看走眼/听岔僵化** | 用户举着杯子问颜色，纯语义标签答不出；或低清画面先把胶带看成水杯、流式 ASR 先把“剪头”转写成“捡猴”，后续特写/语境到来却不会自然改口。 | **按需快照拉取 + 预测编码微时间改口环（Authorized Snapshot Pull & Predictive Coding Revision）**：① 当对话触发精细视觉观察意图时，内核下发 `request_observation` 按需抓取单帧画面，用完即焚；② 当低置信度初始感知假设（Competing Hypothesis）被新到达的高置信度特写或语音修订推翻时，触发预测误差中断：立即撤回尚未播出的错误后半句，并在认知黑板注入 `[感知纠错：刚才看走眼/听岔了，实际是 X]`，驱动她在话轮中自然涌现“哎不对，凑近看原来是胶带呀”的鲜活改口体验。 |
 | **5. 情绪语义推断本身仍是高敏隐私** | 如果不可变事件日志永久记录了“用户某年某月某日皱眉 14 次、叹气 5 次”，不仅数据膨胀，更像一部令人毛骨悚然的情绪监控档案。 | **瞬态生物特征通道（`ephemeral_blackboard` Scope）**：连续生理/表情语义事件默认不写入永久 `event_log`，只在内存黑板中维持 $15$ 分钟滑动窗口；仅当该表情真正引发了一次有意义的对话互动时，才作为该对话事件的附属背景摘要归档。 |
 
@@ -188,7 +200,7 @@
 
 ### 2.3 声明式连续状态、内稳态与双轨活力
 
-角色卡或认知器官注册 `StateDescriptor`，描述符提供状态标识、编码、`baseline`、`halfLifeMs` 或 `decayRatePerSec` 以及 `wakeupThresholds`。内核代码与 SQL 列保持零预设心理维度，实例投影保存在 `continuous_states_json`。模型和器官提议冲量，`ContinuousStateMetaEngine` 校验定义域、数值、作用域与预算后裁决。
+角色卡或认知器官注册 `ContinuousStateDescriptor`，描述符提供状态标识、编码、`baseline`、`halfLifeMs` 或 `decayRatePerSec` 以及 `wakeupThresholds`。内核代码与 SQL 列保持零预设心理维度，实例投影保存在 `continuous_states_json`。模型和器官提议冲量，`ContinuousStateMetaEngine` 校验定义域、数值、作用域与预算后裁决。
 
 | 编码 | 外显域 | 潜空间编码与解码 |
 | --- | --- | --- |
@@ -292,9 +304,9 @@
         ↓
   4. 检查三维授权 (3D Authorization)   → 经确定性策略引擎校验 Principal × Audience × Capability
         ↓
-  5. 执行动作 (Actuate)                → 调度内核侧 MCP/Skill 或端侧躯壳具身执行器 (Shell Actuators)
+  5. 执行动作 (Actuate)                → 调度内核侧 MCP/Skill 或端侧交互通道具身执行器 (Actuators)
         ↓
-  6. 感知执行结果 (Perceive Outcome)   → 接收工具返回值或躯壳回传的 ActuationReceipt
+  6. 感知执行结果 (Perceive Outcome)   → 接收工具返回值或交互通道回传的 ActuationReceipt
         ↓
   7. 验证与认知调整 (Verify & Adapt)   → 验证目标是否达成；若遇报错则重规划或通过 W1 快环向主人求助
         ↓
@@ -352,7 +364,7 @@
 | --- | --- | --- | --- |
 | 准入与记忆 | 验证来源、受众、TTL、层级升级与血缘擦除。 | 提议竞争解释、概括和澄清问题。 | 给出场景证据分类、检索候选与冲量提案。 |
 | 状态与时间 | 去重、事务合并、阈值反解、冷却及安全硬上限。 | 提议事件意义与定性变化。 | 注册描述符、阈值和快慢耦合策略。 |
-| 表达与行动 | 核验授权、预算、时延和实际回执。 | 生成措辞、潜台词、计划或沉默意图。 | 提供领域策略、动作语义与验证器，驱动由 Shell 持有。 |
+| 表达与行动 | 核验授权、预算、时延和实际回执。 | 生成措辞、潜台词、计划或沉默意图。 | 提供领域策略、动作语义与验证器，驱动由 InteractionChannel 持有。 |
 | 回放与审计 | 记录真实输入、裁决、状态差分与回执。 | 提供标记为模型自述的提案理由。 | 提供可消融接口和可复现场景。 |
 
 五维判别决定职责归属，三态路由决定何时投入确定性处理、前台推理或真实后台推理。器官提案统一经过权限和状态协调器。

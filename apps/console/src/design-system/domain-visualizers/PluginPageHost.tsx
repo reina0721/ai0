@@ -2,10 +2,10 @@ import type { RegisteredPage } from "../../router/plugin-pages.js";
 import { useExtensionComposition } from "../../context/ExtensionContext.js";
 import type { VerifiableTurnTrace } from "@ai0/protocol";
 import type {
-  Ai0ShellStageCleanup,
-  Ai0ShellStageHostBridge,
-  Ai0ShellStageHostState,
-  Ai0ShellStageModule,
+  Ai0ChannelStageCleanup,
+  Ai0ChannelStageHostBridge,
+  Ai0ChannelStageHostState,
+  Ai0ChannelStageModule,
   ConsolePageModule,
   ConsolePageState,
   Ai0StageMode
@@ -16,7 +16,7 @@ import { useConsole } from "../../context/ConsoleContext.js";
 import type { ConsoleLiveSnapshot } from "../../live-snapshot.js";
 import { RippleButton } from "../primitives/RippleButton.js";
 
-function pageState({ mode, targetInstance, soulId, personaName, soulTheme, appearance, journal }: Ai0ShellStageHostState): ConsolePageState {
+function pageState({ mode, targetInstance, soulId, personaName, soulTheme, appearance, journal }: Ai0ChannelStageHostState): ConsolePageState {
   return { mode, targetInstance, soulId, personaName, soulTheme, appearance, journal };
 }
 
@@ -41,13 +41,13 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
   const composition = useExtensionComposition();
   const pluginId = page.pluginId;
   const generation = page.generation ?? "";
-  const [stageTokenState, setStageTokenState] = useState<{ key: string; token: string; shellId: string } | null>(null);
+  const [stageTokenState, setStageTokenState] = useState<{ key: string; token: string; channelId: string } | null>(null);
   const [mountStatus, setMountStatus] = useState<"idle" | "loading" | "mounted" | "error">("idle");
   const [mountError, setMountError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const shellId = page.shell_id ?? "";
+  const channelId = page.channel_id ?? "";
   const ownerToken = ctx?.ownerToken ?? "";
   const mode: Ai0StageMode = ctx?.mode ?? (snapshot?.targetInstance === "sandbox:console" ? "sandbox" : "live");
   const targetInstance = mode === "sandbox" ? "sandbox:console" : "live";
@@ -55,19 +55,19 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
 
   // Mint a Channel A ScopedCapabilityToken for this mounted stage (Zero-Privilege isolation).
   useEffect(() => {
-    if (typeof window === "undefined" || !ownerToken || !shellId) return;
+    if (typeof window === "undefined" || !ownerToken || !channelId) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const refreshToken = async () => {
       let delay = 3000;
       try {
-        const response = await fetch("/api/plugins/" + encodeURIComponent(pluginId) + "/shell-token?mode=" + mode + "&page=" + encodeURIComponent(page.path), {
+        const response = await fetch("/api/plugins/" + encodeURIComponent(pluginId) + "/channel-token?mode=" + mode + "&page=" + encodeURIComponent(page.path), {
           method: "POST", cache: "no-store", signal: controller.signal, headers: { "x-ai0-owner-token": ownerToken }
         });
         if (response.ok) {
           const data = await response.json();
           if (!controller.signal.aborted && data.token) {
-            setStageTokenState({ key: tokenRequestKey, token: data.token, shellId: data.shellId ?? shellId });
+            setStageTokenState({ key: tokenRequestKey, token: data.token, channelId: data.channelId ?? channelId });
             delay = Math.max(3000, (data.expiresAt ?? Date.now() + 3600000) - Date.now() - 60000);
           }
         }
@@ -76,14 +76,14 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
     };
     void refreshToken();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [ownerToken, pluginId, shellId, page.path, mode, tokenRequestKey]);
+  }, [ownerToken, pluginId, channelId, page.path, mode, tokenRequestKey]);
 
   const activeStageToken = stageTokenState?.key === tokenRequestKey ? stageTokenState.token : "";
-  const activeShellId = stageTokenState?.key === tokenRequestKey ? stageTokenState.shellId : shellId;
+  const activeChannelId = stageTokenState?.key === tokenRequestKey ? stageTokenState.channelId : channelId;
 
-  const shellConnected = snapshot?.connectedShellIds?.includes(activeShellId) ?? false;
+  const channelConnected = snapshot?.connectedChannelIds?.includes(activeChannelId) ?? false;
   const canReadJournal = snapshot?.extensions.find(ext => ext.id === pluginId)?.readDomains.includes("D3_MEMORY_PROJECTION");
-  const hostState = useMemo<Ai0ShellStageHostState>(
+  const hostState = useMemo<Ai0ChannelStageHostState>(
     () => ({
       mode,
       targetInstance,
@@ -91,17 +91,17 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
       personaName: snapshot?.personaName || "未唤醒",
       soulTheme: ctx?.soulTheme ?? snapshot?.studioConfig?.systemSettings.soulTheme ?? "sakura-pink",
       appearance: ctx?.appearance ?? snapshot?.studioConfig?.systemSettings.appearance ?? "light",
-      connected: shellConnected,
+      connected: channelConnected,
       loading: Boolean(ctx?.loading),
       error: ctx?.error ?? undefined,
-      protocolBasePath: "/protocol/v0/shell",
+      protocolBasePath: "/protocol/v0/channel",
       authToken: activeStageToken,
       journal: canReadJournal ? snapshot?.sleepJournal : undefined,
       recentTraces: []
     }),
     [
       activeStageToken,
-      shellConnected,
+      channelConnected,
       canReadJournal,
       ctx?.appearance,
       ctx?.error,
@@ -118,12 +118,12 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
     ]
   );
 
-  const stateRef = useRef<Ai0ShellStageHostState>(hostState);
-  const listenersRef = useRef(new Set<(state: Ai0ShellStageHostState) => void>());
+  const stateRef = useRef<Ai0ChannelStageHostState>(hostState);
+  const listenersRef = useRef(new Set<(state: Ai0ChannelStageHostState) => void>());
   const ctxRef = useRef(ctx);
-  const shellIdRef = useRef(activeShellId);
+  const channelIdRef = useRef(activeChannelId);
   ctxRef.current = ctx;
-  shellIdRef.current = activeShellId;
+  channelIdRef.current = activeChannelId;
 
   useEffect(() => {
     stateRef.current = hostState;
@@ -153,18 +153,18 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
 
     let cancelled = false;
     const styles = new AbortController();
-    let cleanup: Ai0ShellStageCleanup | undefined;
+    let cleanup: Ai0ChannelStageCleanup | undefined;
     setMountStatus("loading");
     setMountError(null);
 
     const styleUrls = styleSheetKey ? styleSheetKey.split("|") : [];
     const binding = composition.mount(pluginId, contributions => {
-      const subscribers = new Set<(state: Ai0ShellStageHostState) => void>();
-      const bridge: Ai0ShellStageHostBridge = {
+      const subscribers = new Set<(state: Ai0ChannelStageHostState) => void>();
+      const bridge: Ai0ChannelStageHostBridge = {
         contributions,
         extensionId: pluginId,
-        get shellId() {
-          return shellIdRef.current;
+        get channelId() {
+          return channelIdRef.current;
         },
         getState: () => stateRef.current,
         subscribe: (listener) => {
@@ -184,13 +184,13 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
           const token = stateRef.current.authToken;
           if (!token || traceMode !== stateRef.current.mode) return undefined;
           if (requestId) {
-            const path = "/protocol/v0/shell/runs/" + encodeURIComponent(requestId);
+            const path = "/api/channel-runs/" + encodeURIComponent(requestId);
             const scopeCheck = await fetch(path + "?mode=" + traceMode, {
               signal, cache: "no-store", headers: { authorization: "Bearer " + token }
             });
             if (!scopeCheck.ok) return undefined;
             const response = await fetch(
-              `/protocol/v0/shell/runs/${encodeURIComponent(requestId)}/trace?mode=${traceMode}&shellId=${encodeURIComponent(shellIdRef.current)}`,
+              `/api/channel-runs/${encodeURIComponent(requestId)}/trace?mode=${traceMode}&channelId=${encodeURIComponent(channelIdRef.current)}`,
               {
                 signal,
                 cache: "no-store",
@@ -211,21 +211,21 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
           if (cancelled) return;
           const moduleUrl = entryModuleUrl + "?v=" + encodeURIComponent(generation);
           const loaded = (await import(/* @vite-ignore */ moduleUrl)) as Partial<
-            ConsolePageModule<HTMLElement> & Ai0ShellStageModule<HTMLElement> & { default?: Partial<ConsolePageModule<HTMLElement> & Ai0ShellStageModule<HTMLElement>> }
+            ConsolePageModule<HTMLElement> & Ai0ChannelStageModule<HTMLElement> & { default?: Partial<ConsolePageModule<HTMLElement> & Ai0ChannelStageModule<HTMLElement>> }
           >;
           if (cancelled) return;
           const mountPage = loaded.mountPage ?? loaded.default?.mountPage;
-          const legacyMount = loaded.mountShellStage ?? loaded.default?.mountShellStage;
+          const legacyMount = loaded.mountChannelStage ?? loaded.default?.mountChannelStage;
           if (mountPage) {
             cleanup = await mountPage(container, {
               extensionId: pluginId,
               contributions,
-              shell: shellId ? bridge : undefined,
+              channel: channelId ? bridge : undefined,
               getState: () => pageState(bridge.getState()),
               subscribe: callback => bridge.subscribe(state => callback(pageState(state))),
               showToast: bridge.showToast
             });
-          } else if (legacyMount && shellId) {
+          } else if (legacyMount && channelId) {
             cleanup = await legacyMount(container, bridge);
           } else {
             throw new TypeError("Plugin " + pluginId + " must export mountPage().");
@@ -259,7 +259,7 @@ export function PluginPageHost({ page, snapshot }: { page: RegisteredPage; snaps
       });
     });
     return () => { void binding.dispose(); };
-  }, [composition, entryModuleUrl, generation, pluginId, shellId, styleSheetKey]);
+  }, [composition, entryModuleUrl, generation, pluginId, channelId, styleSheetKey]);
 
   if (iframeSrcUrl) {
     return (

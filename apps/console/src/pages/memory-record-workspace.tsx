@@ -25,7 +25,7 @@ type EventNode = {
   event_id: string;
   event_seq: number;
   virtual_ts_ms: number;
-  source_shell_id: string;
+  source_channel_id: string;
   event_category: string;
   audience_scope: string;
   modality: string;
@@ -56,7 +56,7 @@ export function MemoryRecordWorkspace({ eventsOnly }: { eventsOnly: boolean }) {
   const memories = resource.data?.nodes.filter((node): node is MemoryNode => node.node_type === "memory") ?? [];
   const shownEvents = events.filter((event) => (!modality || event.modality === modality)
     && (!audience || event.audience_scope === audience)
-    && filterValue(query, event.event_id, event.summary_text, event.source_shell_id, event.event_category));
+    && filterValue(query, event.event_id, event.summary_text, event.source_channel_id, event.event_category));
   const shownMemories = memories.filter((memory) => filterValue(query, memory.memory_id, memory.content_text, memory.memory_tier));
   const selectedEvent = shownEvents.find((item) => item.event_id === selectedId);
   const selectedMemory = shownMemories.find((item) => item.memory_id === selectedId);
@@ -156,7 +156,7 @@ export function MemoryRecordWorkspace({ eventsOnly }: { eventsOnly: boolean }) {
           <WorkspaceRow><h2>{eventsOnly ? "事件详情" : "节点详情"}</h2><code>{targetId}</code></WorkspaceRow>
           {selected.node_type === "event" ? (
             <>
-              <small>{selected.source_shell_id} · #{selected.event_seq} · {new Date(selected.virtual_ts_ms).toLocaleString("zh-CN")}</small>
+              <small>{selected.source_channel_id} · #{selected.event_seq} · {new Date(selected.virtual_ts_ms).toLocaleString("zh-CN")}</small>
               <p>{selected.summary_text}</p>
               {selected.payload_json ? (
                 <CompactDisclosure summary="查看存档载荷"><WorkspaceCode>{selected.payload_json}</WorkspaceCode></CompactDisclosure>

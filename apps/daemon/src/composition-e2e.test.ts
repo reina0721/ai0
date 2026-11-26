@@ -43,33 +43,35 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
   const root = join(f.builtinPluginsDir, "view");
   mkdirSync(root, { recursive: true });
   const file = join(root, "ai0.extension.json");
-  writeFileSync(file, JSON.stringify({ extension_id: "test.view", dimension: "ext.shell",
-    console_contributions: { ui_slots: [{ slot_target: "slot.shells.mounted_stage", widget_type: "web_stage_module",
-      title: "View", shell_id: "view.default", entry_module: "./dist/view.js" }] } }));
+  writeFileSync(file, JSON.stringify({ manifest_version: "2.0.0", extension_id: "test.view", display_name: "View", version: "1.0.0", author: "test",
+    carrier_kind: "native_code_plugin", facets: ["channel.bridge", "console.ui_slot"],
+    permissions: { read_blackboard_domains: [], propose_mutation_domains: [], max_audience_scope: "only_owner", network_access: false },
+    console_contributions: { ui_slots: [{ slot_target: "slot.channels.mounted_stage", widget_type: "web_stage_module",
+      title: "View", channel_id: "view.default", entry_module: "./dist/view.js" }] } }));
   expect((await snapshot()).extensions[0]).toMatchObject({ missingAssets: ["./dist/view.js"], uiSlots: [] });
   expect((await f.request("/api/plugins/test.view/stage-token", "POST")).status).toBe(409);
   mkdirSync(join(root, "dist"));
-  writeFileSync(join(root, "dist/view.js"), "export function mountShellStage() {}");
+  writeFileSync(join(root, "dist/view.js"), "export function mountChannelStage() {}");
   const token = (await (await f.request("/api/plugins/test.view/stage-token", "POST")).json()).token;
   expect(typeof token).toBe("string");
   const sandboxToken = (await (await f.request("/api/plugins/test.view/stage-token?mode=sandbox", "POST")).json()).token;
   expect(await f.runtime.reloadExtension("test.view", "sandbox", { theme: "blue" }, 0)).toBe(1);
-  expect((await f.request("/protocol/v0/shell/history?mode=sandbox", "GET", undefined, sandboxToken)).status).toBe(401);
-  expect((await f.request("/protocol/v0/shell/history?mode=live", "GET", undefined, token)).status).toBe(200);
-  expect(f.runtime.sandboxExtensionHost.listExtensions()[0]?.config).toMatchObject({ theme: "blue" });
+  expect((await f.request("/protocol/v0/channel/history?mode=sandbox", "GET", undefined, sandboxToken)).status).toBe(401);
+  expect((await f.request("/protocol/v0/channel/history?mode=live", "GET", undefined, token)).status).toBe(200);
+  expect(f.runtime.sandboxExtensionHost.listPackages()[0]?.config).toMatchObject({ theme: "blue" });
   expect((await snapshot()).activeConnections).toBe(0);
 
-  const grant = async (shellId: string, audience: string) => {
-    const response = await f.request("/api/studio/shell-grants", "POST",
-      { shellId, audience, principalId: "owner:local", externalUserId: "verified-account" });
+  const grant = async (channelId: string, audience: string) => {
+    const response = await f.request("/api/studio/channel-grants", "POST",
+      { channelId, audience, principalId: "owner:local", externalUserId: "verified-account" });
     expect(response.status).toBe(200);
     return (await response.json()).token as string;
   };
   const qq = await grant("qq.adapter", "group:lab");
   const avatar = await grant("live2d.avatar", "only_owner");
-  async function connect(shell_id: string, token: string, scope: string) {
-    const response = await f.request("/protocol/v0/shell/connections", "POST", { protocol_version: "0.1.0",
-      shell_id, shell_kind: "im_bridge", display_name: shell_id, venue_type: scope === "only_owner" ? "private_1on1" : "group_chat",
+  async function connect(channel_id: string, token: string, scope: string) {
+    const response = await f.request("/protocol/v0/channel/connections", "POST", { protocol_version: "0.1.0",
+      channel_id, channel_kind: "im_bridge", display_name: channel_id, venue_type: scope === "only_owner" ? "private_1on1" : "group_chat",
       current_audience: { scope, member_count: 1 }, latency_budget_ms: 300,
       capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] } }, token);
     expect(response.status).toBe(200);
@@ -82,7 +84,7 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
 
   async function send(token: string, text: string) {
     const requestId = randomUUID();
-    const response = await f.request("/protocol/v0/shell/runs", "POST", { text, mode: "live", requestId }, token);
+    const response = await f.request("/protocol/v0/channel/runs", "POST", { text, mode: "live", requestId }, token);
     expect(response.status).toBe(200);
     const frames = (await response.text()).split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
     const reply = frames.filter(frame => frame.type === "text-delta").map(frame => frame.delta).join("");
@@ -90,17 +92,17 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
     return { id: requestId, reply };
   }
   const actuators = [{ actuator_id: "avatar.nod", description: "Nod", parameters_json_schema: {}, requires_local_user_consent: false }];
-  await f.request("/protocol/v0/shell/connections/" + avatarId, "PATCH", {
+  await f.request("/protocol/v0/channel/connections/" + avatarId, "PATCH", {
     capabilities: { sensors: ["text"], supported_extensions: [], actuators }
   }, avatar);
-  const dispatch = await f.request("/api/studio/shell-actions", "POST", { sessionId: avatarId, actuatorId: "avatar.nod" });
+  const dispatch = await f.request("/api/studio/channel-actions", "POST", { sessionId: avatarId, actuatorId: "avatar.nod" });
   expect(dispatch.status).toBe(201);
   const action = await dispatch.json();
-  const actionPath = "/protocol/v0/shell/connections/" + avatarId + "/actions";
+  const actionPath = "/protocol/v0/channel/connections/" + avatarId + "/actions";
   expect(await (await f.request(actionPath, "GET", undefined, avatar)).json()).toMatchObject({ actions: [{ intent_id: action.intent_id }] });
   const privateTurn = { id: randomUUID() };
   const qqTurn = send(qq, "今天群内公开讨论。");
-  const stream = await f.request("/protocol/v0/shell/runs", "POST", {
+  const stream = await f.request("/protocol/v0/channel/runs", "POST", {
     requestId: privateTurn.id, mode: "live", text: "昨天网页上的私密交谈。"
   }, token);
   const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
@@ -118,11 +120,11 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
   const after = await snapshot();
   expect(after.activeConnections).toBe(2);
   expect(after.extensions).toHaveLength(0);
-  expect((await f.request("/protocol/v0/shell/history?mode=live", "GET", undefined, token)).status).toBe(401);
+  expect((await f.request("/protocol/v0/channel/history?mode=live", "GET", undefined, token)).status).toBe(401);
   expect(after.conversations?.map(row => row.messageCount)).toEqual([1, 1]);
   const receipt = { mode: "live", spokenCharOffset: Array.from(publicTurn.reply).length };
-  for (let i = 0; i < 2; i++) expect((await f.request("/protocol/v0/shell/runs/" + publicTurn.id + "/receipt", "POST", receipt, qq)).status).toBe(200);
-  expect((await f.request("/protocol/v0/shell/connections/" + avatarId, "PATCH", {
+  for (let i = 0; i < 2; i++) expect((await f.request("/protocol/v0/channel/runs/" + publicTurn.id + "/receipt", "POST", receipt, qq)).status).toBe(200);
+  expect((await f.request("/protocol/v0/channel/connections/" + avatarId, "PATCH", {
     capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] }
   }, avatar)).status).toBe(200);
   const outcome = { intent_id: action.intent_id, chunk_seq: 0, status: "completed", actuator_outcome: { success: true, result_summary: "点头完成" } };
@@ -133,20 +135,20 @@ it("keeps discovery, presence, confirmed messages and identity independent acros
   expect(latest.conversations?.find(row => row.platform === "qq.adapter")?.messageCount).toBe(2);
   const conversation = latest.conversations!.find(row => row.platform === "view.default")!.umo;
   const historyPath = "/api/studio/conversations/history?conversation=" + encodeURIComponent(conversation);
-  expect((await (await f.request(historyPath)).json()).messages[0]).toMatchObject({ evidenceId: "evt_shell_" + privateTurn.id, deliveryStatus: "unknown" });
+  expect((await (await f.request(historyPath)).json()).messages[0]).toMatchObject({ evidenceId: "evt_channel_" + privateTurn.id, deliveryStatus: "unknown" });
   f.restart();
   expect(await snapshot()).toMatchObject({ soulId: empty.soulId, activeConnections: 0, stateRev: latest.stateRev });
   expect((await (await f.request(historyPath)).json()).messages).toHaveLength(1);
-  expect((await (await f.request("/protocol/v0/shell/history?mode=live", "GET", undefined, qq)).json()).turns)
+  expect((await (await f.request("/protocol/v0/channel/history?mode=live", "GET", undefined, qq)).json()).turns)
     .toMatchObject([{ userText: "今天群内公开讨论。" }]);
-  // A separate, non-browser process uses a new shell grant bound to the same person.
+  // A separate, non-browser process uses a new channel grant bound to the same person.
   const terminal = await grant("builtin.terminal.default", "only_owner");
   const server = createUnifiedDaemonHttpServer(f.runtime);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   try {
-    const child = spawn(process.execPath, ["plugins/shells/terminal/client.mjs"], { windowsHide: true,
-      env: { ...process.env, AI0_URL: "http://127.0.0.1:" + (server.address() as AddressInfo).port, AI0_SHELL_TOKEN: terminal } });
+    const child = spawn(process.execPath, ["plugins/channels/terminal/client.mjs"], { windowsHide: true,
+      env: { ...process.env, AI0_URL: "http://127.0.0.1:" + (server.address() as AddressInfo).port, AI0_CHANNEL_TOKEN: terminal } });
     let output = "", errors = "";
     child.stdout.on("data", chunk => { output += chunk; });
     child.stderr.on("data", chunk => { errors += chunk; });
@@ -175,12 +177,12 @@ it("preserves damaged configuration originals without creating legacy .bak files
   expect(readdirSync(join(f.soulDir, "config")).filter(name => name.endsWith(".bak"))).toEqual([]);
 });
 
-it("restores each selected archive's checkpoint, releases the old shell, and exports an archive without an imported card", async () => {
+it("restores each selected archive's checkpoint, releases the old channel, and exports an archive without an imported card", async () => {
   const f = fixture();
   const { runtime } = f;
   const original = readSoulArchiveConfig(f.soulDir);
   const ownerTurn = "Only the original archive saw this conversation.";
-  const first = await runtime.handleShellTurn({ principalId: "owner:local", text: ownerTurn });
+  const first = await runtime.handleChannelTurn({ principalId: "owner:local", text: ownerTurn });
   const firstSnapshot = runtime.coordinator.getSnapshot();
   expect(firstSnapshot.D1_WORKING_TURN.recent_turns.some(turn => turn.text === ownerTurn)).toBe(true);
   const exportResponse = await f.request("/api/admin/v1/souls/" + original.manifest.soul_id + "/export-card");
@@ -189,19 +191,19 @@ it("restores each selected archive's checkpoint, releases the old shell, and exp
   expect(CharacterCardV3Schema.parse(card).data.name).toBe(original.identity.display_name);
   expect(JSON.stringify(card)).not.toContain(ownerTurn);
 
-  const shellId = "composition.viewer";
-  const grant = await f.request("/api/studio/shell-grants", "POST", {
-    shellId, audience: "only_owner", principalId: "owner:local", externalUserId: "original-account"
+  const channelId = "composition.viewer";
+  const grant = await f.request("/api/studio/channel-grants", "POST", {
+    channelId, audience: "only_owner", principalId: "owner:local", externalUserId: "original-account"
   });
   expect(grant.status).toBe(200);
   const { token } = await grant.json();
   const manifest = {
-    protocol_version: "0.1.0", shell_id: shellId, shell_kind: "im_bridge", display_name: "Viewer",
+    protocol_version: "0.1.0", channel_id: channelId, channel_kind: "im_bridge", display_name: "Viewer",
     venue_type: "private_1on1", current_audience: { scope: "only_owner", member_count: 1 }, latency_budget_ms: 300,
     capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] }
   };
-  expect((await f.request("/protocol/v0/shell/connections", "POST", manifest, token)).status).toBe(200);
-  expect(runtime.shellGateway.listConnections("live")).toHaveLength(1);
+  expect((await f.request("/protocol/v0/channel/connections", "POST", manifest, token)).status).toBe(200);
+  expect(runtime.channelGateway.listConnections("live")).toHaveLength(1);
 
   const created = await f.request("/api/studio/instances", "POST", { slug: "second", displayName: "Second" });
   expect(created.status).toBe(200);
@@ -209,13 +211,13 @@ it("restores each selected archive's checkpoint, releases the old shell, and exp
     expect((await f.request("/api/studio/souls/select", "POST", { id })).status).toBe(200);
   };
   await select("second.soul");
-  expect(runtime.shellGateway.listConnections("live")).toHaveLength(0);
-  const previousGrant = await f.request("/protocol/v0/shell/connections", "POST", manifest, token);
+  expect(runtime.channelGateway.listConnections("live")).toHaveLength(0);
+  const previousGrant = await f.request("/protocol/v0/channel/connections", "POST", manifest, token);
   expect(previousGrant.status).toBe(403);
   expect(await previousGrant.json()).toMatchObject({ error: "SOUL_MISMATCH" });
   expect(runtime.coordinator.getSnapshot().D1_WORKING_TURN.recent_turns).toHaveLength(0);
   expect(runtime.storage.getEventById(first.trace.turn_event_id)).toBeUndefined();
-  const second = await runtime.handleShellTurn({ principalId: "owner:local", text: "Private note from the second archive." });
+  const second = await runtime.handleChannelTurn({ principalId: "owner:local", text: "Private note from the second archive." });
   const secondSnapshot = runtime.coordinator.getSnapshot();
 
   await select(original.manifest.soul_id);
@@ -248,7 +250,7 @@ it("onboards a Markdown card with a vault key and reports a missing consciousnes
   const source = infra.providerSources.find(item => item.id === providerId)!;
   expect(resolveEffectiveSourceApiKeys(runtime.hostDir, source)).toContain(apiKey);
   expect(JSON.stringify(infra)).not.toContain(apiKey);
-  expect((await readiness("L4_SOUL_AWAKENED_NO_SHELL")).checks).toMatchObject({
+  expect((await readiness("L4_SOUL_AWAKENED_NO_CHANNEL")).checks).toMatchObject({
     providerReady: true, defaultChatModel: modelId, activeSoulId: soulId, bindingValid: true, hostCardsCount: 1
   });
 
@@ -259,11 +261,11 @@ it("onboards a Markdown card with a vault key and reports a missing consciousnes
   } });
   const report = await readiness("L3_SOUL_AWAKENED_CONFIG_NEEDED");
   expect(report.checks).toMatchObject({ providerReady: true, soulAwakened: true, bindingValid: false, hostCardsCount: 2 });
-  expect(report.missing_prerequisites.toSorted()).toEqual(["connected_compliant_shell", "soul_consciousness_model_binding"]);
-  expect(await request("/protocol/v0/shell/perception", "POST", { text: "Hello" }, 503))
+  expect(report.missing_prerequisites.toSorted()).toEqual(["connected_compliant_channel", "soul_consciousness_model_binding"]);
+  expect(await request("/protocol/v0/channel/perception", "POST", { text: "Hello" }, 503))
     .toMatchObject({ error: "PROVIDER_NOT_READY" });
   await request("/api/admin/v1/souls/select", "POST", { id: soulId });
-  expect((await readiness("L4_SOUL_AWAKENED_NO_SHELL")).checks.activeSoulId).toBe(soulId);
+  expect((await readiness("L4_SOUL_AWAKENED_NO_CHANNEL")).checks.activeSoulId).toBe(soulId);
 });
 
 it("persists console preferences across daemon restarts and keeps legacy patches compatible", async () => {
@@ -325,7 +327,7 @@ it("links task completion to a real executor and W3 memory to its source", async
   const result = (await task("execute", id)).task;
   expect(JSON.parse(f.runtime.storage.getEventById(result.evidenceId)!.payload_json)).toMatchObject({ query: "research", chunk_ids: [] });
   expect((await task("execute", id)).task.evidenceId).toBe(result.evidenceId);
-  const turn = await f.runtime.handleShellTurn({ text: "记录今天的研究", principalId: "owner:local" });
+  const turn = await f.runtime.handleChannelTurn({ text: "记录今天的研究", principalId: "owner:local" });
   const report = f.runtime.workers.w3.runSleepMemoryConsolidation();
   expect(report).toBe(1);
   expect(f.runtime.workers.w3.runSleepMemoryConsolidation()).toBe(0);

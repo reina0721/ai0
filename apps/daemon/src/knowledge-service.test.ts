@@ -197,7 +197,7 @@ it("reopens a V1 knowledge archive without reactivating retired chunks or resett
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });
 
-it("uses bound HTTP models, checks evidence in both shell requests and counts acknowledged citations once", async () => {
+it("uses bound HTTP models, checks evidence in both channel requests and counts acknowledged citations once", async () => {
   const rt = setup(),
     storage = rt.storage;
   const requests: { path: string; body: string }[] = [];
@@ -285,9 +285,9 @@ it("uses bound HTTP models, checks evidence in both shell requests and counts ac
     expect((await query()).warnings.join()).toContain("重建");
     dimension = 2;
     let firstEvent = "";
-    for (const shell of ["builtin.webchat", "builtin.terminal.default"]) {
-      const turn = await rt.handleShellTurn({
-        shell_id: shell,
+    for (const channel of ["builtin.webchat", "builtin.terminal.default"]) {
+      const turn = await rt.handleChannelTurn({
+        channel_id: channel,
         principalId: "owner:local",
         text: "calibration key"
       });
@@ -302,17 +302,17 @@ it("uses bound HTTP models, checks evidence in both shell requests and counts ac
         rt.commitDelivery("live", turn.event_id, "completed", turn.expression.fallback_text.length);
     }
     expect(listKnowledgeCollections(storage)[0]?.citations).toBe(2);
-    const cancel = await rt.handleShellTurn({ principalId: "owner:local", text: "calibration key" });
+    const cancel = await rt.handleChannelTurn({ principalId: "owner:local", text: "calibration key" });
     rt.commitDelivery("live", cancel.event_id, "interrupted", 0);
     expect(listKnowledgeCollections(storage)[0]?.citations).toBe(2);
     expect(allowedCollections(storage, ["manual"], "group:one", false)).toEqual([]);
     storage.sqlite.prepare("UPDATE knowledge_collections SET audience='group:one'").run();
     expect(allowedCollections(storage, ["manual"], "group:one", false)).toEqual(["manual"]);
-    const groupTurn = await rt.handleShellTurn({ text: "calibration key", principalId: "guest", audience_scope: "group:one" });
+    const groupTurn = await rt.handleChannelTurn({ text: "calibration key", principalId: "guest", audience_scope: "group:one" });
     expect(groupTurn.sources[0]).toMatchObject({ title: "calibration.md", marker: 1 });
     for (const audience of ["group:two", "public_all"] as const) {
       const start = requests.length;
-      const turn = await rt.handleShellTurn({
+      const turn = await rt.handleChannelTurn({
         text: "calibration key",
         principalId: "guest",
         audience_scope: audience
@@ -326,15 +326,15 @@ it("uses bound HTTP models, checks evidence in both shell requests and counts ac
       ).not.toContain("ORCHID-991");
     }
     expect(
-      (await rt.handleShellTurn({ text: "calibration key", principalId: "owner:local", mode: "sandbox" }))
+      (await rt.handleChannelTurn({ text: "calibration key", principalId: "owner:local", mode: "sandbox" }))
         .sources
     ).toEqual([]);
     const daemon = createUnifiedDaemonHttpServer(rt);
     await new Promise<void>((done) => daemon.listen(0, "127.0.0.1", done));
     try {
-      const token = rt.shellGateway.issueScopedCapabilityToken(
+      const token = rt.channelGateway.issueScopedCapabilityToken(
         {
-          shell_id: "builtin.terminal.default",
+          channel_id: "builtin.terminal.default",
           principal_id: "owner:local",
           max_audience_privacy_ceiling: "only_owner",
           allowed_modalities: ["text"],
@@ -342,12 +342,12 @@ it("uses bound HTTP models, checks evidence in both shell requests and counts ac
         },
         "owner-test"
       );
-      const child = spawn(process.execPath, ["plugins/shells/terminal/client.mjs"], {
+      const child = spawn(process.execPath, ["plugins/channels/terminal/client.mjs"], {
         windowsHide: true,
         env: {
           ...process.env,
           AI0_URL: "http://127.0.0.1:" + (daemon.address() as AddressInfo).port,
-          AI0_SHELL_TOKEN: token
+          AI0_CHANNEL_TOKEN: token
         }
       });
       let output = "",
@@ -370,8 +370,8 @@ it("uses bound HTTP models, checks evidence in both shell requests and counts ac
     });
     expect(rt.knowledgeSources("live", firstEvent)).toEqual([]);
     const start = requests.length;
-    const noMount = await rt.handleShellTurn({
-      shell_id: "builtin.terminal.default",
+    const noMount = await rt.handleChannelTurn({
+      channel_id: "builtin.terminal.default",
       text: "calibration key",
       principalId: "owner:local"
     });
@@ -420,7 +420,7 @@ it("keeps sandbox uploads, profile mounts and source inspection local to their t
   expect(
     readSoulProfileConfig(rt.soulDir).profiles.find((p) => p.id === profile)?.knowledgeCollectionIds
   ).not.toContain(id);
-  const turn = await rt.handleShellTurn({
+  const turn = await rt.handleChannelTurn({
     text: "滑翔机测试编号",
     principalId: "owner:local",
     mode: "sandbox"

@@ -24,7 +24,7 @@ export interface EventLogEntry {
   event_id: string;
   wall_ts_ms: number;
   virtual_ts_ms: number;
-  source_shell_id: string;
+  source_channel_id: string;
   principal_id: string;
   principal_trust: PrincipalTrust;
   venue_type: StorageVenueType;

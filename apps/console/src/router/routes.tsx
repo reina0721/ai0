@@ -53,8 +53,8 @@ export interface ConsoleSidebarNavGroup {
 
 /**
  * Clean 5-Plane × 11-Module Sidebar Navigation Architecture
- * Dynamic Cordis shell pages (e.g. WebChat) mount automatically under "overview";
- * non-shell plugin pages mount cleanly under "capabilities".
+ * Dynamic Cordis channel pages (e.g. WebChat) mount automatically under "overview";
+ * non-channel plugin pages mount cleanly under "capabilities".
  */
 export const CONSOLE_SIDEBAR_GROUPS: readonly ConsoleSidebarNavGroup[] = Object.freeze([
   {
@@ -172,8 +172,8 @@ export const CONSOLE_SIDEBAR_GROUPS: readonly ConsoleSidebarNavGroup[] = Object.
       },
       {
         id: "integrations.platforms",
-        label: "消息平台与躯壳",
-        icon: "shells",
+        label: "消息平台与交互通道",
+        icon: "channels",
         path: "/integrations/platforms",
         domainId: "integrations",
         matchPaths: ["/integrations/platforms"]
@@ -245,7 +245,7 @@ export const CONSOLE_ROUTES: readonly ConsoleRoute[] = Object.freeze([
 
   // 4. External Integrations (Pure Resource Pools)
   { id: "integrations.providers", domainId: "integrations", label: "服务提供商", path: "/integrations/providers", keywords: ["API", "Key", "DeepSeek", "OpenAI", "Ollama", "模型接入"] },
-  { id: "integrations.platforms", domainId: "integrations", label: "消息平台与躯壳", path: "/integrations/platforms", keywords: ["QQ", "Telegram", "Discord", "飞书", "通道", "躯壳", "Protocol"] },
+  { id: "integrations.platforms", domainId: "integrations", label: "消息平台与交互通道", path: "/integrations/platforms", keywords: ["QQ", "Telegram", "Discord", "飞书", "通道", "交互通道", "Protocol"] },
 
   // 5. Observability & System
   { id: "system.observability", domainId: "system", label: "决策轨迹与日志", path: "/system/observability", keywords: ["日志", "Trace", "遥测"] },
@@ -263,11 +263,11 @@ const LEGACY_PATH_MAP: Readonly<Record<string, string>> = Object.freeze({
   "/dashboard/blackboard": "/config/blackboard",
   "/models/providers": "/integrations/providers",
   "/models/routing": "/config/profiles",
-  "/shells/topology": "/integrations/platforms",
-  "/shells/attention-arbitration": "/config/profiles",
-  "/shells/thalamic-gate": "/config/profiles",
-  "/shells/media-pipeline": "/capabilities/multimodal",
-  "/shells/simulator": "/system/simulator",
+  "/channels/topology": "/integrations/platforms",
+  "/channels/attention-arbitration": "/config/profiles",
+  "/channels/thalamic-gate": "/config/profiles",
+  "/channels/media-pipeline": "/capabilities/multimodal",
+  "/channels/simulator": "/system/simulator",
   "/profiles/rules": "/config/routing",
   "/memory/lineage": "/capabilities/memory",
   "/memory/retrieval-sleep": "/capabilities/sleep",

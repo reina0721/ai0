@@ -73,7 +73,7 @@ describe("UMO profile resolver", () => {
 
   it("resolves matching profiles and falls back to default profile when unmatched", () => {
     const work = resolveSessionProfile({
-      shellId: "builtin.webchat",
+      channelId: "builtin.webchat",
       venueType: "group_chat",
       sessionKey: "owner:local",
       maxAudienceCeiling: "only_owner",
@@ -84,7 +84,7 @@ describe("UMO profile resolver", () => {
     expect(work.route.primaryChat.modelId).toBe("claude-3-7-sonnet-latest");
 
     const fallback = resolveSessionProfile({
-      shellId: "builtin.webchat",
+      channelId: "builtin.webchat",
       venueType: "private_1on1",
       sessionKey: "owner:local",
       maxAudienceCeiling: "only_owner",
@@ -97,7 +97,7 @@ describe("UMO profile resolver", () => {
 
   it("enforces fail-closed audience ceiling downgrade even when a rule requests only_owner", () => {
     const clamped = resolveSessionProfile({
-      shellId: "discord.bot",
+      channelId: "discord.bot",
       venueType: "group_chat",
       sessionKey: "guest_42",
       maxAudienceCeiling: "public_all",

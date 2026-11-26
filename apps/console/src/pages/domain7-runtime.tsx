@@ -16,7 +16,7 @@ import { renderConsoleIcon } from "../design-system/tokens/index.js";
 import type { ConsoleLiveSnapshot } from "../live-snapshot.js";
 import { resolveConsoleRoute, type ConsoleRoute } from "../router/routes.js";
 import { RuntimeTerminalWorkspace, SandboxLabWorkspace } from "./runtime-observation-workspace.js";
-import { ShellControlWorkspace } from "./shell-control-workspace.js";
+import { ChannelControlWorkspace } from "./channel-control-workspace.js";
 import { WorkspaceHeader } from "./workspace.js";
 
 export interface Domain7RuntimePageProps {
@@ -196,7 +196,7 @@ export function Domain7RuntimePage(props: Domain7RuntimePageProps): ReactElement
   return (
     <MainRoundedCardOutlet domainId="system" activePath={props.pathname} onNavigate={props.onNavigate}>
       {route?.id === "system.observability" ? <RuntimeTerminalWorkspace snapshot={snap} />
-        : route?.id === "system.simulator" ? <ShellControlWorkspace routeId="shells.simulator" snapshot={snap} />
+        : route?.id === "system.simulator" ? <ChannelControlWorkspace routeId="channels.simulator" snapshot={snap} />
           : <SandboxLabWorkspace key={ctx?.targetInstance} snapshot={snap} />}
     </MainRoundedCardOutlet>
   );

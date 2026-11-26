@@ -9,7 +9,7 @@ import {
 import {
   VerifiableTurnTraceSchema,
   type AudienceScope,
-  type ShellRunProcess,
+  type ChannelRunProcess,
   type EpistemicType,
   type GroundingStatus,
   type LineageRelationType,
@@ -447,7 +447,7 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     this.#database
       .prepare(
         `INSERT INTO event_log (
-          event_id, wall_ts_ms, virtual_ts_ms, source_shell_id,
+          event_id, wall_ts_ms, virtual_ts_ms, source_channel_id,
           principal_id, principal_trust, venue_type, audience_scope,
           event_category, modality, summary_text, payload_json,
           state_rev_after, active_modules_mask, redacted_at_ts_ms,
@@ -458,7 +458,7 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
         event.event_id,
         event.wall_ts_ms,
         event.virtual_ts_ms,
-        event.source_shell_id,
+        event.source_channel_id,
         event.principal_id,
         event.principal_trust,
         event.venue_type,
@@ -1033,8 +1033,8 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     return rows.map((row) => this.deserializeTurnTrace(row));
   }
 
-  listShellDecisionTraces(
-    shellId: string,
+  listChannelDecisionTraces(
+    channelId: string,
     limit = 50,
     audienceScope: AudienceScope = "only_owner",
     principalId?: string,
@@ -1044,51 +1044,51 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
       .prepare(
         `SELECT trace.* FROM turn_decision_traces AS trace
          JOIN event_log AS event ON event.event_id = trace.turn_event_id
-         WHERE event.source_shell_id = ?
+         WHERE event.source_channel_id = ?
            AND event.audience_scope = ?
            AND event.redacted_at_ts_ms IS NULL
            AND (? IS NULL OR event.principal_id = ?)
            AND (json_extract(event.payload_json,'$.thread') IS ?)
          ORDER BY event.event_seq DESC LIMIT ?`
       )
-      .all(shellId, audienceScope, principalId ?? null, principalId ?? null, thread ?? null, clampLimit(limit));
+      .all(channelId, audienceScope, principalId ?? null, principalId ?? null, thread ?? null, clampLimit(limit));
     return rows.map((row) => this.deserializeTurnTrace(row));
   }
 
-  listShellRunEvents(shellId: string, audience: AudienceScope, principal?: string, thread?: string): StoredEventLogEntry[] {
+  listChannelRunEvents(channelId: string, audience: AudienceScope, principal?: string, thread?: string): StoredEventLogEntry[] {
     return plainRows<StoredEventLogEntry>(this.#database.prepare(
-      `SELECT e.* FROM event_log e WHERE e.source_shell_id=? AND e.audience_scope=?
+      `SELECT e.* FROM event_log e WHERE e.source_channel_id=? AND e.audience_scope=?
        AND (? IS NULL OR e.principal_id=?) AND json_extract(e.payload_json,'$.thread') IS ?
        AND e.redacted_at_ts_ms IS NULL AND (
          EXISTS (SELECT 1 FROM turn_decision_traces t WHERE t.turn_event_id=e.event_id) OR
-         json_extract(e.payload_json,'$.shell_run_status') IN ('cancelled','failed'))
+         json_extract(e.payload_json,'$.channel_run_status') IN ('cancelled','failed'))
        ORDER BY e.event_seq DESC LIMIT 50`
-    ).all(shellId, audience, principal ?? null, principal ?? null, thread ?? null));
+    ).all(channelId, audience, principal ?? null, principal ?? null, thread ?? null));
   }
 
-  saveShellRunProcess(eventId: string, process: ShellRunProcess): void {
+  saveChannelRunProcess(eventId: string, process: ChannelRunProcess): void {
     this.#database.prepare(
-      `INSERT OR REPLACE INTO shell_run_process(event_id, snapshot_json)
+      `INSERT OR REPLACE INTO channel_run_process(event_id, snapshot_json)
        SELECT event_id, ? FROM event_log WHERE event_id = ? AND redacted_at_ts_ms IS NULL
-       AND json_extract(payload_json,'$.shell_process_redacted') IS NULL`
+       AND json_extract(payload_json,'$.channel_process_redacted') IS NULL`
     ).run(JSON.stringify(process), eventId);
   }
 
-  getShellRunProcess(eventId: string): ShellRunProcess | undefined {
-    const row = this.#database.prepare("SELECT snapshot_json FROM shell_run_process WHERE event_id = ?").get(eventId);
-    return row ? JSON.parse(String(row.snapshot_json)) as ShellRunProcess : undefined;
+  getChannelRunProcess(eventId: string): ChannelRunProcess | undefined {
+    const row = this.#database.prepare("SELECT snapshot_json FROM channel_run_process WHERE event_id = ?").get(eventId);
+    return row ? JSON.parse(String(row.snapshot_json)) as ChannelRunProcess : undefined;
   }
 
-  markShellRunEnded(
-    shellId: string,
+  markChannelRunEnded(
+    channelId: string,
     eventId: string,
     status: "cancelled" | "failed"
   ): void {
     this.#database.prepare(
-      `UPDATE event_log SET payload_json = json_set(payload_json, '$.shell_run_status', ?)
-       WHERE event_id = ? AND source_shell_id = ?
+      `UPDATE event_log SET payload_json = json_set(payload_json, '$.channel_run_status', ?)
+       WHERE event_id = ? AND source_channel_id = ?
          AND redacted_at_ts_ms IS NULL`
-    ).run(status, eventId, shellId);
+    ).run(status, eventId, channelId);
   }
 
   getDecisionTraceByEvent(eventId: string): VerifiableTurnTrace | undefined {

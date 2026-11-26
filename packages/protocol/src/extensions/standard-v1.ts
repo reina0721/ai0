@@ -7,7 +7,7 @@ export const EXT_RHYTHM_V1_KEY = "ext.rhythm.v1";
 export const EXT_EMBODIED_V1_KEY = "ext.embodied.v1";
 export const EXT_MEDIA_SIDEBAND_V1_KEY = "ext.media.sideband.v1";
 
-/** Sensory coverage and predictive-coding hypotheses supplied by a shell. */
+/** Sensory coverage and predictive-coding hypotheses supplied by a channel. */
 export const ExtPerceptionV1Schema = z.object({
   source_key: z.string(),
   coverage: SensoryCoverageSchema,

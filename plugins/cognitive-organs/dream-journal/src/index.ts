@@ -1,4 +1,8 @@
-import { defineCognitiveOrganPlugin } from "@ai0/sdk";
+import { Ai0ExtensionManifestSchema } from "@ai0/protocol";
+import manifestJson from "../ai0.extension.json" with { type: "json" };
+const manifest = Ai0ExtensionManifestSchema.parse(manifestJson);
+
+import { cognitionContextContributorFacet, cognitionSleepOrganFacet, consoleSurfaceFacet, consoleUiSlotFacet, defineExtensionPackage } from "@ai0/sdk";
 
 type JsonMap = Record<string, unknown>;
 
@@ -39,17 +43,7 @@ const memoryProposal = (
   },
 });
 
-export const dreamJournal = defineCognitiveOrganPlugin({
-  id: "community.organ.dream-journal",
-  name: "Dream Journal",
-  version: "1.0.0",
-  description: "Poetic conversational afterglow and sleep-cycle memory proposals.",
-  carrier: "native_code_plugin",
-  bus: "ext.cognitive_organ",
-  extension_point: "ext.cognitive_organ",
-  organId: "community.organ.dream-journal",
-  defaultEnabled: true,
-
+const hooks = {
   contributeToBlackboard(snapshot: unknown, maxTokens: number) {
     if (maxTokens < 12) return null;
     const latest = words(
@@ -99,6 +93,16 @@ export const dreamJournal = defineCognitiveOrganPlugin({
       `睡眠把${scene}轻轻缝在一起；醒来时，它们像窗边将融未融的霜。`,
     )];
   },
+};
+
+export const dreamJournal = defineExtensionPackage({
+  manifest,
+  activate(scope, config) {
+    if (config.inject_blackboard_slot !== false) scope.contributeFacet(cognitionContextContributorFacet, hooks);
+    scope.contributeFacet(cognitionSleepOrganFacet, hooks);
+    scope.contributeFacet(consoleSurfaceFacet, { pages: manifest.console_contributions?.pages ?? [] });
+    scope.contributeFacet(consoleUiSlotFacet, { slots: manifest.console_contributions?.ui_slots ?? [] });
+  }
 });
 
 export default dreamJournal;

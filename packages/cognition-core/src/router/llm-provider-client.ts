@@ -1,4 +1,4 @@
-import type { AudienceScope, ShellTokenUsage, VenueType } from "@ai0/protocol";
+import type { AudienceScope, ChannelTokenUsage, VenueType } from "@ai0/protocol";
 import { UpstreamModelClient, ProviderNotConfiguredError, planContextWindow, estimateTokens, type LlmProviderConfig } from "@ai0/agent-core";
 export * from "@ai0/agent-core";
 import { ADDITIONAL_BLACKBOARD_SLOT_TOKENS } from "../blackboard/blackboard-compiler.js";
@@ -28,7 +28,7 @@ export interface LlmDialogueSynthesisInput {
 }
 
 export interface LlmDialogueSynthesisOutput {
-  usage?: ShellTokenUsage;
+  usage?: ChannelTokenUsage;
   surface_utterance: string;
   theatrical_subtext: string;
   masked_placeholder: string;

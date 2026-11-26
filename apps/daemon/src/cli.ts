@@ -1,4 +1,4 @@
-import { registerShellActions } from "./shell-actions.js";
+import { registerChannelActions } from "./channel-actions.js";
 import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
@@ -13,6 +13,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 import { ModelContextLimitError, ProviderNotConfiguredError, UpstreamInferenceError } from "@ai0/agent-core";
 import { GOLDEN_REGRESSION_SCENARIO_V1, runScenarioPlaybook } from "@ai0/cognition-core";
+import { CHANNEL_PROTOCOL_PATH } from "@ai0/gateway";
 import { AudienceScopeSchema, HandshakeManifestSchema, type AudienceScope, type SensorModality, type VenueType } from "@ai0/protocol";
 import {
   compileStudioPromptPreview,
@@ -25,7 +26,7 @@ import {
 
 import { createDefaultDaemonRuntime, SoulNotAwakenedError, type Ai0DaemonRuntime } from "./index.js";
 import { completeOnboarding, lifecycleErrorResponse } from "./soul-lifecycle.js";
-import { registerShellProtocolRunRoutes } from "./shell-runs.js";
+import { registerChannelProtocolRunRoutes } from "./channel-runs.js";
 import {
   readConversation,
   createNewSoulInstance,
@@ -165,8 +166,8 @@ export function createUnifiedDaemonHttpApp(
     const existing = plugins.find(item => item.id === id);
     if (existing) existing.enabled = enabled;
     else {
-      const { display_name: name, version, dimension: bus, carrier_kind: carrier } = plugin.manifest;
-      plugins.push({ id, name, version, bus, carrier, enabled, description: "", configFields: [] });
+      const { display_name: name, version, facets, carrier_kind: carrier } = plugin.manifest;
+      plugins.push({ id, name, version, bus: facets[0]!, carrier, enabled, description: "", configFields: [] });
     }
     updateStudioConfig(runtime, { ecosystem: { plugins } });
     writeExtensionRuntimeConfig(
@@ -175,7 +176,7 @@ export function createUnifiedDaemonHttpApp(
       runtime.pluginLoader.getPluginConfig(runtime.extensionHost, id).config,
       {
         carrier_kind: plugin.manifest.carrier_kind,
-        dimension: plugin.manifest.dimension,
+        facets: plugin.manifest.facets,
         enabled,
         permissions: plugin.manifest.permissions
       }
@@ -336,12 +337,12 @@ export function createUnifiedDaemonHttpApp(
   };
 
   app.use("/api/plugins/*", async (_c, next) => { await runtime.refreshCapabilities(); await next(); });
-  app.post("/api/studio/shell-grants", async c => {
+  app.post("/api/studio/channel-grants", async c => {
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const body = await readJsonObject(c);
-    const { shellId, externalUserId, principalId } = body;
+    const { channelId, externalUserId, principalId } = body;
     const audience = AudienceScopeSchema.safeParse(body.audience);
-    if (typeof shellId !== "string" || !/^[a-z0-9][a-z0-9._-]{1,95}$/i.test(shellId) ||
+    if (typeof channelId !== "string" || !/^[a-z0-9][a-z0-9._-]{1,95}$/i.test(channelId) ||
         typeof externalUserId !== "string" || !externalUserId.trim() ||
         typeof principalId !== "string" || !principalId.trim() || !audience.success ||
         (audience.data === "only_owner" && principalId !== "owner:local")) {
@@ -349,15 +350,15 @@ export function createUnifiedDaemonHttpApp(
     }
     const target = body.mode === "sandbox" ? "sandbox" : "live";
     const db = (target === "live" ? runtime.storage : runtime.sandboxStorage).sqlite;
-    db.prepare("INSERT OR IGNORE INTO shell_principal_bindings VALUES (?,?,?)").run(shellId, externalUserId, principalId);
-    const bound = db.prepare("SELECT principal_id FROM shell_principal_bindings WHERE shell_id=? AND external_id=?").get(shellId, externalUserId);
+    db.prepare("INSERT OR IGNORE INTO channel_principal_bindings VALUES (?,?,?)").run(channelId, externalUserId, principalId);
+    const bound = db.prepare("SELECT principal_id FROM channel_principal_bindings WHERE channel_id=? AND external_id=?").get(channelId, externalUserId);
     if (bound?.principal_id !== principalId) return c.json({ error: "BINDING_CONFLICT" }, 409);
-    const token = runtime.shellGateway.issueScopedCapabilityToken({
-      shell_id: shellId, principal_id: principalId, soul_id: readSoulArchiveConfig(runtime.soulDir).manifest.soul_id,
+    const token = runtime.channelGateway.issueScopedCapabilityToken({
+      channel_id: channelId, principal_id: principalId, soul_id: readSoulArchiveConfig(runtime.soulDir).manifest.soul_id,
       target, max_audience_privacy_ceiling: audience.data, allowed_modalities: ["text"],
       expires_at_ts_ms: Date.now() + 3600000
     }, runtime.ownerMasterToken);
-    return c.json({ token, shellId, principalId, target });
+    return c.json({ token, channelId, principalId, target });
   });
   app.get("/api/studio/conversations/history", c => {
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
@@ -378,22 +379,22 @@ export function createUnifiedDaemonHttpApp(
     return c.json({ ok: true, plugin: descriptor });
   });
 
-  app.on("POST", ["/api/plugins/:extensionId/shell-token", "/api/plugins/:extensionId/stage-token"], (c) => {
+  app.on("POST", ["/api/plugins/:extensionId/channel-token", "/api/plugins/:extensionId/stage-token"], (c) => {
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     const extensionId = decodeURIComponent(c.req.param("extensionId"));
     const descriptor = runtime.pluginLoader.getDescriptor(extensionId, enabledOverrideMap());
     if (!descriptor || !descriptor.enabled) return c.json({ error: "PLUGIN_NOT_AVAILABLE" }, 404);
     const pagePath = c.req.query("page");
-    const pages = descriptor.pages?.filter(page => page.shell_id && (!pagePath || page.path === pagePath)) ?? [];
+    const pages = descriptor.pages?.filter(page => page.channel_id && (!pagePath || page.path === pagePath)) ?? [];
     if (pages.length !== 1) return c.json({ error: "UI_ENTRY_UNAVAILABLE" }, 409);
-    const shellId = pages[0]!.shell_id!;
+    const channelId = pages[0]!.channel_id!;
     const target = parseMode(c.req.query("mode"));
     const host = target === "live" ? runtime.extensionHost : runtime.sandboxExtensionHost;
-    if (!host.listExtensions().some(item => item.id === extensionId)) return c.json({ error: "PLUGIN_INACTIVE" }, 409);
+    if (host.getPackage(extensionId)?.status !== "active") return c.json({ error: "PLUGIN_INACTIVE" }, 409);
     const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-    const token = runtime.shellGateway.issueScopedCapabilityToken(
+    const token = runtime.channelGateway.issueScopedCapabilityToken(
       {
-        shell_id: shellId,
+        channel_id: channelId,
         principal_id: "owner:local",
         soul_id: readSoulArchiveConfig(runtime.soulDir).manifest.soul_id,
         plugin_id: extensionId,
@@ -405,7 +406,7 @@ export function createUnifiedDaemonHttpApp(
       },
       runtime.ownerMasterToken
     );
-    return c.json({ ok: true, extensionId, shellId, token, expiresAt });
+    return c.json({ ok: true, extensionId, channelId, token, expiresAt });
   });
 
   app.get("/api/plugins/:extensionId/assets/*", (c) => {
@@ -473,45 +474,47 @@ export function createUnifiedDaemonHttpApp(
   });
 
   // ---------------------------------------------------------------------------
-  // Channel A: Protocol v0 Bidirectional Shell Bridge (/protocol/v0/shell/*)
+  // Channel A: Protocol v0 Bidirectional Channel Bridge (/protocol/v0/channel/*)
   // ---------------------------------------------------------------------------
-  registerShellActions(app, runtime, isOwnerRequest);
-  app.post("/protocol/v0/shell/connections", async c => {
+  registerChannelActions(app, runtime, isOwnerRequest);
+  app.post(CHANNEL_PROTOCOL_PATH + "/connections", async c => {
     const raw = await readJsonObject(c);
     const token = (c.req.header("authorization") ?? "").replace(/^Bearer /i, "");
     const parsed = HandshakeManifestSchema.safeParse({ ...raw, auth_token: token });
     if (!parsed.success) return c.json({ error: "INVALID_HANDSHAKE" }, 400);
     try {
-      const claims = runtime.shellGateway.verifyScopedCapabilityToken(token, runtime.ownerMasterToken);
+      const claims = runtime.channelGateway.verifyScopedCapabilityToken(token, runtime.ownerMasterToken);
       if (!runtime.hasAwakenedSoul && (claims.target ?? "live") === "live")
         return c.json({ error: "SOUL_NOT_AWAKENED" }, 503);
       if (claims.soul_id && claims.soul_id !== readSoulArchiveConfig(runtime.soulDir).manifest.soul_id) return c.json({ error: "SOUL_MISMATCH" }, 403);
       if (claims.plugin_id && claims.generation !== runtime.generation(claims.plugin_id, claims.target)) return c.json({ error: "PLUGIN_REMOVED" }, 403);
-      return c.json(runtime.shellGateway.handleHandshake(parsed.data, runtime.ownerMasterToken));
+      return c.json(runtime.channelGateway.handleHandshake(parsed.data, runtime.ownerMasterToken));
     } catch { return c.json({ error: "HANDSHAKE_REJECTED" }, 403); }
   });
-  app.on(["PATCH", "DELETE"], "/protocol/v0/shell/connections/:id", async c => {
+  app.on(["PATCH", "DELETE"], CHANNEL_PROTOCOL_PATH + "/connections/:id", async c => {
+    const id = c.req.param("id");
+    if (!id) return c.json({ error: "CONNECTION_NOT_FOUND" }, 404);
     const token = (c.req.header("authorization") ?? "").replace(/^Bearer /i, "");
     const closing = c.req.method === "DELETE";
     const body = closing ? {} : await readJsonObject(c);
     const capabilities = HandshakeManifestSchema.shape.capabilities.safeParse(body.capabilities);
     if (body.capabilities && !capabilities.success) return c.json({ error: "INVALID_CAPABILITIES" }, 400);
-    const ok = runtime.shellGateway.updateConnection(c.req.param("id"), token, closing, capabilities.data);
+    const ok = runtime.channelGateway.updateConnection(id, token, closing, capabilities.data);
     return c.json({ ok }, ok ? 200 : 404);
   });
 
-  registerShellProtocolRunRoutes(app, runtime);
+  registerChannelProtocolRunRoutes(app, runtime);
 
-  app.post("/protocol/v0/shell/perception", async (c) => {
+  app.post(CHANNEL_PROTOCOL_PATH + "/perception", async (c) => {
     const body = await readJsonObject(c);
     const text = String(body.text ?? body.summary_text ?? "").trim();
     if (!text) return c.json({ error: "EMPTY_PERCEPTION_TEXT" }, 400);
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
     try {
-      const turn = await runtime.handleShellTurn({
+      const turn = await runtime.handleChannelTurn({
         principalId: "owner:local",
         thread: typeof body.thread === "string" ? body.thread : undefined,
-        shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
+        channel_id: typeof body.channel_id === "string" ? body.channel_id : undefined,
         text,
         venue_type: (body.venue_type as VenueType | undefined) ?? "private_1on1",
         audience_scope: body.audience_scope as AudienceScope | undefined,
@@ -529,12 +532,12 @@ export function createUnifiedDaemonHttpApp(
     }
   });
 
-  app.post("/protocol/v0/shell/receipt", async (c) => {
+  app.post(CHANNEL_PROTOCOL_PATH + "/receipt", async (c) => {
     const body = await readJsonObject(c);
     if (!isOwnerRequest(c)) return c.json({ error: "UNAUTHORIZED" }, 401);
-    const receipt = runtime.handleShellInterrupt({
-      shell_id: typeof body.shell_id === "string" ? body.shell_id : undefined,
-      intent_id: String(body.intent_id ?? "int_shell"),
+    const receipt = runtime.handleChannelInterrupt({
+      channel_id: typeof body.channel_id === "string" ? body.channel_id : undefined,
+      intent_id: String(body.intent_id ?? "int_channel"),
       spoken_char_offset: Number(body.spoken_char_offset ?? 0),
       full_text: String(body.full_text ?? ""),
       mode: body.mode === "sandbox" ? "sandbox" : "live"
@@ -632,7 +635,7 @@ async function runCli(): Promise<void> {
         " ai0 — Universal Cyber-Life Cognitive Kernel (Hono Daemon)",
         ` API & Dual-Plane Gateway:     http://${host}:${port}`,
         ` Active Soul Archive:          ${runtime.hasAwakenedSoul ? runtime.soulDir : "unawakened"}`,
-        ` Channel A Protocol Bridge:    POST /protocol/v0/shell/*`,
+        ` Channel A Protocol Bridge:    POST /protocol/v0/channel/*`,
         ` Channel B Admin API (18+):    /api/admin/v1/*`,
         "============================================================"
       ].join("\n")

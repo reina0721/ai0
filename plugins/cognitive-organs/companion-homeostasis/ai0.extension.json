@@ -1,0 +1,42 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.companion-homeostasis",
+  "display_name": "陪伴稳态",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "native_code_plugin",
+  "facets": [
+    "cognition.state_dynamics",
+    "cognition.context_contributor",
+    "console.config_schema"
+  ],
+  "entry": "./dist/index.js",
+  "permissions": {
+    "read_blackboard_domains": [
+      "D1_WORKING_TURN",
+      "D2_HOMEOSTASIS_AFFECT"
+    ],
+    "propose_mutation_domains": [
+      "D2_HOMEOSTASIS_AFFECT"
+    ],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  },
+  "console_contributions": {
+    "config_fields": [
+      {
+        "key": "mood_half_life_minutes",
+        "label": "心境半衰期（分钟）",
+        "type": "int",
+        "default": 60,
+        "min": 1
+      },
+      {
+        "key": "enable_circadian_curve",
+        "label": "启用昼夜节律",
+        "type": "bool",
+        "default": true
+      }
+    ]
+  }
+}

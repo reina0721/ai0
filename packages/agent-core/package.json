@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@ai0/protocol": "workspace:*",
+    "@ai0/extension-core": "workspace:*",
     "@ai-sdk/anthropic": "4.0.107",
     "@ai-sdk/deepseek": "3.0.89",
     "@ai-sdk/openai-compatible": "3.0.94",

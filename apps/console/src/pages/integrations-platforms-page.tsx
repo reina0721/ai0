@@ -38,14 +38,14 @@ export interface IntegrationsPlatformsPageProps {
 interface TopologyData {
   active_sessions: Array<{
     session_id: string;
-    shell_id: string;
+    channel_id: string;
     venue_type: string;
     audience_scope: string;
     modality: string;
   }>;
-  shell_extensions: Array<{ id: string; rev: number }>;
+  channel_extensions: Array<{ id: string; rev: number }>;
   sensory_coverage: Array<{
-    shell_id: string;
+    channel_id: string;
     modality: string;
     source_key: string;
     coverage: string;
@@ -57,13 +57,13 @@ interface TopologyData {
 const ADAPTER_LABELS: Record<PlatformAdapterKind, string> = {
   builtin_webchat: "内置 WebChat",
   builtin_terminal: "内置终端 CLI",
-  protocol_v0_ws: "Protocol v0 躯壳",
+  protocol_v0_ws: "Protocol v0 交互通道",
   qq_onebot: "QQ (OneBot v11)",
   wechat: "微信桥接",
   feishu: "飞书 / Lark",
   telegram: "Telegram Bot",
   discord: "Discord Bot",
-  desktop_shell: "桌面伴侣 / Live2D",
+  desktop_channel: "桌面伴侣 / Live2D",
   live2d: "Live2D 客户端",
   webhook: "HTTP Webhook"
 };
@@ -74,12 +74,12 @@ const PLATFORM_PRESETS: ReadonlyArray<{
   endpoint: string;
   ceiling: AudienceScope;
 }> = [
-  { adapterKind: "protocol_v0_ws", label: "自定义 Protocol v0 客户端", endpoint: "ws://127.0.0.1:4173/protocol/v0/shell", ceiling: "only_owner" },
+  { adapterKind: "protocol_v0_ws", label: "自定义 Protocol v0 客户端", endpoint: "ws://127.0.0.1:4173/protocol/v0/channel", ceiling: "only_owner" },
   { adapterKind: "qq_onebot", label: "QQ 群聊机器人 (OneBot)", endpoint: "ws://127.0.0.1:3001", ceiling: "group:default" },
   { adapterKind: "telegram", label: "Telegram Bot", endpoint: "https://api.telegram.org", ceiling: "only_owner" },
   { adapterKind: "discord", label: "Discord 频道机器人", endpoint: "wss://gateway.discord.gg", ceiling: "public_all" },
   { adapterKind: "feishu", label: "飞书协作机器人", endpoint: "https://open.feishu.cn/open-apis", ceiling: "group:default" },
-  { adapterKind: "desktop_shell", label: "桌面伴侣 / Live2D 躯壳", endpoint: "ws://127.0.0.1:4173/protocol/v0/shell", ceiling: "only_owner" },
+  { adapterKind: "desktop_channel", label: "桌面伴侣 / Live2D 交互通道", endpoint: "ws://127.0.0.1:4173/protocol/v0/channel", ceiling: "only_owner" },
   { adapterKind: "webhook", label: "HTTP Webhook 网关", endpoint: "http://127.0.0.1:8080/webhook", ceiling: "public_all" }
 ];
 
@@ -95,7 +95,7 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
   const platforms = snap?.infrastructure?.platforms ?? [];
   const extensions = snap?.extensions ?? [];
   const canWrite = Boolean(ctx?.mode === "live" && ctx.ownerToken);
-  const topology = useAdminResource<TopologyData>("shells/topology");
+  const topology = useAdminResource<TopologyData>("channels/topology");
 
   const [busyId, setBusyId] = useState<string>();
   const [addOpen, setAddOpen] = useState(false);
@@ -107,7 +107,7 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
   const [newNotes, setNewNotes] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PlatformChannelInstance | null>(null);
-  const [issuedToken, setIssuedToken] = useState<{ shellId: string; token: string } | null>(null);
+  const [issuedToken, setIssuedToken] = useState<{ channelId: string; token: string } | null>(null);
 
   const selectPreset = (kind: string) => {
     const preset = PLATFORM_PRESETS.find((item) => item.adapterKind === kind);
@@ -187,14 +187,14 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
     setBusyId(platform.id);
     try {
       const principalId = platform.defaultAudienceCeiling === "only_owner" ? "owner:local" : `adapter:${platform.id}`;
-      const res = await ctx.postStudio<{ token: string; shellId: string }>("shell-grants", {
-        shellId: platform.id,
+      const res = await ctx.postStudio<{ token: string; channelId: string }>("channel-grants", {
+        channelId: platform.id,
         externalUserId: `client:${platform.id}`,
         principalId,
         audience: platform.defaultAudienceCeiling,
         mode: "live"
       });
-      setIssuedToken({ shellId: res.shellId, token: res.token });
+      setIssuedToken({ channelId: res.channelId, token: res.token });
       ctx.showToast(`已为 ${platform.label} 签发临时 Scoped Token`);
     } catch (err) {
       ctx.showToast(`签发失败：${err instanceof Error ? err.message : String(err)}`);
@@ -208,7 +208,7 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
   return (
     <MainRoundedCardOutlet domainId="integrations" activePath={props.pathname} onNavigate={props.onNavigate}>
       <WorkspacePage data-platforms-page="true">
-        <WorkspaceHeader title="消息平台与躯壳">
+        <WorkspaceHeader title="消息平台与交互通道">
           <RippleButton size="sm" variant="secondary" onClick={topology.refresh}>
             {renderConsoleIcon("refresh", 13)}
             <span>刷新连接状态</span>
@@ -249,7 +249,7 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
                 : undefined;
               const isEnabled = pluginState ? pluginState.enabled : platform.enabled;
               const sessions = activeSessions.filter(
-                (s) => s.shell_id === platform.id || (platform.builtinPluginId && s.shell_id.startsWith(platform.builtinPluginId))
+                (s) => s.channel_id === platform.id || (platform.builtinPluginId && s.channel_id.startsWith(platform.builtinPluginId))
               );
               const statusTone = !isEnabled
                 ? "neutral"
@@ -332,21 +332,21 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
             </summary>
             <div className="ai0-workspace-stack" style={{ marginTop: 10 }}>
               <WorkspaceCode>
-                POST /protocol/v0/shell/perception{"\n"}
-                POST /protocol/v0/shell/connections{"\n"}
-                POST /protocol/v0/shell/runs
+                POST /protocol/v0/channel/perception{"\n"}
+                POST /protocol/v0/channel/connections{"\n"}
+                POST /protocol/v0/channel/runs
               </WorkspaceCode>
               {!topology.data ? (
                 <WorkspaceReadState {...topology} empty="等待连接运行时网关。" onRetry={topology.refresh} />
               ) : (
                 <>
                   <small>
-                    已注册内核躯壳扩展：{topology.data.shell_extensions.map((ext) => ext.id).join("、") || "无"}
+                    已注册内核交互通道扩展：{topology.data.channel_extensions.map((ext) => ext.id).join("、") || "无"}
                   </small>
                   {activeSessions.length > 0 ? activeSessions.map((session) => (
                     <WorkspaceItem key={session.session_id} as="article">
                       <WorkspaceRow>
-                        <strong>{session.shell_id}</strong>
+                        <strong>{session.channel_id}</strong>
                         <WorkspaceStatus data-tone="live">{session.audience_scope}</WorkspaceStatus>
                       </WorkspaceRow>
                       <small>{session.venue_type} · 模态 {session.modality} · 会话 {session.session_id}</small>
@@ -359,7 +359,7 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
         </WorkspaceSection>
 
         <Dialog open={addOpen} onClose={() => !creating && setAddOpen(false)} fullWidth maxWidth="sm">
-          <DialogTitle>新增消息平台 / 躯壳接入</DialogTitle>
+          <DialogTitle>新增消息平台 / 交互通道接入</DialogTitle>
           <DialogContent>
             <div className="ai0-workspace-stack" style={{ paddingTop: 6 }}>
               <WorkspaceField>
@@ -417,7 +417,7 @@ export function IntegrationsPlatformsPage(props: IntegrationsPlatformsPageProps)
           <DialogTitle>Scoped Capability Token 已签发</DialogTitle>
           <DialogContent>
             <div className="ai0-workspace-stack">
-              <small>将该令牌放入外部客户端的 <code>Authorization: Bearer &lt;token&gt;</code> 请求头即可通过 Protocol v0 接入通道 <code>{issuedToken?.shellId}</code>（有效期 1 小时，受通道隐私天花板约束，零内核后门权限）。</small>
+              <small>将该令牌放入外部客户端的 <code>Authorization: Bearer &lt;token&gt;</code> 请求头即可通过 Protocol v0 接入通道 <code>{issuedToken?.channelId}</code>（有效期 1 小时，受通道隐私天花板约束，零内核后门权限）。</small>
               <WorkspaceCode>{issuedToken?.token}</WorkspaceCode>
             </div>
           </DialogContent>

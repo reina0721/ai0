@@ -1,0 +1,26 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.terminal",
+  "display_name": "终端文字交互通道",
+  "description": "面向 CLI / SSH 环境的轻量化 Protocol v0 零代码终端交互桥接。",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "tags": [
+    "channel",
+    "cli",
+    "terminal"
+  ],
+  "carrier_kind": "native_code_plugin",
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  },
+  "facets": [
+    "channel.bridge",
+    "perception.ingress",
+    "expression.realizer"
+  ],
+  "entry": "./dist/index.js"
+}

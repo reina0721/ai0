@@ -49,7 +49,7 @@ export interface LiveExtensionSnapshot {
   version?: string;
   origin?: PluginOrigin;
   carrier: string;
-  buses: string[];
+  facets: string[];
   enabled: boolean;
   rev: number;
   readDomains: string[];
@@ -304,7 +304,6 @@ export interface ConsoleStudioState {
       id: string;
       name: string;
       version: string;
-      bus: string;
       carrier: string;
       enabled: boolean;
       description: string;
@@ -396,7 +395,7 @@ export interface ConsoleLiveSnapshot {
   frictionTension: number;
   trustBond?: number;
   activeConnections?: number;
-  connectedShellIds?: string[];
+  connectedChannelIds?: string[];
   capabilityRevision?: number;
   blackboardSlots: LiveBlackboardSlotSnapshot[];
   compiledBlackboardPrompt: string;

@@ -1,26 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { HandshakeManifestSchema } from "@ai0/protocol";
+import { EXT_EMBODIED_V1_KEY, ExtEmbodiedV1Schema, HandshakeManifestSchema } from "@ai0/protocol";
 import { GroundingReceiptTracker, RealizerVocabularyNegotiator } from "./index.js";
 
 describe("@ai0/expression-core intent negotiation & four-state grounding", () => {
-  it("holds private communicative intents when only public shells are connected and negotiates quiet non-verbal cues", () => {
+  it.each([
+    { surface: null, publicExtensions: [EXT_EMBODIED_V1_KEY], lampExtensions: [EXT_EMBODIED_V1_KEY] },
+    { surface: null, publicExtensions: [], lampExtensions: [] },
+    { surface: undefined, publicExtensions: [], lampExtensions: [] }
+  ])("negotiates quiet non-verbal cues and falls back to text for surface=$surface, extensions=$publicExtensions",
+    ({ surface, publicExtensions, lampExtensions }) => {
     const negotiator = new RealizerVocabularyNegotiator();
-    const publicShell = HandshakeManifestSchema.parse({
+    const publicChannel = HandshakeManifestSchema.parse({
       protocol_version: "0.1.0",
-      shell_id: "shell.public.stream",
-      shell_kind: "webchat",
+      channel_id: "channel.public.stream",
+      channel_kind: "webchat",
       display_name: "Public Stream",
       venue_type: "public_livestream",
       current_audience: { scope: "public_all", member_count: 40 },
       latency_budget_ms: 800,
       capabilities: {
+        ...(surface === undefined ? {} : { embodiment_surface: surface }),
+        expression_vocabulary: { expression_tags: ["smile"] },
         sensors: ["text"],
-        supported_extensions: ["ext.embodied.v1"],
+        supported_extensions: publicExtensions,
         actuators: []
       },
       auth_token: "tok"
     });
-    negotiator.mount(publicShell);
+    negotiator.mount(publicChannel);
 
     const held = negotiator.negotiate({
       intentId: "int_priv_1",
@@ -29,23 +36,35 @@ describe("@ai0/expression-core intent negotiation & four-state grounding", () =>
       utterance: "Private reminder about your clinic appointment.",
       deliveryConstraints: { audienceScope: "only_owner" }
     });
-    expect(held).toEqual({ status: "held_pending_compliant_shell", envelope: null });
+    expect(held).toEqual({ status: "held_pending_compliant_channel", envelope: null });
+
+    const textOnly = negotiator.negotiate({
+      intentId: "int_text_fallback",
+      correlationEventId: "evt_1",
+      intent: "communicate",
+      utterance: "Hello!",
+      expressiveStance: { semanticCue: "smile" },
+      deliveryConstraints: { audienceScope: "public_all" }
+    });
+    expect(textOnly.envelope).toMatchObject({ action_type: "speak", fallback_text: "Hello!", extensions: {} });
+    expect(textOnly.envelope?.extensions[EXT_EMBODIED_V1_KEY]).toBeUndefined();
+    expect(textOnly.envelope?.expressive_stance).toBeUndefined();
 
     const privateLamp = HandshakeManifestSchema.parse({
       protocol_version: "0.1.0",
-      shell_id: "shell.private.lamp",
-      shell_kind: "hardware_iot",
+      channel_id: "channel.private.lamp",
+      channel_kind: "hardware_iot",
       display_name: "Desk Lamp",
       venue_type: "local_ambient",
       current_audience: { scope: "only_owner", member_count: 1 },
       latency_budget_ms: 150,
       capabilities: {
-        realizer_affordances: [
+        embodiment_surface: { surface_id: "lamp", supported_tokens: [
           { token: "led.pulse_amber", semanticAction: "gentle_nudge", kind: "nonverbal", quiet: true, latencyMs: 60 }
-        ],
+        ] },
         expression_vocabulary: { expression_tags: ["warm_glow"] },
         sensors: [],
-        supported_extensions: ["ext.embodied.v1"],
+        supported_extensions: lampExtensions,
         actuators: [
           {
             actuator_id: "led.pulse_amber",
@@ -70,8 +89,12 @@ describe("@ai0/expression-core intent negotiation & four-state grounding", () =>
     });
     expect(dispatched.status).toBe("dispatched");
     if (dispatched.status !== "dispatched") throw new Error("expected dispatched");
-    expect(dispatched.shellId).toBe("shell.private.lamp");
+    expect(dispatched.channelId).toBe("channel.private.lamp");
     expect(dispatched.envelope.actuator_invocation?.actuator_id).toBe("led.pulse_amber");
+    const embodied = ExtEmbodiedV1Schema.parse(dispatched.envelope.extensions[EXT_EMBODIED_V1_KEY]);
+    expect(embodied.keyframes).toEqual([
+      { sync_anchor: "pre_speech", expression: { tag: "led.pulse_amber", intensity: 0.6 } }
+    ]);
   });
 
   it("tracks 4-stage grounding truth and recovers exact unsaid_remainder across silenced + done dual boundaries", () => {

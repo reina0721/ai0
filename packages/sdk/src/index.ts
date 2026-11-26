@@ -1,11 +1,11 @@
-export * from "./composition.js";
-import type { ExtensionScope } from "./composition.js";
+export * from "@ai0/extension-core";
+export * from "./facets.js";
+import type { ExtensionScope, ExtensionPackageDefinition } from "@ai0/extension-core";
 import {
   Ai0ExtensionManifestSchema,
   SkillMarkdownFrontmatterSchema,
   type Ai0ExtensionManifest,
-  type ExtensionCarrierKind,
-  type ExtensionDimension,
+  type ExtensionFacetId,
   type SkillMarkdownFrontmatter,
   type ThemeColorPreset,
   type VerifiableTurnTrace
@@ -14,8 +14,8 @@ import {
 export type Ai0StageMode = "live" | "sandbox";
 export type Ai0StageAppearance = "light" | "dark";
 
-/** Runtime state synchronized from the Console host to any mounted Web Shell stage. */
-export interface Ai0ShellStageHostState {
+/** Runtime state synchronized from the Console host to any mounted Web Channel stage. */
+export interface Ai0ChannelStageHostState {
   readonly mode: Ai0StageMode;
   readonly targetInstance: "live" | `sandbox:${string}`;
   readonly soulId?: string;
@@ -31,13 +31,13 @@ export interface Ai0ShellStageHostState {
   readonly recentTraces?: readonly VerifiableTurnTrace[];
 }
 
-/** Framework-agnostic host bridge passed to mounted slot.shells.mounted_stage plugins. */
-export interface Ai0ShellStageHostBridge {
+/** Framework-agnostic host bridge passed to mounted slot.channels.mounted_stage plugins. */
+export interface Ai0ChannelStageHostBridge {
   readonly contributions?: ExtensionScope;
   readonly extensionId: string;
-  readonly shellId: string;
-  getState(): Ai0ShellStageHostState;
-  subscribe(listener: (state: Ai0ShellStageHostState) => void): () => void;
+  readonly channelId: string;
+  getState(): Ai0ChannelStageHostState;
+  subscribe(listener: (state: Ai0ChannelStageHostState) => void): () => void;
   showToast(message: string): void;
   retryConnection(): void;
   fetchTurnTrace(options: {
@@ -48,34 +48,34 @@ export interface Ai0ShellStageHostBridge {
   }): Promise<VerifiableTurnTrace | undefined>;
 }
 
-export type ConsolePageState = Pick<Ai0ShellStageHostState,
+export type ConsolePageState = Pick<Ai0ChannelStageHostState,
   "mode" | "targetInstance" | "soulId" | "personaName" | "soulTheme" | "appearance" | "journal">;
 
 export interface ConsolePageHost {
   readonly extensionId: string;
   readonly contributions: ExtensionScope;
-  readonly shell?: Ai0ShellStageHostBridge;
+  readonly channel?: Ai0ChannelStageHostBridge;
   getState(): ConsolePageState;
   subscribe(listener: (state: ConsolePageState) => void): () => void;
   showToast(message: string): void;
 }
 export interface ConsolePageModule<TContainer = unknown> {
-  mountPage(container: TContainer, host: ConsolePageHost): Ai0ShellStageCleanup | Promise<Ai0ShellStageCleanup>;
+  mountPage(container: TContainer, host: ConsolePageHost): Ai0ChannelStageCleanup | Promise<Ai0ChannelStageCleanup>;
 }
-export type Ai0ShellStageCleanup = (() => void) | { unmount(): void };
+export type Ai0ChannelStageCleanup = (() => void) | { unmount(): void };
 
-export interface Ai0ShellStageModule<TContainer = unknown> {
+export interface Ai0ChannelStageModule<TContainer = unknown> {
   readonly extensionId?: string;
-  mountShellStage(
+  mountChannelStage(
     container: TContainer,
-    host: Ai0ShellStageHostBridge
-  ): Ai0ShellStageCleanup | Promise<Ai0ShellStageCleanup>;
+    host: Ai0ChannelStageHostBridge
+  ): Ai0ChannelStageCleanup | Promise<Ai0ChannelStageCleanup>;
 }
 
-/** Define a dynamically mountable Web Shell stage module exported from a plugin's dist/ui bundle. */
-export function defineShellStageModule<TContainer = unknown>(
-  module: Ai0ShellStageModule<TContainer>
-): Ai0ShellStageModule<TContainer> {
+/** Define a dynamically mountable Web Channel stage module exported from a plugin's dist/ui bundle. */
+export function defineChannelStageModule<TContainer = unknown>(
+  module: Ai0ChannelStageModule<TContainer>
+): Ai0ChannelStageModule<TContainer> {
   return module;
 }
 
@@ -87,83 +87,33 @@ export interface ParsedSkillMarkdown<T = SkillMarkdownFrontmatter> {
   raw_frontmatter: string;
 }
 
-const DEFAULT_PERMISSIONS = {
-  read_blackboard_domains: [
-    "D1_WORKING_TURN",
-    "D2_HOMEOSTASIS_AFFECT",
-    "D3_MEMORY_PROJECTION"
-  ] as const,
-  propose_mutation_domains: ["D3_MEMORY_PROJECTION"] as const,
-  max_audience_scope: "only_owner" as const,
-  network_access: false
+type PackageManifestInput = Omit<Ai0ExtensionManifest, "manifest_version">;
+type PackageInput = Omit<ExtensionPackageDefinition, "manifest"> & {
+  manifest: PackageManifestInput;
 };
 
-function normalizeToAi0ExtensionManifest(
-  manifest: ManifestInput,
-  fallbackDimension?: ExtensionDimension
-): Ai0ExtensionManifest {
-  const dimension =
-    (manifest.dimension as ExtensionDimension | undefined) ??
-    (manifest.bus as ExtensionDimension | undefined) ??
-    (manifest.extension_point as ExtensionDimension | undefined) ??
-    fallbackDimension ??
-    "ext.cognitive_organ";
-  const carrierKind =
-    (manifest.carrier_kind as ExtensionCarrierKind | undefined) ??
-    (manifest.carrier as ExtensionCarrierKind | undefined) ??
-    "native_code_plugin";
+export function validateExtensionManifest(manifest: unknown): Ai0ExtensionManifest {
+  return Ai0ExtensionManifestSchema.parse(manifest);
+}
 
-  return Ai0ExtensionManifestSchema.parse({
-    manifest_version: "1.1.0",
-    extension_id: String(manifest.extension_id ?? manifest.id ?? "plugin.unknown"),
-    display_name: String(
-      manifest.display_name ?? manifest.name ?? manifest.extension_id ?? manifest.id ?? "Plugin"
-    ),
-    version: String(manifest.version ?? "1.0.0"),
-    author: String(manifest.author ?? "ai0-community"),
-    carrier_kind: carrierKind,
-    dimension,
-    ...(typeof manifest.entry === "string" ? { entry: manifest.entry } : {}),
-    permissions:
-      manifest.permissions &&
-      typeof manifest.permissions === "object" &&
-      "read_blackboard_domains" in (manifest.permissions as object)
-        ? manifest.permissions
-        : DEFAULT_PERMISSIONS,
-    ...(manifest.console_contributions
-      ? { console_contributions: manifest.console_contributions }
-      : {})
+export function defineExtensionPackage(definition: PackageInput): ExtensionPackageDefinition {
+  return { ...definition, manifest: validateExtensionManifest({ ...definition.manifest, manifest_version: "2.0.0" }) };
+}
+
+function definePlugin(defaultFacet: ExtensionFacetId) {
+  return (definition: Omit<PackageInput, "manifest"> & {
+    manifest: Omit<PackageManifestInput, "facets"> & { facets?: ExtensionFacetId[] };
+  }): ExtensionPackageDefinition => defineExtensionPackage({
+    ...definition,
+    manifest: { ...definition.manifest, facets: [...new Set([defaultFacet, ...definition.manifest.facets ?? []])] }
   });
 }
 
-/** Validate an extension manifest while retaining its input shape. */
-export function validateExtensionManifest<T extends ManifestInput>(
-  manifest: T,
-  expectedDimension?: ExtensionDimension
-): T {
-  const declared =
-    manifest.dimension ?? manifest.extension_point ?? manifest.bus ?? manifest.extension_type;
-  if (expectedDimension !== undefined && declared !== undefined && declared !== expectedDimension) {
-    throw new TypeError(`Expected ${expectedDimension} plugin, received ${String(declared)}`);
-  }
-  normalizeToAi0ExtensionManifest(manifest, expectedDimension);
-  return manifest;
-}
-
-/** Define and eagerly validate a shell plugin manifest. */
-export function defineShellPlugin<const T extends ManifestInput>(manifest: T): T {
-  return validateExtensionManifest(manifest, "ext.shell");
-}
-
-/** Define and eagerly validate a cognitive-organ plugin manifest. */
-export function defineCognitiveOrganPlugin<const T extends ManifestInput>(manifest: T): T {
-  return validateExtensionManifest(manifest, "ext.cognitive_organ");
-}
-
-/** Define and eagerly validate a media-pipeline plugin manifest. */
-export function defineMediaPipelinePlugin<const T extends ManifestInput>(manifest: T): T {
-  return validateExtensionManifest(manifest, "ext.media_pipeline");
-}
+export const defineChannelPlugin = definePlugin("channel.bridge");
+export const definePerceptionFilterPlugin = definePlugin("perception.filter");
+export const defineCognitiveOrganPlugin = definePlugin("cognition.context_contributor");
+export const defineMediaPipelinePlugin = definePlugin("expression.media_transcoder");
+export const defineActionSkillPlugin = definePlugin("agent.skill_manual");
 
 const scalar = (source: string): unknown => {
   const value = source.trim();

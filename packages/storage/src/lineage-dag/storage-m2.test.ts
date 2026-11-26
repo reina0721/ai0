@@ -48,7 +48,7 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         event_id: "evt_sec_1",
         wall_ts_ms: baseTs,
         virtual_ts_ms: baseTs,
-        source_shell_id: "builtin.webchat",
+        source_channel_id: "builtin.webchat",
         principal_id: "owner",
         principal_trust: "owner_verified",
         venue_type: "private_1on1",
@@ -239,7 +239,7 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         event_id: "evt_101",
         wall_ts_ms: ts,
         virtual_ts_ms: ts,
-        source_shell_id: "builtin.webchat",
+        source_channel_id: "builtin.webchat",
         principal_id: "owner",
         principal_trust: "owner_verified",
         venue_type: "private_1on1",
@@ -256,7 +256,7 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         event_id: "evt_102",
         wall_ts_ms: ts + 1000,
         virtual_ts_ms: ts + 1000,
-        source_shell_id: "builtin.webchat",
+        source_channel_id: "builtin.webchat",
         principal_id: "owner",
         principal_trust: "owner_verified",
         venue_type: "private_1on1",
@@ -438,8 +438,8 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
       });
       storage.saveTurnDecisionTrace(related);
       const process = { stages: [], reasoning: "sensitive memory" };
-      storage.saveShellRunProcess("evt_101", process);
-      storage.saveShellRunProcess("evt_102", process);
+      storage.saveChannelRunProcess("evt_101", process);
+      storage.saveChannelRunProcess("evt_102", process);
 
       // Preview impact radius before mutating
       const preview = previewHardForgetRadius(storage, {
@@ -460,10 +460,10 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
         virtualTsMs: ts + 5000
       });
       expect(result.dry_run_preview).toBe(false);
-      expect(storage.getShellRunProcess("evt_101")).toBeUndefined();
-      expect(storage.getShellRunProcess("evt_102")).toBeUndefined();
-      storage.saveShellRunProcess("evt_102", process);
-      expect(storage.getShellRunProcess("evt_102")).toBeUndefined();
+      expect(storage.getChannelRunProcess("evt_101")).toBeUndefined();
+      expect(storage.getChannelRunProcess("evt_102")).toBeUndefined();
+      storage.saveChannelRunProcess("evt_102", process);
+      expect(storage.getChannelRunProcess("evt_102")).toBeUndefined();
 
       // Verify 5-table scrubbing & micro-reprojection
       const redactedEvt = storage.getEventById("evt_101");
@@ -529,7 +529,7 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
       event_id: "evt_snap_secret",
       wall_ts_ms: ts,
       virtual_ts_ms: ts,
-      source_shell_id: "builtin.webchat",
+      source_channel_id: "builtin.webchat",
       principal_id: "owner",
       principal_trust: "owner_verified",
       venue_type: "private_1on1",
@@ -608,7 +608,7 @@ describe("Milestone M2 Quality Audit: HybridMemoryRetriever, HardForgetEngine & 
           event_id: "evt_sandbox_only",
           wall_ts_ms: ts + 9000,
           virtual_ts_ms: ts + 9000,
-          source_shell_id: "mock.shell",
+          source_channel_id: "mock.channel",
           principal_id: "owner",
           principal_trust: "owner_verified",
           venue_type: "private_1on1",

@@ -67,7 +67,7 @@ rules:
 constraints:
   read_only_inputs: true
   coordinator_is_sole_state_writer: true
-  never_broadcast_to_all_shells: true
+  never_broadcast_to_all_channels: true
   never_create_external_side_effects: true
   never_use_guilt_or_dependency_language: true
   crisis_preempts_immediately: true

@@ -15,8 +15,8 @@ export const CommunicativeIntentEnvelopeSchema = z.object({
     maxLatencyMs: z.number().finite().nonnegative().optional() })
 });
 export const NegotiatedIntentDispatchSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("dispatched"), shellId: z.string(), envelope: ExpressionEnvelopeSchema }),
-  z.object({ status: z.literal("held_pending_compliant_shell"), envelope: z.null() })
+  z.object({ status: z.literal("dispatched"), channelId: z.string(), envelope: ExpressionEnvelopeSchema }),
+  z.object({ status: z.literal("held_pending_compliant_channel"), envelope: z.null() })
 ]);
 export type CommunicativeIntentEnvelope = z.infer<typeof CommunicativeIntentEnvelopeSchema>;
 export type NegotiatedIntentDispatch = z.infer<typeof NegotiatedIntentDispatchSchema>;
