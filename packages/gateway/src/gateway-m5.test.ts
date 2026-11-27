@@ -51,7 +51,7 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Prot
       capabilities: { sensors: ["text"], supported_extensions: [], actuators: [] },
       auth_token: issueScopedCapabilityToken({
         channel_id: channelId, max_audience_privacy_ceiling: "only_owner",
-        allowed_modalities: ["text"], expires_at_ts_ms: Date.now() + 60_000
+        allowed_modalities: ["text"], expires_at_ts_ms: gateway.clock.nowMs() + 60_000
       }, secret)
     }, secret);
     const perception = {
@@ -115,12 +115,12 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Prot
         channel_id: "mock.livestream.public",
         max_audience_privacy_ceiling: "public_all",
         allowed_modalities: ["text"],
-        expires_at_ts_ms: Date.now() + 3_600_000
+        expires_at_ts_ms: clock.nowMs() + 3_600_000
       },
       secretKey
     );
 
-    const claims = verifyScopedCapabilityToken(token, secretKey);
+    const claims = verifyScopedCapabilityToken(token, secretKey, clock.nowMs());
     expect(claims.max_audience_privacy_ceiling).toBe("public_all");
     expect(claims.channel_id).toBe("mock.livestream.public");
 

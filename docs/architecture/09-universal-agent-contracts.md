@@ -11,7 +11,7 @@
 - 采纳 Gemini 的空装配、动态状态轴、具名回复契约、载体与切面正交，以及检查真实出口。对照 dsh，同一个 Agent 句柄可以由不同 driver 实现，生产配置与最小 SDK 配置可以分别组装。这为“保持接口，替换提供方”的实验提供了参照。[dsh 核心与驱动](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/core.zh.md)
 - 将“自动跨核注入”限定为按声明产生候选绑定。能列出 MCP 资源、获准订阅资源、收到更新，以及将更新作为观察接纳，是四件事。Markdown 自由文本也不能自行获得工具执行权或长期状态写权。[MCP 资源规范](https://modelcontextprotocol.io/specification/2025-11-25/server/resources)
 - 收紧 GPT 方案里容易被误读的“通用”。独立作者可在扩展命名空间定义平台未知的服务。只有消费方必须共同识别新状态、授权边界或失败结果时，才扩大核心契约。dsh 删除了只有一个真实产品用例的模式注册表，这同样适用于 ai0 的预设切面清单。[dsh 的模式注册表删减记录](https://github.com/deepseek-ai/deepseek-harness/blob/f4185122/.agents/notes/implemented/simplification/2026-07-22-plan-specific-collaboration-state.md)
-- 将“净空历史默认”限定为可识别的发行种子。已编辑模板是用户资产，缺少确认依据的旧内容需要标记来源。迁移验证应包含清空、保留和未知三种结果。
+- 净空历史默认与兼容层（Clean-Slate V1 Iron Law）：移除全部历史种子摘要表、`legacy_unknown`、`D2_HOMEOSTASIS_AFFECT`、`agentToolDefinitionFacet` 等过渡兼容分叉，统一使用单版本 `agent.tool_provider@1` 与独立命名的 `perception.source@1`，并将多态载体投影（`mountCarrierProjections`）下沉至 `@ai0/sdk`。
 
 ## 四组契约的改动半径
 
@@ -32,7 +32,7 @@
 
 当前 daemon 黑板仍对产品配置中的共享域分别授予读写权限。第三方可以自有私有状态、声明连续状态轴或发表版本化服务；跨包共享全新的持久黑板域还需要证明并实现命名、授权、恢复和遗忘的一致约定。只扩大域名枚举无法满足这些保证。
 
-宿主在 Studio 配置中列出交互话轮可调用的查询工具（`readOnlyTools`），并通过 `maxInteractiveSteps` 确定每轮最多的模型步骤，默认两步。后台动作通过已批准的执行者绑定发起。达到交互上限本身不构成后台执行授权。
+宿主在 Studio 配置中列出交互话轮可调用的查询工具（`readOnlyTools`，且 W1 强制校验 `capabilityRisk === "read_only_safe"` 与认知污点门控），并通过 `maxInteractiveSteps` 确定每轮最多的模型步骤。写改与命令执行等副作用能力（如多态插件 `builtin.workspace-tools` 提供的 `write_file / edit_file / run_command`）绝不硬编码进感知/认知/表达核心源码：在 `@ai0/agent-runtime` 的 `"direct_inline"` 编码任务拓扑中经策略与同轮污点熔断校验后直接内联闭环；在 `"dual_speed_w1_w2"` 具身伴侣拓扑中则路由至 W2 多步工具环，实时推进 `D4` 本体感觉状态供表达层感知，并响应 `AbortSignal` 打断取消。被动工作区文件变更监听（`workspace.fs_watch`）通过 `perception.source@1` 进入感知过滤管线，与内环主动求知工具 `workspace.read_file` 正交互补。标准 `SKILL.md` 在未显式声明 `projections` 时默认按需投影为 `agent.skill_manual@1`。
 
 ## 用字幕校勘推翻错误设计
 

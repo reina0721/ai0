@@ -14,6 +14,9 @@ importers:
       '@ai0/agent-core':
         specifier: workspace:*
         version: link:packages/agent-core
+      '@ai0/agent-runtime':
+        specifier: workspace:*
+        version: link:packages/agent-runtime
       '@ai0/cognition-core':
         specifier: workspace:*
         version: link:packages/cognition-core
@@ -149,13 +152,13 @@ importers:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: 4.0.107
-        version: 4.0.107(zod@3.25.76)
+        version: 4.0.107(zod@4.6.7)
       '@ai-sdk/deepseek':
         specifier: 3.0.89
-        version: 3.0.89(zod@3.25.76)
+        version: 3.0.89(zod@4.6.7)
       '@ai-sdk/openai-compatible':
         specifier: 3.0.94
-        version: 3.0.94(zod@3.25.76)
+        version: 3.0.94(zod@4.6.7)
       '@ai0/extension-core':
         specifier: workspace:*
         version: link:../extension-core
@@ -164,7 +167,28 @@ importers:
         version: link:../protocol
       ai:
         specifier: 7.0.179
-        version: 7.0.179(zod@3.25.76)
+        version: 7.0.179(zod@4.6.7)
+
+  packages/agent-runtime:
+    dependencies:
+      '@ai0/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@ai0/cognition-core':
+        specifier: workspace:*
+        version: link:../cognition-core
+      '@ai0/expression-core':
+        specifier: workspace:*
+        version: link:../expression-core
+      '@ai0/extension-core':
+        specifier: workspace:*
+        version: link:../extension-core
+      '@ai0/perception-core':
+        specifier: workspace:*
+        version: link:../perception-core
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/cognition-core:
     dependencies:
@@ -256,6 +280,18 @@ importers:
         specifier: ^3.24.0
         version: 3.25.76
 
+  plugins/agent-tools/workspace-tools:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+
   plugins/channels/terminal:
     dependencies:
       '@ai0/protocol':
@@ -275,7 +311,7 @@ importers:
         version: link:../../../packages/sdk
       '@assistant-ui/react':
         specifier: 0.15.38
-        version: 0.15.38(@opentelemetry/api@1.10.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(ai@7.0.179(zod@3.25.76))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 0.15.38(@opentelemetry/api@1.10.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(ai@7.0.179(zod@4.6.7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@emotion/react':
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.3.0)(react@19.3.1)
@@ -3762,49 +3798,49 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/anthropic@4.0.107(zod@3.25.76)':
+  '@ai-sdk/anthropic@4.0.107(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.39
-      '@ai-sdk/provider-utils': 5.0.83(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.83(zod@4.6.7)
+      zod: 4.6.7
 
-  '@ai-sdk/deepseek@3.0.89(zod@3.25.76)':
+  '@ai-sdk/deepseek@3.0.89(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.39
-      '@ai-sdk/provider-utils': 5.0.83(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.83(zod@4.6.7)
+      zod: 4.6.7
 
-  '@ai-sdk/gateway@4.0.152(zod@3.25.76)':
+  '@ai-sdk/gateway@4.0.152(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.39
-      '@ai-sdk/provider-utils': 5.0.83(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.83(zod@4.6.7)
       '@vercel/oidc': 3.2.0
-      zod: 3.25.76
+      zod: 4.6.7
 
-  '@ai-sdk/openai-compatible@3.0.94(zod@3.25.76)':
+  '@ai-sdk/openai-compatible@3.0.94(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.39
-      '@ai-sdk/provider-utils': 5.0.83(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.83(zod@4.6.7)
+      zod: 4.6.7
 
-  '@ai-sdk/provider-utils@5.0.83(zod@3.25.76)':
+  '@ai-sdk/provider-utils@5.0.83(zod@4.6.7)':
     dependencies:
       '@ai-sdk/provider': 4.0.39
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
-      zod: 3.25.76
+      zod: 4.6.7
 
   '@ai-sdk/provider@4.0.39':
     dependencies:
       json-schema: 0.4.0
 
-  '@assistant-ui/core@0.3.38(@assistant-ui/store@0.3.25(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@opentelemetry/api@1.10.0)(@types/react@19.3.0)(ai@7.0.179(zod@3.25.76))(react@19.3.1)':
+  '@assistant-ui/core@0.3.38(@assistant-ui/store@0.3.25(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@opentelemetry/api@1.10.0)(@types/react@19.3.0)(ai@7.0.179(zod@4.6.7))(react@19.3.1)':
     dependencies:
       '@assistant-ui/store': 0.3.25(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1)
       '@assistant-ui/tap': 0.9.27(@types/react@19.3.0)(react@19.3.1)
-      assistant-cloud: 0.2.13(@opentelemetry/api@1.10.0)(ai@7.0.179(zod@3.25.76))
-      assistant-stream: 0.3.59(ai@7.0.179(zod@3.25.76))
+      assistant-cloud: 0.2.13(@opentelemetry/api@1.10.0)(ai@7.0.179(zod@4.6.7))
+      assistant-stream: 0.3.59(ai@7.0.179(zod@4.6.7))
       nanoid: 6.0.2
     optionalDependencies:
       '@types/react': 19.3.0
@@ -3817,13 +3853,13 @@ snapshots:
       - ioredis
       - redis
 
-  '@assistant-ui/react@0.15.38(@opentelemetry/api@1.10.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(ai@7.0.179(zod@3.25.76))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@assistant-ui/react@0.15.38(@opentelemetry/api@1.10.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(ai@7.0.179(zod@4.6.7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@assistant-ui/core': 0.3.38(@assistant-ui/store@0.3.25(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@opentelemetry/api@1.10.0)(@types/react@19.3.0)(ai@7.0.179(zod@3.25.76))(react@19.3.1)
+      '@assistant-ui/core': 0.3.38(@assistant-ui/store@0.3.25(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1))(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@opentelemetry/api@1.10.0)(@types/react@19.3.0)(ai@7.0.179(zod@4.6.7))(react@19.3.1)
       '@assistant-ui/store': 0.3.25(@assistant-ui/tap@0.9.27(@types/react@19.3.0)(react@19.3.1))(@types/react@19.3.0)(react@19.3.1)
       '@assistant-ui/tap': 0.9.27(@types/react@19.3.0)(react@19.3.1)
-      assistant-cloud: 0.2.13(@opentelemetry/api@1.10.0)(ai@7.0.179(zod@3.25.76))
-      assistant-stream: 0.3.59(ai@7.0.179(zod@3.25.76))
+      assistant-cloud: 0.2.13(@opentelemetry/api@1.10.0)(ai@7.0.179(zod@4.6.7))
+      assistant-stream: 0.3.59(ai@7.0.179(zod@4.6.7))
       radix-ui: 1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
@@ -5500,12 +5536,12 @@ snapshots:
       mime-types: 3.0.2
       negotiator: 1.1.0
 
-  ai@7.0.179(zod@3.25.76):
+  ai@7.0.179(zod@4.6.7):
     dependencies:
-      '@ai-sdk/gateway': 4.0.152(zod@3.25.76)
+      '@ai-sdk/gateway': 4.0.152(zod@4.6.7)
       '@ai-sdk/provider': 4.0.39
-      '@ai-sdk/provider-utils': 5.0.83(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.83(zod@4.6.7)
+      zod: 4.6.7
 
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
@@ -5528,24 +5564,24 @@ snapshots:
 
   assertion-error@2.0.1: {}
 
-  assistant-cloud@0.2.13(@opentelemetry/api@1.10.0)(ai@7.0.179(zod@3.25.76)):
+  assistant-cloud@0.2.13(@opentelemetry/api@1.10.0)(ai@7.0.179(zod@4.6.7)):
     dependencies:
-      assistant-stream: 0.3.59(ai@7.0.179(zod@3.25.76))
+      assistant-stream: 0.3.59(ai@7.0.179(zod@4.6.7))
     optionalDependencies:
       '@opentelemetry/api': 1.10.0
-      ai: 7.0.179(zod@3.25.76)
+      ai: 7.0.179(zod@4.6.7)
     transitivePeerDependencies:
       - ioredis
       - redis
 
-  assistant-stream@0.3.59(ai@7.0.179(zod@3.25.76)):
+  assistant-stream@0.3.59(ai@7.0.179(zod@4.6.7)):
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/json-schema': 7.0.15
       nanoid: 6.0.2
       secure-json-parse: 4.1.1
     optionalDependencies:
-      ai: 7.0.179(zod@3.25.76)
+      ai: 7.0.179(zod@4.6.7)
 
   babel-plugin-macros@3.1.0:
     dependencies:

@@ -7,6 +7,7 @@
   "carrier_kind": "native_code_plugin",
   "facets": [
     "cognition.context_contributor",
+    "extension.asset_codec",
     "console.config_schema"
   ],
   "entry": "./dist/index.js",

@@ -8,6 +8,16 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./kernel": {
+      "development": "./src/kernel/index.ts",
+      "types": "./dist/kernel/index.d.ts",
+      "default": "./dist/kernel/index.js"
+    },
+    "./subsystems": {
+      "development": "./src/subsystems/index.ts",
+      "types": "./dist/subsystems/index.d.ts",
+      "default": "./dist/subsystems/index.js"
     }
   },
   "types": "./dist/index.d.ts",

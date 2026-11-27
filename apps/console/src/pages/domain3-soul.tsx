@@ -31,6 +31,8 @@ const ARCHETYPE_CARDS: ReadonlyArray<{
   label: string;
   desc: string;
 }> = [
+    { id: "assistant", icon: "briefcase", label: "通用助手", desc: "清晰、可靠、聚焦任务执行与事实查证的通用智能体契约" },
+    { id: "collaborator", icon: "graduation-cap", label: "工程与研究协作", desc: "支持多步工具调用、知识库核验与结构化分析汇报" },
     { id: "romantic_partner", icon: "heart", label: "亲密伴侣", desc: "高情感细腻度与纪念日追踪，严格遵循反操控与离场零挽留边界" },
     { id: "best_friend", icon: "smile", label: "日常挚友", desc: "松弛自然的交流节奏，兼顾日常留白与低频主动关怀" },
     { id: "digital_employee", icon: "briefcase", label: "专业助理", desc: "自动调用 SubAgent、知识库与代码工具，提供结构化任务协作" },
@@ -60,14 +62,14 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
     sensitivity: soul?.temperament.emotionSensitivity ?? 1,
     moodHalfLife: soul?.temperament.moodHalfLifeHours ?? 12,
     tensionHalfLife: soul?.temperament.tensionHalfLifeHours ?? 24,
-    maxProactive: soul?.temperament.maxDailyProactive ?? 3,
-    gapMoe: soul?.temperament.gapMoeIntensity ?? 68,
-    baseMood: soul?.temperament.baseMoodValence ?? 0.28,
+    maxProactive: soul?.temperament.maxDailyProactive ?? 0,
+    subtextTension: soul?.temperament.subtextTensionIntensity ?? 0,
+    baseMood: soul?.temperament.baseMoodValence ?? 0,
     dndStartHour: soul?.dndStartHour ?? 0,
     dndEndHour: soul?.dndEndHour ?? 7
   });
   const identity = useWorkspaceDraft({
-    selectedRole: soul?.primaryRole ?? "best_friend" as string,
+    selectedRole: soul?.primaryRole ?? "assistant" as string,
     autoSwitchByVenue: soul?.autoSwitchByVenue ?? true,
     displayName: soul?.displayName ?? "",
     ontologicalMode: soul?.ontologicalMode ?? "poetic_honest",
@@ -75,7 +77,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
     catchphrases: (soul?.catchphrases ?? []).join(" / "),
     bannedCliches: (soul?.bannedCliches ?? []).join(" / ")
   });
-  const { anchors, sensitivity, moodHalfLife, tensionHalfLife, maxProactive, gapMoe, baseMood, dndStartHour, dndEndHour } = bio.value;
+  const { anchors, sensitivity, moodHalfLife, tensionHalfLife, maxProactive, subtextTension, baseMood, dndStartHour, dndEndHour } = bio.value;
   const { selectedRole, autoSwitchByVenue, displayName, ontologicalMode, corePrompt, catchphrases, bannedCliches } = identity.value;
   const setBio = <K extends keyof typeof bio.value>(key: K, value: (typeof bio.value)[K]) =>
     bio.setValue((previous) => ({ ...previous, [key]: value }));
@@ -103,7 +105,7 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
             moodHalfLifeHours: moodHalfLife,
             tensionHalfLifeHours: tensionHalfLife,
             maxDailyProactive: maxProactive,
-            gapMoeIntensity: gapMoe,
+            subtextTensionIntensity: subtextTension,
             baseMoodValence: baseMood
           }
         }
@@ -285,10 +287,10 @@ export function Domain3SoulPage(props: Domain3SoulPageProps): ReactElement {
                   label="潜台词张力"
                   min={0}
                   max={100}
-                  value={gapMoe}
+                  value={subtextTension}
                   unit="%"
                   disabled={!bioForm.canWrite}
-                  onInput={(value) => setBio("gapMoe", value)}
+                  onInput={(value) => setBio("subtextTension", value)}
                 />
                 <WorkspaceField>
                   <label>基准心境值</label>

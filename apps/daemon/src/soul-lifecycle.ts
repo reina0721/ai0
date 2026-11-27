@@ -6,7 +6,7 @@ import {
   addSourceApiKey, awakenSoulFromCard, deleteHostCharacterCard, exportSoulToCharacterCardV3,
   getHostCharacterCard, inferModelCapabilities, isPlaceholderSecret, listHostCharacterCards, makeDefaultModelInstanceId,
   parseCharacterCardV3, PROVIDER_VENDOR_TEMPLATES, readConsoleStudioConfig, readHostInfrastructureConfig,
-  readHostOwnerClaim, readSoulArchiveConfig, readSoulProfileConfig, RelationshipArchetypeSchema,
+  readHostOwnerClaim, readSoulArchiveConfig, readSoulProfileConfig, RolePresetIdSchema,
   resolveEffectiveSourceApiKeys, sanitizeCharacterCardV3, saveHostCharacterCard, SoulDirectoryLayout,
   upsertModelInstance, upsertProviderSource, writeHostOwnerClaim, writeSoulProfileConfig
 } from "@ai0/storage";
@@ -165,7 +165,7 @@ export function completeOnboarding(runtime: Ai0DaemonRuntime, body: Body) {
   const card = shouldAwaken ? parseCharacterCardV3(rawCard || {
     spec: "chara_card_v3", spec_version: "3.0", data: { name: displayName, description: prompt }
   }) : undefined;
-  const role = RelationshipArchetypeSchema.optional().parse(body.primaryRole);
+  const role = RolePresetIdSchema.optional().parse(body.primaryRole);
   claimHost(runtime, "local_sovereign");
   const apiKey = trimmed(body.apiKey);
   const binding = apiKey ? configureOnboardingModel(runtime.hostDir, body, apiKey) : undefined;

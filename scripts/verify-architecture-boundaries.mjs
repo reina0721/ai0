@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const HEADLESS_CORES = ["agent-core", "perception-core", "expression-core", "cognition-core", "extension-core"];
+const HEADLESS_CORES = ["agent-core", "agent-runtime", "perception-core", "expression-core", "cognition-core", "extension-core"];
 const INTERNAL_ALLOWLIST = {
   protocol: [],
   "extension-core": ["protocol"],
@@ -15,6 +15,7 @@ const INTERNAL_ALLOWLIST = {
   storage: ["protocol"],
   sdk: ["protocol", "extension-core"],
   "cognition-core": ["protocol", "extension-core", "agent-core"],
+  "agent-runtime": ["protocol", "extension-core", "agent-core", "perception-core", "cognition-core", "expression-core"],
   gateway: ["protocol", "extension-core", "perception-core", "cognition-core", "expression-core", "storage"]
 };
 const WORKSPACE_PACKAGES = Object.keys(INTERNAL_ALLOWLIST);
@@ -531,7 +532,7 @@ async function verifyCoreDependencies() {
       if (name === "agent-core" && AGENT_DOMAIN_TERMS.test(stripComments(source))) {
         report(rule, relativePath(file) + " contains a cognition or persona domain term.");
       }
-      if (headless && relativePath(file) !== "packages/cognition-core/src/clock/virtual-clock.ts" &&
+      if ((headless || name === "gateway") && relativePath(file) !== "packages/cognition-core/src/kernel/virtual-clock.ts" &&
           /\bDate\s*\.\s*now\s*\(/.test(executableCodeOnly(source))) {
         report(rule, relativePath(file) + " calls raw Date.now(); inject VirtualClock instead.");
       }
@@ -585,6 +586,7 @@ async function verifyHostZeroPluginPollution() {
   for (const forbiddenPath of [
     path.join(repoRoot, "apps", "console", "src", "webchat"),
     path.join(repoRoot, "apps", "daemon", "src", "webchat-runs.ts"),
+    path.join(repoRoot, "apps", "daemon", "src", "profiles"),
   ]) {
     if (await pathInfo(forbiddenPath)) {
       report(
@@ -692,20 +694,36 @@ function facetDeclarations(file, source) {
   return facets;
 }
 
+const STATEFUL_STRATIFIED_PACKAGES = [
+  "extension-core",
+  "agent-core",
+  "agent-runtime",
+  "perception-core",
+  "cognition-core",
+  "expression-core",
+  "storage",
+  "gateway",
+];
+
 async function verifyDomainAndAuthorBoundaries() {
-  const rule = "Invariant 8: domain ownership and public author contracts";
-  const domainTerms = /COMPANION_HOMEOSTASIS_DESCRIPTORS|theatrical_subtext|D1_WORKING_TURN|W1FastDialogueWorker|LorebookMatcher|digitalLifeDialogueProfile|drive_social_longing|tsundere_irony|钻进被窝|builtin\.lorebook-contributor/;
+  const rule = "Invariant 8: domain ownership, clean-slate v1 purity, and bidirectional public author contracts";
+  const domainTerms = /COMPANION_HOMEOSTASIS_DESCRIPTORS|theatrical_subtext|W1FastDialogueWorker|LorebookMatcher|digitalLifeDialogueProfile|drive_social_longing|romantic_partner|vtuber_partner|gapMoeIntensity|钻进被窝|builtin\.lorebook-contributor/;
+  const legacyShimTerms = /legacySeedDigests|D2_HOMEOSTASIS_AFFECT|legacyToolContract|legacy_unknown|migrateLegacyAffect|agentToolDefinitionFacet/;
   const ownerFacets = new Map();
   const sdkFacets = new Map();
   const sdkExportsHost = /export\s+\*\s+from\s+["']@ai0\/extension-core["']/.test(
     await readFile(path.join(repoRoot, "packages/sdk/src/index.ts"), "utf8"));
   const productionTs = file => file.endsWith(".ts") && !file.endsWith(".test.ts");
-  for (const name of [...HEADLESS_CORES, "sdk"]) {
+  for (const name of WORKSPACE_PACKAGES) {
     const directory = path.join(repoRoot, "packages", name, "src");
     for (const file of await walkFiles(directory, { include: productionTs })) {
       const source = await readFile(file, "utf8");
-      if (name !== "sdk" && domainTerms.test(stripComments(source))) {
-        report(rule, relativePath(file) + " embeds a digital-life strategy or data shape in a neutral core.");
+      const stripped = stripComments(source);
+      if (legacyShimTerms.test(stripped)) {
+        report(rule, relativePath(file) + " retains a forbidden Clean-Slate V1 legacy shim or deprecated facet.");
+      }
+      if (name !== "sdk" && name !== "protocol" && domainTerms.test(stripped)) {
+        report(rule, relativePath(file) + " embeds a digital-life strategy or companion preset in a neutral package.");
       }
       for (const specifier of moduleSpecifiers(source)) {
         if (!specifier.startsWith(".")) continue;
@@ -714,21 +732,79 @@ async function verifyDomainAndAuthorBoundaries() {
           report(rule, relativePath(file) + " imports application or plugin code via " + specifier);
         }
       }
-      for (const [point, identity] of facetDeclarations(file, source)) {
-        (name === "sdk" ? sdkFacets : ownerFacets).set(point, identity);
-        if (name === "extension-core" && sdkExportsHost) sdkFacets.set(point, identity);
+      if (HEADLESS_CORES.includes(name) || name === "sdk") {
+        for (const [point, identity] of facetDeclarations(file, source)) {
+          (name === "sdk" ? sdkFacets : ownerFacets).set(point, identity);
+          if (name === "extension-core" && sdkExportsHost) sdkFacets.set(point, identity);
+        }
       }
     }
   }
   for (const [name, identity] of ownerFacets) {
     if (sdkFacets.get(name) !== identity) report(rule, name + " must have the same SDK and core contract.");
   }
+  const hostUiSdkFacets = new Set([
+    "channelBridgeFacet",
+    "consoleSurfaceFacet",
+    "consoleUiSlotFacet",
+    "consoleConfigSchemaFacet",
+  ]);
+  for (const [name, identity] of sdkFacets) {
+    if (hostUiSdkFacets.has(name)) continue;
+    if (ownerFacets.get(name) !== identity) {
+      report(rule, name + " is exported by @ai0/sdk without a matching 1:1 owner core FacetPoint.");
+    }
+  }
   for (const file of await walkFiles(path.join(repoRoot, "apps", "daemon", "src"), { include: productionTs })) {
-    if (/["']builtin\.lorebook-contributor["']/.test(stripComments(await readFile(file, "utf8")))) {
+    const stripped = stripComments(await readFile(file, "utf8"));
+    if (/["']builtin\.lorebook-contributor["']/.test(stripped)) {
       report(rule, relativePath(file) + " selects a context contributor by package ID.");
+    }
+    if (legacyShimTerms.test(stripped)) {
+      report(rule, relativePath(file) + " retains a forbidden Clean-Slate V1 legacy shim.");
     }
   }
 }
+
+async function verifyTwoTierMicrokernelStratification() {
+  const rule = "Invariant 9: seven-package two-tier microkernel stratification (kernel <- subsystems)";
+  for (const name of STATEFUL_STRATIFIED_PACKAGES) {
+    const pkgRoot = path.join(repoRoot, "packages", name);
+    const pkgJsonPath = path.join(pkgRoot, "package.json");
+    const pkgJson = await readJson(pkgJsonPath, rule);
+    const exportsMap = pkgJson?.exports;
+    if (!exportsMap || typeof exportsMap !== "object" || !exportsMap["."] || !exportsMap["./kernel"] || !exportsMap["./subsystems"]) {
+      report(rule, `${relativePath(pkgJsonPath)} must expose ".", "./kernel", and "./subsystems" subpath exports.`);
+    }
+    const kernelDir = path.join(pkgRoot, "src", "kernel");
+    const subsystemsDir = path.join(pkgRoot, "src", "subsystems");
+    if (!(await pathInfo(path.join(kernelDir, "index.ts")))?.isFile()) {
+      report(rule, `packages/${name}/src/kernel/index.ts is missing.`);
+    }
+    if (!(await pathInfo(path.join(subsystemsDir, "index.ts")))?.isFile()) {
+      report(rule, `packages/${name}/src/subsystems/index.ts is missing.`);
+    }
+    const kernelFiles = await walkFiles(kernelDir, {
+      include: (filePath) => SOURCE_EXTENSIONS.has(path.extname(filePath)),
+    });
+    for (const filePath of kernelFiles) {
+      const source = await readFile(filePath, "utf8");
+      for (const specifier of moduleSpecifiers(source)) {
+        if (specifier === `@ai0/${name}/subsystems` || specifier.startsWith(`@ai0/${name}/subsystems/`)) {
+          report(rule, `${relativePath(filePath)} imports L1 subsystems package "${specifier}" from L0 kernel.`);
+          continue;
+        }
+        if (!specifier.startsWith(".")) continue;
+        const resolved = path.resolve(path.dirname(filePath), specifier.replace(/[?#].*$/, "").replaceAll("\\", path.sep));
+        const relToSubsystems = path.relative(subsystemsDir, resolved);
+        if (relToSubsystems === "" || (!relToSubsystems.startsWith("..") && !path.isAbsolute(relToSubsystems))) {
+          report(rule, `${relativePath(filePath)} imports L1 subsystems module "${specifier}" from L0 kernel.`);
+        }
+      }
+    }
+  }
+}
+
 export function verifyArchitectureBoundaries() {
   verification ??= (async () => {
     await verifyPackageLayout();
@@ -739,6 +815,7 @@ export function verifyArchitectureBoundaries() {
     await verifyNoStaticSchemas();
     await verifyHostZeroPluginPollution();
     await verifyDomainAndAuthorBoundaries();
+    await verifyTwoTierMicrokernelStratification();
     return Object.freeze([...violations]);
   })();
   return verification;
@@ -751,6 +828,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     for (const violation of result) console.error(`  - ${violation}`);
     process.exitCode = 1;
   } else {
-    console.log("Architecture boundary verification passed: all 8 invariants hold.");
+    console.log("Architecture boundary verification passed: all 9 invariants hold.");
   }
 }

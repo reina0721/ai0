@@ -15,39 +15,29 @@ import {
   type AdminTelemetryTrack
 } from "@ai0/gateway";
 import {
-  AuthoritativeStateCoordinator,
-  mountCardCodec,
-  BlackboardCompiler,
-  DigitalLifeBrainRegionRouter as BrainRegionRouter,
-  buildRegionBindingsFromProfile,
-  resolveSessionProfile,
-  ThreeDimensionalPolicyEngine,
-  evaluateCrisisGuard,
-  toBrainRouterConfig,
-  UniversalLlmProviderClient,
-  createW1DialogueProfile,
-  renderEmbodiedPresentation,
-  digitalLifeHypothesisRevision,
-  W1FastDialogueWorker,
-  W2AgencyTaskWorker,
-  W3SleepReflectionWorker,
-  W4MultimodalAnalyzerWorker,
-  type CoordinatorStorageMutator as KernelCoordinatorStorageMutator,
-  type ReadOnlyCognitiveSnapshot,
-  type KernelMemoryRetriever,
-  type KernelReadOnlyStorageView,
-  type W1AsyncTurnOptions,
-  type VerifiableTurnTrace as KernelTurnTrace
-} from "./profiles/digital-life/index.js";
-import {
   InteractionOpportunityPool
 } from "@ai0/expression-core";
 import {
-  SensoryCoverageBucketManager
+  SensoryCoverageBucketManager,
+  type HypothesisRevisionPolicy
 } from "@ai0/perception-core";
 import {
+  AuthoritativeStateCoordinator,
+  BlackboardCompiler,
+  buildRegionBindingsFromProfile,
   ContinuousStateMetaEngine,
+  evaluateCrisisGuard,
+  MetabolicRegionRouter as BrainRegionRouter,
+  resolveSessionProfile,
+  ThreeDimensionalPolicyEngine,
+  toBrainRouterConfig,
   VirtualClock,
+  W2AgencyTaskWorker,
+  W3SleepReflectionWorker,
+  type CoordinatorDecisionTrace as KernelTurnTrace,
+  type CoordinatorStorageMutator as KernelCoordinatorStorageMutator,
+  type KernelReadOnlyStorageView,
+  type ReadOnlyCognitiveSnapshot,
   type TargetInstance
 } from "@ai0/cognition-core";
 import { AgentCoreRuntime, ModelRequestJournal, UpstreamModelClient, getEffectiveModelContextWindow, registeredModelTransport, tracePreparedRequest,
@@ -72,8 +62,8 @@ import {
   resolveEffectiveSourceApiKeys,
   resolveHostInfrastructureDir,
   resolveHostDefaultChatBinding,
+  resolveRolePreset,
   resolveSoulTurnModelBinding,
-  ROLE_ARCHETYPE_PRESETS,
   SoulArchiveManager,
   initializeSoulDirectory,
   readConsoleStudioConfig,
@@ -81,6 +71,15 @@ import {
   readSoulArchiveConfig,
   writeExtensionRuntimeConfig
 } from "@ai0/storage";
+import { renderEmbodiedPresentation } from "./embodied-presentation.js";
+import {
+  createW1DialogueProfile,
+  UniversalLlmProviderClient,
+  W1FastDialogueWorker,
+  W4MultimodalAnalyzerWorker,
+  type KernelMemoryRetriever,
+  type W1AsyncTurnOptions
+} from "./turn-coordinator.js";
 
 import {
   buildHomeostasisSamples,
@@ -298,7 +297,7 @@ function resolveProviderConfig(infrastructure: HostInfrastructureConfig, routedB
 }
 
 export class Ai0DaemonRuntime {
-  private readonly channelUpstream: UpstreamModelClient;
+  readonly channelUpstream: UpstreamModelClient;
   private readonly attention = new Map<string, { channelId: string | null; switchedAt: number }>();
 
   getContinuousStates(mode: "live" | "sandbox" = "live"): Record<string, number> {
@@ -706,9 +705,9 @@ export class Ai0DaemonRuntime {
 
     const studioConfig = options.preview ?? readConsoleStudioConfig(this.soulDir);
     const snapBefore = coordinator.getSnapshot();
-    const primaryRoleMeta =
-      ROLE_ARCHETYPE_PRESETS[resolved.profile.roleArchetype] ??
-      ROLE_ARCHETYPE_PRESETS[studioConfig.soulStudio.primaryRole];
+    const primaryRoleMeta = resolveRolePreset(
+      resolved.profile.roleArchetype || studioConfig.soulStudio.primaryRole
+    );
     const effectivePublicMask = resolved.route.socialMaskActive || audience !== "only_owner" || principal !== "owner_verified";
     const host = isSandbox ? this.sandboxExtensionHost : this.extensionHost;
     const response = selectResponseContract(host, studioConfig.soulStudio.responseContract, audience);
@@ -804,7 +803,7 @@ export class Ai0DaemonRuntime {
           version: createHash("sha256").update(studioConfig.soulStudio.promptBricks.find(item => item.id === brick.id)!.template).digest("hex"),
           field: "system", authority: "host_profile", source: brick.source, text: brick.rendered, budget: brick.maxTokens,
           disposition: brick.reason ?? "included" })),
-        configuredInstructions: compiledStudioPrompt.bricks.filter(brick => brick.included && brick.source !== "legacy_unknown")
+        configuredInstructions: compiledStudioPrompt.bricks.filter(brick => brick.included)
           .map(brick => "### " + brick.title + "\n" + brick.rendered).join("\n\n"),
         dynamicLlmConfig: { ...dynamicLlmConfig, traceLease },
         maxTotalTokens: resolved.route.maxContextTokens
@@ -1299,7 +1298,11 @@ function composeDaemonRuntime(
 
   const dialogueClient = (host: ExtensionCoreHost) => new UniversalLlmProviderClient(options.llmConfig, allowDeterministicSandbox,
     undefined, options.dialogueModelPackageId ? registeredModelTransport(host, options.dialogueModelPackageId) : undefined);
-  const sensoryCoverage = new SensoryCoverageBucketManager(virtualClock, digitalLifeHypothesisRevision);
+  const defaultHypothesisRevision: HypothesisRevisionPolicy = (update, hypotheses) =>
+    update.perception_confidence !== undefined && update.perception_confidence >= 0.8
+      ? hypotheses.find(hypothesis => hypothesis.confidence < 0.5 && hypothesis.text.trim() !== update.summary_text.trim())
+      : undefined;
+  const sensoryCoverage = new SensoryCoverageBucketManager(virtualClock, defaultHypothesisRevision);
   const opportunityPool = new InteractionOpportunityPool(virtualClock);
   const ownerMasterToken = options.ownerMasterToken ?? randomBytes(32).toString("base64url");
   if (!ownerMasterToken) throw new TypeError("ownerMasterToken must not be empty.");
@@ -1464,8 +1467,6 @@ function composeDaemonRuntime(
       sandbox: new ModelRequestJournal({ captureBodies: options.capturePromptBodies, now: Date.now }) },
     options.llmConfig, options.dialogueModelPackageId
   );
-  mountCardCodec(extensionHost);
-  mountCardCodec(sandboxExtensionHost);
   mountKnowledgeTaskExecutor(extensionHost, runtimeRef);
   return runtimeRef;
 }

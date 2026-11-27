@@ -425,6 +425,7 @@ export function Domain8SystemPage(props: Domain8SystemPageProps): ReactElement {
                   value={newSoulRole}
                   onChange={setNewSoulRole}
                   options={[
+                    { value: "assistant", label: "通用助手" },
                     { value: "digital_employee", label: "专业助理" },
                     { value: "romantic_partner", label: "亲密伴侣" },
                     { value: "study_classmate", label: "学习同伴" },

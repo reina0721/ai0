@@ -3,7 +3,7 @@ import { ExtensionCoreHost, type FacetPoint } from "@ai0/extension-core";
 import type { AgentToolDefinition, PreparedAgentRequest } from "@ai0/protocol";
 import {
   AgentCoreRuntime, agentContextContributorFacet, agentModelAdapterFacet,
-  agentToolDefinitionFacet, runAgentTurn, singleStepDriver
+  agentToolProviderFacet, runAgentTurn, singleStepDriver
 } from "./index.js";
 
 function mount<T>(host: ExtensionCoreHost, id: string, point: FacetPoint<T>, value: T) {
@@ -55,7 +55,7 @@ it("binds tools and context anew at each step and exposes only the projected rec
     { id: "doc", version: "1", content: "obsolete" }, { id: "doc", version: "2", content: `step ${step}`, maxChars: 6 },
     { id: "private", version: "1", content: "owner only", audience: "only_owner" }
   ] });
-  mount(host, "test.tools", agentToolDefinitionFacet, { tools: [tool()] });
+  mount(host, "test.tools", agentToolProviderFacet, { tools: [tool()] });
   const report = await runAgentTurn({
     inputs, signal, bindings: { host, audience: "public_all", allowsTool: () => true },
     goalRequiresVerification: true,
@@ -79,7 +79,7 @@ it.each(["revocation", "hot replacement", "invalid argument", "hallucinated name
   const host = new ExtensionCoreHost();
   const definition = tool();
   const execute = vi.fn(definition.execute);
-  mount(host, "test.tools", agentToolDefinitionFacet, { tools: [{ ...definition, execute }] });
+  mount(host, "test.tools", agentToolProviderFacet, { tools: [{ ...definition, execute }] });
   let granted = true;
   const result = await runAgentTurn({
     inputs, signal, bindings: { host, allowsTool: () => granted },

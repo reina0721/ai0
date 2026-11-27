@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ModelRequestJournal, requestFingerprint, traceStructuredRequest } from "./model-request-trace.js";
+import { ModelRequestJournal, requestFingerprint, traceStructuredRequest } from "./index.js";
 
 describe("serialized model request provenance", () => {
   it("records retries in order, separates request fields from transport secrets, and expires body diagnostics", async () => {

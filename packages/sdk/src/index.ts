@@ -2,6 +2,7 @@ export * from "@ai0/extension-core";
 import { parse as parseYaml } from "yaml";
 export * from "./facets.js";
 export * from "./agent-facets.js";
+export * from "./carrier-projections.js";
 import type { ExtensionScope, ExtensionPackageDefinition } from "@ai0/extension-core";
 import {
   Ai0ExtensionManifestSchema,

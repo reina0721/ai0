@@ -184,7 +184,7 @@ describe("five polymorphic extension carriers", () => {
         entry: "./dist/index.js",
         permissions: {
           read_blackboard_domains: [
-            "D2_HOMEOSTASIS_AFFECT",
+            "D2_CONTINUOUS_STATES",
             "D3_MEMORY_PROJECTION"
           ],
           propose_mutation_domains: ["D3_MEMORY_PROJECTION"],

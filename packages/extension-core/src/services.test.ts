@@ -83,6 +83,9 @@ describe("native service binding", () => {
     host.setServiceAccess("consumer", metric, true);
     await expect(granted(5)).rejects.toMatchObject({ reason: { status: "revoked" } });
     host.unmountPackage(metric.owner);
+    expect(host.listFacets(hook)).toHaveLength(1);
+    expect(await client.bind()(5)).toBe(6);
+    host.setPackageEnabled("first", false);
     expect(host.listFacets(hook)).toHaveLength(0);
     expect(host.listFacets(sibling)).toHaveLength(1);
     host.unmountPackage("consumer");

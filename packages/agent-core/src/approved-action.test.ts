@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { runAgentTurn } from "./agent-runtime.js";
+import { runAgentTurn } from "./index.js";
 import type { AgentToolDefinition } from "@ai0/protocol";
 
 it("executes an authorized program call through canonical and model projections and rechecks the live binding", async () => {

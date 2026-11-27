@@ -1,3 +1,3 @@
 /** Network gateway boundary. */
-export * from "./channel-ws-server.js";
-export * from "./admin-api-server.js";
+export * from "./kernel/index.js";
+export * from "./subsystems/index.js";

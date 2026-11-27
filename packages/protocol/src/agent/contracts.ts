@@ -1,4 +1,7 @@
+import type { TaintLevel } from "../control-plane/index.js";
+import { TaintLevelSchema } from "../control-plane/index.js";
 import type { AudienceScope } from "../core-v0/primitives.js";
+import { CapabilityRiskSchema, type CapabilityRisk } from "../plugin-manifests/index.js";
 import type { AgentRound, AgentToolCall, AgentToolResult, AuthorityRole } from "./index.js";
 
 /** The serializable description and its executable boundary validator travel together. */
@@ -15,12 +18,13 @@ export interface AgentOutputProfile {
 export interface AgentToolDefinition {
   name: string;
   description: string;
+  capabilityRisk?: CapabilityRisk;
+  resultTaint?: TaintLevel;
   inputSchema: AgentValueSchema;
   resultSchema: AgentValueSchema;
   execute(call: AgentToolCall, signal: AbortSignal, context?: { audience: AudienceScope }): AgentToolResult | Promise<AgentToolResult>;
   project(value: unknown): unknown;
 }
-export interface AgentToolDefinitions { tools: readonly AgentToolDefinition[] }
 export interface AgentToolAdvertisement {
   name: string;
   description: string;
@@ -65,7 +69,7 @@ export interface AgentStepManifest {
   model: { id: string; generation?: number; requestedId?: string };
   contextBudgetChars?: number;
   fragments: readonly AgentFragmentTrace[];
-  tools: readonly { name: string; packageId: string; generation: number }[];
+  tools: readonly { name: string; packageId: string; generation: number; capabilityRisk?: CapabilityRisk }[];
   output?: { id: string; version: string; schema?: Readonly<Record<string, unknown>> };
   /** Hash of ordered input, history (including projected tool receipts), schemas and output contract. */
   fingerprint: string;
@@ -94,8 +98,9 @@ export interface AgentModelAdapter {
   model(request: PreparedAgentRequest): AsyncIterable<AgentModelEvent>;
 }
 export interface AgentToolProvider {
-  tools: readonly Pick<AgentToolDefinition, "name" | "description" | "execute">[];
+  tools: readonly AgentToolDefinition[];
 }
+export type AgentToolDefinitions = AgentToolProvider;
 export interface AgentSkillManual { id: string; instructions: string; allowedTools?: readonly string[] }
 
 // Shared by the public author SDK and domain consumer without importing either implementation.
@@ -110,26 +115,19 @@ export const agentModelAdapterContract = {
     return adapter;
   }
 } as const;
+const isValueSchema = (value: AgentValueSchema) => value && typeof value.parse === "function" &&
+  value.jsonSchema !== null && typeof value.jsonSchema === "object" && !Array.isArray(value.jsonSchema);
 export const agentToolProviderContract = {
   owner: "agent", name: "tool_provider", version: 1,
   parse(raw: unknown): AgentToolProvider {
     const provider = raw as AgentToolProvider | null;
     if (!Array.isArray(provider?.tools) || !provider.tools.every(tool => tool && typeof tool.name === "string" &&
-      tool.name.length > 0 && typeof tool.description === "string" && typeof tool.execute === "function")) {
+      tool.name.length > 0 && typeof tool.description === "string" && typeof tool.execute === "function" &&
+      (tool.capabilityRisk === undefined || CapabilityRiskSchema.safeParse(tool.capabilityRisk).success) &&
+      (tool.resultTaint === undefined || TaintLevelSchema.safeParse(tool.resultTaint).success) &&
+      isValueSchema(tool.inputSchema) && isValueSchema(tool.resultSchema) && typeof tool.project === "function")) {
       throw new TypeError("Invalid agent.tool_provider");
     }
-    return provider;
-  }
-} as const;
-const isValueSchema = (value: AgentValueSchema) => value && typeof value.parse === "function" &&
-  value.jsonSchema !== null && typeof value.jsonSchema === "object" && !Array.isArray(value.jsonSchema);
-export const agentToolDefinitionContract = {
-  owner: "agent", name: "tool_provider", version: 2,
-  parse(raw: unknown): AgentToolDefinitions {
-    agentToolProviderContract.parse(raw);
-    const provider = raw as AgentToolDefinitions;
-    if (!provider.tools.every(tool => isValueSchema(tool.inputSchema) && isValueSchema(tool.resultSchema) &&
-      typeof tool.project === "function")) throw new TypeError("Invalid version 2 agent.tool_provider");
     return provider;
   }
 } as const;

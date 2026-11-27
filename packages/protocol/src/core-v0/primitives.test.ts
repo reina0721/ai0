@@ -166,10 +166,20 @@ describe("Protocol v0 primitives", () => {
         accepted_version: "0.1.0",
         enforced_venue_type: "private_1on1",
         max_audience_privacy_ceiling: "only_owner",
+        entity_nature: "artificial_intelligence_agent",
+        server_virtual_ts_ms: 12_345
+      })
+    ).toMatchObject({ session_id: "session-1", entity_nature: "artificial_intelligence_agent" });
+    expect(
+      HandshakeAckSchema.parse({
+        session_id: "session-2",
+        accepted_version: "0.1.0",
+        enforced_venue_type: "private_1on1",
+        max_audience_privacy_ceiling: "only_owner",
         entity_nature: "artificial_intelligence_digital_life",
         server_virtual_ts_ms: 12_345
       })
-    ).toMatchObject({ session_id: "session-1" });
+    ).toMatchObject({ session_id: "session-2" });
   });
 
   it("validates a perception envelope", () => {

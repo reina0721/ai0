@@ -16,7 +16,7 @@ import { ModelContextLimitError, ProviderNotConfiguredError, UpstreamInferenceEr
 import {
   GOLDEN_REGRESSION_SCENARIO_V1,
   runScenarioPlaybook
-} from "./profiles/digital-life/index.js";
+} from "./scenario-runner.js";
 import { CHANNEL_PROTOCOL_PATH } from "@ai0/gateway";
 import { AudienceScopeSchema, ExtensionPermissionsSchema, HandshakeManifestSchema, type AudienceScope, type SensorModality, type VenueType } from "@ai0/protocol";
 import {
@@ -25,7 +25,7 @@ import {
   listHostCharacterCards,
   readSoulArchiveConfig,
   writeExtensionRuntimeConfig,
-  type RelationshipArchetype
+  type RolePresetId
 } from "@ai0/storage";
 
 import { createDefaultDaemonRuntime, SoulNotAwakenedError, type Ai0DaemonRuntime } from "./index.js";
@@ -227,7 +227,7 @@ export function createUnifiedDaemonHttpApp(
       format: typeof body.format === "string" ? body.format : undefined,
       provider: typeof body.provider === "string" ? body.provider : undefined,
       apply: body.apply === true,
-      roleArchetype: body.roleArchetype as RelationshipArchetype | undefined
+      roleArchetype: typeof body.roleArchetype === "string" && body.roleArchetype.trim() ? body.roleArchetype.trim() as RolePresetId : undefined
     });
     return c.json({ ok: true, ...result });
   });
@@ -307,7 +307,7 @@ export function createUnifiedDaemonHttpApp(
     const result = createNewSoulInstance(runtime, {
       slug: String(body.slug ?? ""),
       displayName: String(body.displayName ?? "New Soul"),
-      primaryRole: (body.primaryRole as RelationshipArchetype) ?? "best_friend",
+      primaryRole: typeof body.primaryRole === "string" && body.primaryRole.trim() ? body.primaryRole.trim() : "assistant",
       avatarEmoji: typeof body.avatarEmoji === "string" ? body.avatarEmoji : undefined
     });
     return c.json(result);
@@ -369,10 +369,11 @@ export function createUnifiedDaemonHttpApp(
     db.prepare("INSERT OR IGNORE INTO channel_principal_bindings VALUES (?,?,?)").run(channelId, externalUserId, principalId);
     const bound = db.prepare("SELECT principal_id FROM channel_principal_bindings WHERE channel_id=? AND external_id=?").get(channelId, externalUserId);
     if (bound?.principal_id !== principalId) return c.json({ error: "BINDING_CONFLICT" }, 409);
+    const clockNow = (target === "live" ? runtime.virtualClock : runtime.sandboxClock).nowMs();
     const token = runtime.channelGateway.issueScopedCapabilityToken({
       channel_id: channelId, principal_id: principalId, soul_id: readSoulArchiveConfig(runtime.soulDir).manifest.soul_id,
       target, max_audience_privacy_ceiling: audience.data, allowed_modalities: ["text"],
-      expires_at_ts_ms: Date.now() + 3600000
+      expires_at_ts_ms: clockNow + 3600000
     }, runtime.ownerMasterToken);
     return c.json({ token, channelId, principalId, target });
   });
@@ -407,7 +408,7 @@ export function createUnifiedDaemonHttpApp(
     const target = parseMode(c.req.query("mode"));
     const host = target === "live" ? runtime.extensionHost : runtime.sandboxExtensionHost;
     if (host.getPackage(extensionId)?.status !== "active") return c.json({ error: "PLUGIN_INACTIVE" }, 409);
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    const expiresAt = (target === "live" ? runtime.virtualClock : runtime.sandboxClock).nowMs() + 24 * 60 * 60 * 1000;
     const token = runtime.channelGateway.issueScopedCapabilityToken(
       {
         channel_id: channelId,

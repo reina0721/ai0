@@ -327,13 +327,7 @@ export const ModelSlotBindingSchema = z.object({
 });
 export type ModelSlotBinding = z.infer<typeof ModelSlotBindingSchema>;
 
-export const RoleArchetypeSchema = z.enum([
-  "romantic_partner",
-  "best_friend",
-  "digital_employee",
-  "study_classmate",
-  "vtuber_partner"
-]);
+export const RoleArchetypeSchema = z.string().min(1);
 export type RoleArchetype = z.infer<typeof RoleArchetypeSchema>;
 
 export const BrainRegionOverridesSchema = z.object({
@@ -372,7 +366,7 @@ export const AgentConfigProfileSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().default(""),
-  roleArchetype: RoleArchetypeSchema.default("best_friend"),
+  roleArchetype: RoleArchetypeSchema.default("assistant"),
   /** Primary LLM binding (AstrBot-simple upfront model selection). */
   primaryChat: ModelSlotBindingSchema,
   /** Optional progressive-disclosure overrides for heterogeneous W1-W4/L0 brain regions. */

@@ -88,6 +88,8 @@ function ConversationHistory({ conversation }: { conversation: string }) {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  assistant: "通用助手",
+  collaborator: "工程协作",
   romantic_partner: "亲密伴侣",
   best_friend: "日常挚友",
   digital_employee: "专业助理",

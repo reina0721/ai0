@@ -1,4 +1,3 @@
-import { projectDigitalLifeAffect } from "./profiles/digital-life/index.js";
 import type { ExtensionCoreHost } from "@ai0/sdk";
 import type { ChannelProtocolGateway } from "@ai0/gateway";
 import { randomUUID } from "node:crypto";
@@ -8,24 +7,6 @@ import { join } from "node:path";
 import type {
   AdminOperation, AdminRouteHandler, AdminTelemetryFrame, AdminTelemetryTrack
 } from "@ai0/gateway";
-import {
-  buildRegionBindingsFromProfile,
-  bundlePrivacyScrubbedCreatorAsset,
-  computeSecondOrderCoupledAffect,
-  decodeProfileCard,
-  GOLDEN_REGRESSION_SCENARIO_V1,
-  resolveSessionProfile,
-  runScenarioPlaybook,
-  simulateLorebookActivation,
-  toBrainRouterConfig,
-  type AuthoritativeStateCoordinator,
-  type BlackboardCompiler,
-  type BlackboardPolicy,
-  type BrainRegion,
-  type DigitalLifeBrainRegionRouter as BrainRegionRouter,
-  type VerifiableTurnTrace as CoordinatorTrace,
-  type W1FastDialogueWorker
-} from "./profiles/digital-life/index.js";
 import {
   fetchUpstreamProviderModels,
   probeUpstreamModelInstance
@@ -38,6 +19,15 @@ import {
   type SensoryCoverageUpdate
 } from "@ai0/perception-core";
 import {
+  buildRegionBindingsFromProfile,
+  resolveSessionProfile,
+  toBrainRouterConfig,
+  type AuthoritativeStateCoordinator,
+  type BlackboardCompiler,
+  type BlackboardPolicy,
+  type StandardBrainRegion as BrainRegion,
+  type CoordinatorDecisionTrace as CoordinatorTrace,
+  type MetabolicRegionRouter as BrainRegionRouter,
   type VirtualClock
 } from "@ai0/cognition-core";
 import {
@@ -48,6 +38,9 @@ import {
   VenueTypeSchema,
   type AudienceScope, type CapabilityRisk, type ModelInstance, type ProviderSource, type SensorModality, type VenueType
 } from "@ai0/protocol";
+import { bundlePrivacyScrubbedCreatorAsset, decodeLorebookSimulation, decodeProfileCard } from "./asset-bundler.js";
+import { GOLDEN_REGRESSION_SCENARIO_V1, runScenarioPlaybook } from "./scenario-runner.js";
+import type { W1FastDialogueWorker } from "./turn-coordinator.js";
 import {
   addSourceApiKey, deleteMcpServerConfig, deleteModelInstance,
   deletePlatformChannelInstance, deleteProviderInstance, deleteProviderSource,
@@ -178,15 +171,15 @@ function circadianAt(hour: number, anchors: CircadianAnchor[]): number {
 export function buildHomeostasisSamples(
   snapshot: ReturnType<AuthoritativeStateCoordinator["getSnapshot"]>, anchors: CircadianAnchor[]
 ) {
-  if (snapshot.D2_CONTINUOUS_STATES.values.instant_valence === undefined ||
-      snapshot.D2_CONTINUOUS_STATES.values.mood_baseline_val === undefined) return [];
-  const affect = projectDigitalLifeAffect(snapshot);
+  const fast0 = snapshot.D2_CONTINUOUS_STATES.values.instant_valence;
+  const slow0 = snapshot.D2_CONTINUOUS_STATES.values.mood_baseline_val;
+  if (fast0 === undefined || slow0 === undefined) return [];
   return Array.from({ length: 24 }, (_, hour) => {
-    const ode = computeSecondOrderCoupledAffect({ v_instant_0: affect.instant_valence,
-      v_mood_0: affect.mood_baseline_val, v_base: 0,
-      effective_elapsed_ms: hour * 3_600_000 });
-    return { hour, circadian: circadianAt(hour, anchors), fastAffect: ode.instant_valence,
-      slowAffect: ode.mood_baseline_val };
+    const slowDecay = Math.exp((-Math.LN2 * hour) / 24);
+    const fastDecay = Math.exp((-Math.LN2 * hour) / 0.5);
+    const slowAffect = Math.max(-1, Math.min(1, slow0 * slowDecay));
+    const fastAffect = Math.max(-1, Math.min(1, slowAffect + (fast0 - slow0) * fastDecay));
+    return { hour, circadian: circadianAt(hour, anchors), fastAffect, slowAffect };
   });
 }
 
@@ -257,14 +250,16 @@ export function createRealAdminHandlers(
       }
       return gateView(runtime);
     },
-    "soul.distill": (request, context) => {
+    "soul.distill": async (request, context) => {
+      await runtime.refreshCapabilities();
       const body = bodyOf(request.body);
       return decodeProfileCard(selected(runtime, context.target_instance).extensions, body.asset ?? body.card ?? body,
         typeof body.format === "string" ? body.format : undefined, typeof body.provider === "string" ? body.provider : undefined);
     },
-    "soul.lorebooks.simulate": (request) => {
+    "soul.lorebooks.simulate": async (request, context) => {
+      await runtime.refreshCapabilities();
       const body = bodyOf(request.body), entries = Array.isArray(body.entries) ? body.entries : [];
-      return { activated_entries: simulateLorebookActivation(entries as never[], String(body.utterance ?? "")) };
+      return { activated_entries: await decodeLorebookSimulation(selected(runtime, context.target_instance).extensions, entries, String(body.utterance ?? "")) };
     },
     "soul.homeostasis": (request, context) => {
       const body = bodyOf(request.body), backend = selected(runtime, context.target_instance);
@@ -336,9 +331,10 @@ export function createRealAdminHandlers(
       return { released, tension_id: tensionId ?? null, audit };
     },
     "models.routing": (request, context) => {
-      const body = bodyOf(request.body), affect = projectDigitalLifeAffect(selected(runtime, context.target_instance).coordinator.getSnapshot());
-      const metabolic = finite(body.metabolic_energy, affect.metabolic_energy);
-      const circadian = finite(body.circadian_energy, affect.circadian_energy);
+      const body = bodyOf(request.body);
+      const values = selected(runtime, context.target_instance).coordinator.getSnapshot().D2_CONTINUOUS_STATES.values;
+      const metabolic = finite(body.metabolic_energy, values.metabolic_energy ?? 1);
+      const circadian = finite(body.circadian_energy, values.circadian_energy ?? 1);
       return { regions: REGIONS.map((region) => ({ region,
         config: runtime.brainRegionRouter.getRegionConfig(region),
         route: runtime.brainRegionRouter.routeForRegion(region, metabolic, circadian) })),

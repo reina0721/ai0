@@ -6,7 +6,7 @@ import { runAgentTurn } from "@ai0/agent-core";
 import { cognitionContextContributorFacet } from "@ai0/cognition-core";
 import { expressionRealizerFacet, RealizerVocabularyNegotiator } from "@ai0/expression-core";
 import { PerceptionFilterPipeline, perceptionFilterFacet } from "@ai0/perception-core";
-import { agentToolDefinitionFacet, defineServiceContract, ExtensionComposition, ExtensionCoreHost } from "@ai0/sdk";
+import { agentToolProviderFacet, defineServiceContract, ExtensionComposition, ExtensionCoreHost } from "@ai0/sdk";
 import type { UniversalObservationFrame } from "@ai0/protocol";
 import { RuntimePluginLoader } from "./plugin-loader.js";
 import { captionAudit, captionEditor, captionService } from "./test-support/caption-audit.js";
@@ -22,7 +22,7 @@ it("composes one caption service into independent model, observation, review and
   const editor = captionEditor({ reviewed: () => review, highlight });
   const editorId = editor.manifest.extension_id;
   host.mountPackage(editor);
-  expect(host.listFacets(agentToolDefinitionFacet)).toHaveLength(0);
+  expect(host.listFacets(agentToolProviderFacet)).toHaveLength(0);
   expect(host.listFacets(expressionRealizerFacet)).toHaveLength(1);
   host.mountPackage(captionService);
   const workflowAudit = host.bindService(captionAudit, "caption");
@@ -71,12 +71,12 @@ it("composes one caption service into independent model, observation, review and
   expect(highlight).toHaveBeenCalledExactlyOnceWith(interval);
 
   for (const [disabled, removed] of [
-    ["tool", agentToolDefinitionFacet.id], ["perception", perceptionFilterFacet.id],
+    ["tool", agentToolProviderFacet.id], ["perception", perceptionFilterFacet.id],
     ["cognition", cognitionContextContributorFacet.id], ["expression", expressionRealizerFacet.id]
   ]) {
     host.configurePackage(editorId, { [disabled!]: false }, host.getPackage(editorId)!.rev);
     expect([
-      ...host.listFacets(agentToolDefinitionFacet).map(() => agentToolDefinitionFacet.id),
+      ...host.listFacets(agentToolProviderFacet).map(() => agentToolProviderFacet.id),
       ...host.listFacets(perceptionFilterFacet).map(() => perceptionFilterFacet.id),
       ...host.listFacets(cognitionContextContributorFacet).map(() => cognitionContextContributorFacet.id),
       ...host.listFacets(expressionRealizerFacet).map(() => expressionRealizerFacet.id)

@@ -1,5 +1,2 @@
-export * from "./sensory.js";
-export * from "./context.js";
-export * from "./lifecycle.js";
-export * from "./observation.js";
-export * from "./facets.js";
+export * from "./kernel/index.js";
+export * from "./subsystems/index.js";

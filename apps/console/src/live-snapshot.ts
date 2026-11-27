@@ -118,9 +118,9 @@ export interface ConsoleStudioState {
     displayName: string;
     avatarEmoji: string;
     tagline: string;
-    primaryRole: "romantic_partner" | "best_friend" | "digital_employee" | "study_classmate" | "vtuber_partner";
+    primaryRole: string;
     autoSwitchByVenue: boolean;
-    workVenueRole: "romantic_partner" | "best_friend" | "digital_employee" | "study_classmate" | "vtuber_partner";
+    workVenueRole: string;
     ontologicalMode: "poetic_honest" | "pure_roleplay";
     corePersonalityPrompt: string;
     catchphrases: string[];
@@ -134,7 +134,7 @@ export interface ConsoleStudioState {
       moodHalfLifeHours: number;
       tensionHalfLifeHours: number;
       maxDailyProactive: number;
-      gapMoeIntensity: number;
+      subtextTensionIntensity: number;
       zeroExitGuiltLocked: boolean;
     };
     circadianAnchors: Array<{ hour: number; energy: number }>;
@@ -202,7 +202,7 @@ export interface ConsoleStudioState {
     id: string;
     name: string;
     description: string;
-    roleArchetype: "romantic_partner" | "best_friend" | "digital_employee" | "study_classmate" | "vtuber_partner";
+    roleArchetype: string;
     llmProviderId: string;
     knowledgeBaseIds: string[];
     enabledPlugins: string[];

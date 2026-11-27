@@ -2,7 +2,7 @@
 
 > **项目阶段**：架构研究与工程规格设计阶段（解法域工程规格）
 >
-> 本文描述 daemon 数字生命配置如何使用公共运行层。五域协调器、黑板和 W1–W4 的源码在 `apps/daemon/src/profiles/digital-life/`。其他 Agent 可单独使用认知核的状态裁决、连续状态和结构化响应机制。
+> 本文描述 `@ai0/cognition-core` 双层微内核（`./kernel` 与 `./subsystems`）以及 `apps/daemon` 宿主如何组装并发协调与工作者环。五域协调器、认识论防火墙、共同默契状态机、黑板编译器与 W1–W4 通用调度器沉淀于 `@ai0/cognition-core/subsystems`；陪伴稳态与世界书等策略下沉至 `plugins/`，`apps/daemon` 仅保留纯宿主装配。
 
 ---
 

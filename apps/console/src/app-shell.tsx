@@ -111,10 +111,11 @@ function OnboardingWizardOverlay(props: {
   const [displayName, setDisplayName] = useState(studio?.soulStudio.displayName ?? "");
   const [personaPrompt, setPersonaPrompt] = useState(studio?.soulStudio.corePersonalityPrompt ?? "");
   const [rawCard, setRawCard] = useState("");
-  const [selectedRole, setSelectedRole] = useState(studio?.soulStudio.primaryRole ?? "best_friend");
+  const [selectedRole, setSelectedRole] = useState(studio?.soulStudio.primaryRole ?? "assistant");
   const [saving, setSaving] = useState(false);
 
   const roles: ReadonlyArray<{ id: string; icon: ConsoleIconName; label: string; desc: string }> = [
+    { id: "assistant", icon: "briefcase", label: "通用助手", desc: "聚焦任务执行、事实查证与清晰回复的通用契约" },
     { id: "romantic_partner", icon: "heart", label: "亲密伴侣", desc: "高情感细腻度、纪念日追踪与温和边界" },
     { id: "best_friend", icon: "smile", label: "日常挚友", desc: "松弛自然的日常交流、留白节奏与低打扰频率" },
     { id: "digital_employee", icon: "briefcase", label: "专业助理", desc: "侧重知识库核验、SubAgent 协作与结构化汇报" },

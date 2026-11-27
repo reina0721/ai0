@@ -1,0 +1,66 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.workspace-tools",
+  "display_name": "工作区环境工具箱",
+  "description": "多态工作区环境能力包：提供路径沙箱隔离的主动读写改与受控命令执行工具（agent.tool_provider），以及可选的被动文件变更感知流（perception.source）。",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "native_code_plugin",
+  "default_enabled": false,
+  "facets": [
+    "agent.tool_provider",
+    "perception.source",
+    "console.config_schema"
+  ],
+  "entry": "./dist/index.js",
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": false
+  },
+  "console_contributions": {
+    "config_fields": [
+      {
+        "key": "workspace_root",
+        "label": "受控工作区根目录（为空时不暴露任何工具）",
+        "type": "string",
+        "default": ""
+      },
+      {
+        "key": "max_read_bytes",
+        "label": "单次文件最大读取字节数",
+        "type": "int",
+        "default": 65536,
+        "min": 1024,
+        "max": 1048576
+      },
+      {
+        "key": "enable_write_edit",
+        "label": "启用文件写入与精确修改工具（write_file / edit_file）",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "key": "enable_command_execution",
+        "label": "启用高风险命令执行工具（run_command，须经认知审批门控）",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "key": "command_timeout_ms",
+        "label": "单次命令超时上限（ms）",
+        "type": "int",
+        "default": 15000,
+        "min": 500,
+        "max": 300000
+      },
+      {
+        "key": "watch_workspace_changes",
+        "label": "启用工作区被动文件变更感知源（perception.source）",
+        "type": "bool",
+        "default": false
+      }
+    ]
+  }
+}

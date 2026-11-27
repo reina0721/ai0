@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { parseCatalogModelMetadata } from "./upstream-provider-adapters.js";
+import { parseCatalogModelMetadata } from "./index.js";
 
 it("reads published Gemini input and output ceilings, leaving bare compatibility rows unknown", () => {
   expect(parseCatalogModelMetadata("gemini", "gemini-3.8-flash", {

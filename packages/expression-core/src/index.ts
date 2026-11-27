@@ -1,4 +1,2 @@
-export * from "./opportunities.js";
-export * from "./realizer.js";
-export * from "./grounding.js";
-export * from "./facets.js";
+export * from "./kernel/index.js";
+export * from "./subsystems/index.js";

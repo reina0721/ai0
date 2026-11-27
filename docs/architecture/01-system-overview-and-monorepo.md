@@ -1,6 +1,6 @@
 # 01. 系统总体架构与 Monorepo 目标工程拓扑规范
 
-> 仓库有九个公共包。运行、能力绑定、观察、状态和表达分别有责任所有者。数字生命配置由 daemon 装配。
+> 仓库有十个公共包。运行闭环、内环执行、能力绑定、观察、状态和表达分别有责任所有者。应用宿主由 daemon 薄装配。
 
 ## 一、五核架构与三级渐进派生
 
@@ -37,9 +37,10 @@ flowchart TB
 
 - **`@ai0/protocol`** 为 Zod 机器契约唯一真相源，零内部依赖。覆盖 `core-v0/`、`extensions/`、`plugin-manifests/`、`character-card-v3/` 和 `control-plane/`。控制面定义 L0～L5 Deploy-to-Live 就绪契约及 `VerifiableTurnTrace`。
 - **`@ai0/extension-core`** 是扩展机制核心。以 `defineFacetPoint` 定义切面契约，`ExtensionCoreHost` 执行包级权限、`rev` 热重载及 `faulted_isolated` 熔断，`ExtensionComposition` 管理 Cordis Fiber 生命周期。详见[05 多切面扩展规范](05-eight-dimension-extension-system.md)。
-- **`@ai0/agent-core`** 是通用 LLM 与工具 `Turn / Round` 执行引擎。以 `system_invariant`、`developer_frame`、`untrusted_observation` 三层分离指令权威与数据。支持多步并发工具调度、`maxSteps` 到限结算和 `goalVerification` 缺少证据时的 `unverified` 守卫。HTTP 408、429 和 5xx 瞬态故障仅在副作用发生前重试。上游传输支持 `opencode_go` 的 `deepseek-v4.1-flash`、OpenAI-compatible、Anthropic、DeepSeek 与 Ollama。领域边界为零陪伴、情绪、记忆与 Avatar 知识。
+- **`@ai0/agent-core`** 是通用 LLM 与工具 `Turn / Round` 内环执行引擎（Inner Execution Harness）。以 `system_invariant`、`developer_frame`、`untrusted_observation`、`user` 四车道分离指令权威与数据，支持多步工具调度、同轮动态外部污点（`resultTaint`）升级熔断、终局结构化输出收敛及 `goalVerification` 核验守卫。领域边界为零陪伴、情绪、记忆与 Avatar 知识。
+- **`@ai0/agent-runtime`** 是无头通用智能体双环运行时（Outer Subject Loop）。零重复抽象地组合 `@ai0/extension-core`、`@ai0/agent-core` 以及可选挂载的 `@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`，提供 `"direct_inline"`（纯编码/任务直通旁路模式）与 `"dual_speed_w1_w2"`（具身/伴侣快慢分流模式），使无头包脱离 `daemon` 与 WebUI 后仍构成完整的通用 Agent 闭环。
 - **`@ai0/perception-core`** 拥有上行 `EmbodimentAffordanceRegistry` 与 `UniversalObservationFrame` 六元组元语法。`ScopedContextRegistry` 使用 `freshnessTtlMs` 和 `blind | disconnected | stale` 锁约束感知推断。`TurnLifecycleGate` 处理 `activity | interim | commit | retract`。`PerceptionFilterPipeline` 无切面时直通。挂载策略 Time Gradient Habituation 与 `ReflexGate` 以 `llmTokens: 0` 抑制例行信号并累计 `suppressedRoutineCount`。`ChronoceptiveSignalSynthesizer` 从经过时间扣除冬眠区间。
-- **`@ai0/cognition-core`** 提供虚拟时钟、连续状态描述符、模型路由、结构化响应处理和 `StateDomainArbiter`。域所有者注册读取与更新函数，宿主绑定读写和证据权限。裁决器检查版本、授权和证据，可向挂载的域策略征求审查结果，再交给域更新函数。`apps/daemon/src/profiles/digital-life/` 装配五个状态域、角色输出契约、黑板编译器、W1–W4、具身表现及回放。连续状态值来自已挂载描述符。
+- **`@ai0/cognition-core`** 采用 `./kernel`（`VirtualClock`、`ContinuousStateMetaEngine`、`StateDomainArbiter`、`BrainRegionRouter`、`ProfiledInferenceClient`）与 `./subsystems`（五域 `AuthoritativeStateCoordinator`、`EpistemicMemoryFirewall`、`CommonGround` 状态机、`CapabilityPolicyGate`、`BlackboardCompiler`、`MetabolicRegionRouter`、UMO 路由及 W2/W3 循环）双层设计。七个有状态包（五核 + `storage` + `gateway`）统一导出 `.`、`./kernel`、`./subsystems` 子路径，由 Invariant 9 锁定单向依赖。伴侣专属情绪与设定集策略全部外置为 `plugins/` 可选插件，`apps/daemon` 仅保留薄宿主接线。
 - **`@ai0/expression-core`** 的 `CommunicativeIntentEnvelope` 独立于人形，支持 `communicate | explicit_silence | actuate | request_observation`。`RealizerVocabularyNegotiator` 在缺少符合隐私约束的交互通道时置为 `held_pending_compliant_channel`。有界 `InteractionOpportunityPool` 管理表达机会。四态真值链为 `generated_unpresented → physically_presented → actuation_verified → interlocutor_grounded`。`GroundingReceiptTracker` 跟踪 `silenced` 与 `done` 两个中断边界，并恢复 `unsaid_remainder`。
 - **`@ai0/storage`** 负责 Local-First `.soul` 的 SQLite WAL、FTS5 与向量存储，以 `continuous_states_json` 保存检查点。持久化 `souls/host/` 基础设施与 Vault，负责 CCv3 导入、越权指令清理、未知 `extensions.<namespace>` 无损保留及 `.soul` 唤醒。Stage 1 用 SQL `WHERE visibility_scope …` 强制过滤。五表载荷执行拓扑级联 Hard Forget，通过 `redaction_ledger.json` 跨快照重放。V1 的兼容视图和预置灵魂数均为零。
 - **`@ai0/gateway`** 以 `ChannelProtocolGateway` 提供 Channel A Protocol v0 处理，以 `PrivilegedAdminServer` 提供 Channel B Owner Admin REST/SSE、`/healthz` 和 `/readyz`。
@@ -98,7 +99,7 @@ L0_UNCLAIMED
 │   ├── gateway/
 │   └── sdk/
 ├── apps/
-│   ├── daemon/src/profiles/digital-life/ # 数字生命配置的组合入口
+│   ├── daemon/                         # 薄宿主接线运行时
 │   └── console/
 ├── plugins/
 ├── scripts/
@@ -120,6 +121,7 @@ L0_UNCLAIMED
 | `@ai0/extension-core`、`@ai0/storage` | `@ai0/protocol` |
 | `@ai0/agent-core`、`@ai0/perception-core`、`@ai0/expression-core`、`@ai0/sdk` | `@ai0/protocol`、`@ai0/extension-core` |
 | `@ai0/cognition-core` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/agent-core` |
+| `@ai0/agent-runtime` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/agent-core`、`@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core` |
 | `@ai0/gateway` | `@ai0/protocol`、`@ai0/extension-core`、`@ai0/perception-core`、`@ai0/cognition-core`、`@ai0/expression-core`、`@ai0/storage` |
 | `plugins/**` | `@ai0/protocol`、`@ai0/sdk` |
 

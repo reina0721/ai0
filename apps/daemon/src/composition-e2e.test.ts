@@ -423,15 +423,17 @@ it("pins approval to a configured service and never repeats a claimed external a
   expect(calls).toBe(1);
 });
 
-it("recovers only historically supported queued approvals and never mints a missing current approval", async () => {
+it("never mints a missing approval when persisted task approval digests are stripped", async () => {
   const f = fixture();
   async function task(action: string, subAgentId: string, taskId?: string) {
     return (await f.request("/api/studio/co-work-task", "POST", { action, title: "Research", subAgentId, taskId })).json();
   }
   installStudioTestProfile(f.runtime);
   const research = "sub_research_scholar", review = "sub_code_reviewer";
+  const taskIds: Record<string, string> = {};
   for (const id of [research, review]) {
     const created = await task("create", id);
+    taskIds[id] = created.task.id;
     await task("approve", id, created.task.id);
   }
   const config = readConsoleStudioConfig(f.soulDir);
@@ -443,10 +445,8 @@ it("recovers only historically supported queued approvals and never mints a miss
   }
   const location = getConsoleStudioConfigPath(f.soulDir);
   writeFileSync(location, JSON.stringify(config));
-  expect(readConsoleStudioConfig(f.soulDir).agency.activeTasks.every(item => !item.approvedRequestDigest)).toBe(true);
-  writeFileSync(location, JSON.stringify({ ...config, version: 6 }));
-  const migrated = readConsoleStudioConfig(f.soulDir).agency;
-  expect(migrated.activeTasks.find(item => item.subAgentId === research)?.approvedRequestDigest).toMatch(/^[a-f0-9]{64}$/);
-  expect(migrated.activeTasks.find(item => item.subAgentId === review)?.approvedExecutor).toBeUndefined();
-  expect(migrated.subAgents.find(agent => agent.id === review)?.executor).toBeUndefined();
+  expect(readConsoleStudioConfig(f.soulDir).agency.activeTasks.every(item => !item.approvedRequestDigest && !item.approvedExecutor)).toBe(true);
+  f.restart();
+  expect(await task("execute", research, taskIds[research])).toMatchObject({ error: "EXECUTOR_APPROVAL_REQUIRED" });
+  expect(await task("execute", review, taskIds[review])).toMatchObject({ error: "EXECUTOR_APPROVAL_REQUIRED" });
 });

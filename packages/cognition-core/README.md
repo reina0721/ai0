@@ -1,25 +1,20 @@
-# @ai0/cognition-core · 状态与认知
+# @ai0/cognition-core · 通用状态化认知（L0 Kernel + L1 Subsystems）
 
-本包提供状态域裁决、连续状态演进、虚拟时间和模型路由。宿主决定有哪些状态域、谁可以提出变更，以及各域如何应用提案。daemon 的数字生命配置使用这些入口装配五个黑板域，并在宿主侧连接持久化。[公共导出](src/index.ts) · [daemon 状态协调器](../../apps/daemon/src/profiles/digital-life/state.ts)
+`@ai0/cognition-core` 采用双层微内核分层，不包含任何伴侣人设或特定产品预设：
+- `./kernel`（L0 不可约认知原语）：`VirtualClock`、`StateDomainArbiter`（MVCC 乐观并发与权限裁决）、`ContinuousStateMetaEngine`（阿贝尔群交换律与解析半衰期衰减，默认 `descriptors = []`）、`BrainRegionRouter` 与 `ProfiledInferenceClient`。[L0 入口](src/kernel/index.ts)
+- `./subsystems`（L1 通用认知治理子核）：五域状态协调器（`AuthoritativeStateCoordinator`）、四级认识论记忆防火墙（`EpistemicMemoryFirewall`）与 `CommonGround`（`proposed_presented → mutually_grounded`）状态机、三维污点与受众门控（`CapabilityPolicyGate`）、受众隔离黑板编译器（`BlackboardCompiler`）、`MetabolicRegionRouter`、Tier-0 安全守卫、UMO 会话路由器及异步任务/睡眠巩固循环（`W2AgencyTaskWorker`、`W3SleepReflectionWorker`）。[L1 入口](src/subsystems/index.ts)
 
 ## 接入点与消费者
 
 | 接入点 | 谁提供、谁使用 |
 | --- | --- |
-| `StateDomainArbiter` | 域所有者用 `register` 注册读写处理器，或用 `registerValue` 注册初值与归约函数。宿主用 `bind` 注入调用方的读取、提案和证据权限。调用方携带 `base_rev` 提交提案，成功后取得新的域版本和全局版本。[状态域裁决](src/coordinator/state-domain-arbiter.ts) |
-| `cognitionProposalPolicyFacet` | 扩展按域提供审查策略。宿主把 `mountedProposalPolicies` 注入裁决器，已获准的策略可拒绝提案或调整载荷。域处理器最终应用变更。[策略组装](src/coordinator/proposal-policies.ts) |
-| `MountedContinuousStates` | 扩展用 `cognitionStateDynamicsFacet` 声明状态轴。宿主传入扩展主机和时钟，读取快照或应用状态变化。只有一个活跃提供方的轴才进入快照，未挂载状态切面时快照中的 `values` 为空。[连续状态域](src/state-engine/continuous-domain.ts) · [陪伴扩展示例](../../plugins/cognitive-organs/companion-homeostasis/src/index.ts) |
-| `IVirtualClock`、`VirtualClock` | 运行组件通过时钟读取当前时间或扣除冬眠区间后的经过时间。LIVE 使用墙钟，沙箱可显式推进虚拟时间。[时钟实现](src/clock/virtual-clock.ts) |
-| `BrainRegionRouter`、`ProfiledInferenceClient` | 宿主提供角色名、候选模型及可选选择策略。需要结构化推理时，调用方注入请求与响应契约和传输实现。[路由](src/router/brain-region-router.ts) · [结构化推理](src/router/structured-profile.ts) |
-
-需要扩展黑板上下文时，通过 SDK 贡献 `cognitionContextContributorFacet`，由 daemon 的 worker 调用。需要定制话轮回复时，贡献 `cognitionResponseContractFacet`，由渠道推理按契约 ID 和受众选择实现。[切面定义](src/facets/index.ts) · [worker 接线](../../apps/daemon/src/profiles/digital-life/workers.ts) · [回复契约选择](../../apps/daemon/src/channel-inference.ts)
+| `StateDomainArbiter` / `AuthoritativeStateCoordinator` | L0 提供通用 MVCC 域裁决；L1 装配标准五域（`D1_WORKING_TURN`、`D2_CONTINUOUS_STATES`、`D3_MEMORY_PROJECTION`、`D4_COMMITMENTS_TASKS`、`D5_IDENTITY_NARRATIVE`）与认识论防火墙。[状态域裁决](src/kernel/state-domain-arbiter.ts) · [认知协调器](src/subsystems/cognitive-coordinator.ts) |
+| `cognitionProposalPolicyFacet` | 扩展按域注入提案审查策略（如反操控护栏或容量限制）。[策略组装](src/subsystems/proposal-policies.ts) |
+| `cognitionStateDynamicsFacet` | 扩展按需声明连续状态轴（未挂载时 `D2_CONTINUOUS_STATES.values` 为 `{}`）。[连续状态域](src/subsystems/continuous-domain.ts) · [稳态插件示例](../../plugins/cognitive-organs/companion-homeostasis/src/index.ts) |
+| `cognitionContextContributorFacet` / `cognitionResponseContractFacet` / `cognitionSleepOrganFacet` / `cognitionAttentionArbitratorFacet` | 扩展向黑板提供受众安全槽位、声明结构化响应契约、参与睡眠巩固或跨通道焦点仲裁。[切面定义](src/subsystems/facets.ts) |
 
 ## 验证
-
-从仓库根目录执行以下命令，检查状态域裁决、连续状态和模型路由。
 
 ```sh
 pnpm exec vitest run packages/cognition-core
 ```
-
-[状态域测试](src/coordinator/state-domain-arbiter.test.ts) 演示如何从空裁决器注册独立域、绑定权限，并检查陈旧提案的结果。

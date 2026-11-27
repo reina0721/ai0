@@ -1,44 +1,37 @@
 {
-  "default_enabled": false,
   "manifest_version": "2.0.0",
   "extension_id": "builtin.companion-homeostasis",
-  "display_name": "陪伴稳态",
+  "display_name": "情绪与节律稳态",
   "version": "1.0.0",
   "author": "ai0-official",
   "carrier_kind": "native_code_plugin",
+  "default_enabled": false,
   "facets": [
     "cognition.state_dynamics",
     "cognition.response_contract",
-    "expression.intent_decorator",
-    "cognition.context_contributor",
+    "cognition.proposal_policy",
     "console.config_schema"
   ],
   "entry": "./dist/index.js",
   "permissions": {
     "read_blackboard_domains": [
-      "D1_WORKING_TURN",
       "D2_CONTINUOUS_STATES"
     ],
     "propose_mutation_domains": [
-      "D2_CONTINUOUS_STATES"
+      "D2_CONTINUOUS_STATES",
+      "D5_IDENTITY_NARRATIVE"
     ],
-    "max_audience_scope": "only_owner",
+    "max_audience_scope": "public_all",
     "network_access": false
   },
   "console_contributions": {
     "config_fields": [
       {
         "key": "mood_half_life_minutes",
-        "label": "心境半衰期（分钟）",
+        "label": "情绪半衰期（分钟）",
         "type": "int",
-        "default": 60,
-        "min": 1
-      },
-      {
-        "key": "enable_circadian_curve",
-        "label": "启用昼夜节律",
-        "type": "bool",
-        "default": true
+        "default": 45,
+        "min": 5
       }
     ]
   }

@@ -6,7 +6,7 @@ import { runAgentTurn } from "@ai0/agent-core";
 import { subscribePerceptionSource } from "@ai0/perception-core";
 import { bindActuatorDelivery, RealizerVocabularyNegotiator } from "@ai0/expression-core";
 import { McpServerConfigSchema, type CarrierProjection } from "@ai0/protocol";
-import { agentToolDefinitionFacet, agentContextContributorFacet, agentSkillManualFacet, cognitionContextContributorFacet,
+import { agentToolProviderFacet, agentContextContributorFacet, agentSkillManualFacet, cognitionContextContributorFacet,
   cognitionSleepOrganFacet, consoleUiSlotFacet, expressionIntentDecoratorFacet, ExtensionComposition, ExtensionCoreHost } from "@ai0/sdk";
 import { importUserSkillMarkdown, listAgentSkills, setAgentSkillEnabled } from "@ai0/storage";
 import { RuntimePluginLoader } from "./plugin-loader.js";
@@ -45,7 +45,7 @@ it("projects a disk SKILL's trigger, SOP, output and tone separately and disable
     const id = "carrier:skill:manual";
     expect(loader.activationError(host, id)).toMatch(/Unsupported target version/u);
     expect(host.getPackage(id)?.manifest.permissions.read_blackboard_domains).toEqual([]);
-    expect(host.listFacets(agentToolDefinitionFacet)).toEqual([]);
+    expect(host.listFacets(agentToolProviderFacet)).toEqual([]);
     expect(host.listFacets(agentSkillManualFacet)[0]?.implementation.instructions).toBe("Read both intervals.");
     expect(host.listFacets(agentSkillManualFacet)[0]?.implementation.allowedTools).toEqual(["write_file"]);
     expect(host.allowsProposeDomain(id, "D3_MEMORY_PROJECTION")).toBe(false);
@@ -80,12 +80,12 @@ it("mounts a declared flow as a callable pipeline and independent passive facets
       values: { notice: "Inspect the two subtitle intervals.", slot: { slot_target: "slot.review.results", widget_type: "markdown_card_list", title: "Review" } },
       flows: { verify: [captionAudit] }, facets: ["agent.context_contributor", "agent.tool_provider", "console.ui_slot"],
       projections: [route("notice", "agent.context_contributor"), route("slot", "console.ui_slot"),
-        route("verify", "agent.tool_provider", 2, { inputSchema: { type: "object" }, outputSchema: { type: "object" } })] };
+        route("verify", "agent.tool_provider", 1, { inputSchema: { type: "object" }, outputSchema: { type: "object" } })] };
     writeFileSync(join(dir, "ai0.extension.json"), JSON.stringify(manifest));
     const loader = new RuntimePluginLoader({ builtinPluginsDir: root, userPluginsDir: join(root, "user") });
     const host = new ExtensionCoreHost();
     await loader.mountIntoHost(host, composition);
-    expect(host.listFacets(agentToolDefinitionFacet)).toHaveLength(0);
+    expect(host.listFacets(agentToolProviderFacet)).toHaveLength(0);
     expect(host.listFacets(consoleUiSlotFacet)[0]?.implementation.slots[0]?.title).toBe("Review");
     expect(loader.getDescriptor("review.flow", undefined, host)?.ui_slots).toContainEqual(manifest.values.slot);
     host.mountPackage(captionService);
@@ -94,7 +94,7 @@ it("mounts a declared flow as a callable pipeline and independent passive facets
         left: { id: "a", startMs: 1000, endMs: 3000 }, right: { id: "b", startMs: 2500, endMs: 4000 } } }; } });
     expect(answer.rounds[0]?.receipts[0]?.result).toMatchObject({ status: "unverified", value: { overlapMs: 500 } });
     host.setServiceAccess("review.flow", captionAudit, false);
-    expect(host.listFacets(agentToolDefinitionFacet)).toHaveLength(0);
+    expect(host.listFacets(agentToolProviderFacet)).toHaveLength(0);
     expect(host.listFacets(agentContextContributorFacet)).toHaveLength(1);
   } finally { await composition.dispose(); rmSync(root, { recursive: true, force: true }); }
 });
@@ -122,7 +122,7 @@ it("uses MCP tool discovery, calls, static resource reads and live resource chan
       'write({id,result}); });'
     ].join("\n"));
     const server = McpServerConfigSchema.parse({ id: "editor", name: "editor", command: process.execPath, args: [fixture, journal],
-      projections: [route("tool:measure", "agent.tool_provider", 2), route("resource:caption://timeline", "perception.ingress", 2),
+      projections: [route("tool:measure", "agent.tool_provider", 1), route("resource:caption://timeline", "perception.source", 1),
         route("tool:highlight", "expression.realizer", 1, { channel: { ...channel, capabilities: { ...channel.capabilities, actuators: [
           { actuator_id: "highlight", description: "Highlight selection", parameters_json_schema: {}, requires_local_user_consent: true }
         ] } } }),
@@ -167,7 +167,7 @@ it("uses MCP tool discovery, calls, static resource reads and live resource chan
     await expect.poll(() => observations).toEqual(["revision 1", "revision 2"]);
     loader.reload(undefined, { skills: [], servers: [{ ...server, enabled: false }] });
     await loader.mountIntoHost(host, composition);
-    expect(host.listFacets(agentToolDefinitionFacet)).toHaveLength(0);
+    expect(host.listFacets(agentToolProviderFacet)).toHaveLength(0);
     stop();
     expect(requests().filter(item => item === "tools/call")).toHaveLength(2);
   } finally { await composition.dispose(); rmSync(root, { recursive: true, force: true }); }

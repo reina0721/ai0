@@ -141,7 +141,7 @@ describe("ExtensionCoreHost", () => {
     const host = new ExtensionCoreHost();
     host.mountPackage(definition("first", vi.fn()));
     expect(host.allowsReadDomain("first", "D1_WORKING_TURN")).toBe(true);
-    expect(host.allowsReadDomain("first", "D2_HOMEOSTASIS_AFFECT")).toBe(false);
+    expect(host.allowsReadDomain("first", "D2_CONTINUOUS_STATES")).toBe(false);
     expect(host.allowsProposeDomain("first", "D4_COMMITMENTS_TASKS")).toBe(true);
     expect(host.allowsProposeDomain("first", "D1_WORKING_TURN")).toBe(false);
     expect(host.allowsAudienceScope("first", "only_owner")).toBe(true);

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mountCarrierProjections, passiveConsoleSlot, type ConfiguredCarriers, type CarrierOrigin, type CarrierProjectors } from "./carrier-projections.js";
+import { mountCarrierProjections, passiveConsoleSlot, resolveEffectiveSkillProjections, type ConfiguredCarriers, type CarrierOrigin, type CarrierProjectors } from "./carrier-projections.js";
 import type { mcpCapabilities } from "./mcp-capabilities.js";
 import { subscribePerceptionSource, type AdmittedSourceObservation } from "@ai0/perception-core";
 import { consoleConfigSchemaFacet, consoleSurfaceFacet, consoleUiSlotFacet, type ExtensionCoreHost, type ExtensionComposition, type ExtensionPackageDefinition } from "@ai0/sdk";
@@ -484,7 +484,8 @@ export class RuntimePluginLoader {
     ];
     for (const carrier of origins) {
       const item = carrier.kind === "skill" ? carrier.skill : carrier.server;
-      if (!item.projections?.length) continue;
+      const projections = carrier.kind === "skill" ? resolveEffectiveSkillProjections(carrier.skill) : (carrier.server.projections ?? []);
+      if (!projections.length) continue;
       const id = "carrier:" + carrier.kind + ":" + item.id;
       const grant = this.configured?.grants?.[id];
       const declaredScope = carrier.kind === "skill" ? carrier.skill.maxAudienceScope : "public_all";
@@ -495,7 +496,7 @@ export class RuntimePluginLoader {
         manifest_version: "2.0.0", extension_id: id, version: "1", author: item.id,
         display_name: carrier.kind === "skill" ? carrier.skill.displayName : carrier.server.name,
         carrier_kind: carrier.kind === "skill" ? "markdown_skill_manual" : "zero_code_protocol_bridge",
-        facets: [...new Set(item.projections.map(route => route.facet))], projections: item.projections,
+        facets: [...new Set(projections.map(route => route.facet))], projections: [...projections],
         permissions: { max_audience_scope: audience,
           read_blackboard_domains: grant?.read_blackboard_domains ?? [],
           propose_mutation_domains: grant?.propose_mutation_domains ?? [],
@@ -824,7 +825,7 @@ export class RuntimePluginLoader {
           if (policy.admitObservation && policy.allowMcp !== false && plugin.carrier?.kind === "mcp") {
             for (const uri of new Set(plugin.carrier.server.subscribedResourceUris ?? [])) {
               const source = "resource:" + uri;
-              if (!manifest.projections?.some(p => p.source === source && p.facet === "perception.ingress" && p.version === 2)) continue;
+              if (!manifest.projections?.some(p => p.source === source && p.facet === "perception.source" && p.version === 1)) continue;
               void subscribePerceptionSource(host, manifest.extension_id, "only_owner", subscriptions.signal, policy.admitObservation, source)
                 .catch(error => { if (!subscriptions.signal.aborted) errors.set(manifest.extension_id, "Subscription unavailable: " + String(error)); });
             }

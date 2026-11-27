@@ -4,13 +4,9 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-import {
-  bundlePrivacyScrubbedCreatorAsset,
-  decodeProfileCard,
-  matchesUmoPattern
-} from "./profiles/digital-life/index.js";
+import { matchesUmoPattern } from "@ai0/cognition-core";
 import { TaskExecutorInputSchema, TaskExecutorReceiptSchema, type SoulProfileAndCapabilitiesConfig } from "@ai0/protocol";
-import { ServiceBindingError, taskExecutorContract } from "@ai0/sdk";
+import { agentModelAdapterFacet, ServiceBindingError, taskExecutorContract } from "@ai0/sdk";
 import {
   initializeSoulDirectory,
   isTaskExecutionApproved,
@@ -21,15 +17,16 @@ import {
   readSoulArchiveConfig,
   readSoulProfileConfig,
   resolveHostInfrastructureDir,
-  ROLE_ARCHETYPE_PRESETS,
+  resolveRolePreset,
   saveHostVaultKey,
   writeConsoleStudioConfig,
   writeHostInfrastructureConfig,
   writeSoulProfileConfig,
   type CoordinatorStorageMutator,
-  type RelationshipArchetype,
+  type RolePresetId,
   type SoulConsoleStudioConfig
 } from "@ai0/storage";
+import { bundlePrivacyScrubbedCreatorAsset, decodeProfileCard } from "./asset-bundler.js";
 
 import type { Ai0DaemonRuntime } from "./index.js";
 
@@ -75,7 +72,7 @@ export function listAvailableSoulInstances(soulsRootOrActiveSoulDir: string, has
     const item = { id, path, active: path === active };
     try {
       const { soulStudio } = readConsoleStudioConfig(path);
-      return { ...item, name: soulStudio.displayName, role: ROLE_ARCHETYPE_PRESETS[soulStudio.primaryRole].label };
+      return { ...item, name: soulStudio.displayName, role: resolveRolePreset(soulStudio.primaryRole).label };
     } catch {
       return { ...item, name: id.slice(0, -5), role: "数字生命" };
     }
@@ -257,9 +254,10 @@ export function updateStudioConfig(
 
 export async function distillAndOptionallyApplyCard(
   runtime: Ai0DaemonRuntime,
-  input: { card: Record<string, unknown>; asset?: unknown; format?: string; provider?: string; apply?: boolean; roleArchetype?: RelationshipArchetype }
+  input: { card: Record<string, unknown>; asset?: unknown; format?: string; provider?: string; apply?: boolean; roleArchetype?: RolePresetId }
 ) {
   const archive = runtime.archiveSignal;
+  await runtime.refreshCapabilities();
   const distilled = await decodeProfileCard(runtime.extensionHost, input.asset ?? input.card, input.format, input.provider);
   if (input.apply && archive.aborted) throw new Error("ASSET_TARGET_CHANGED");
   const cardName = distilled.identity_dna.name || String(distilled.clean.display_name ?? "Soul");
@@ -269,7 +267,7 @@ export async function distillAndOptionallyApplyCard(
   if (input.apply) {
     const current = readConsoleStudioConfig(runtime.soulDir);
     const nextRole = input.roleArchetype ?? current.soulStudio.primaryRole;
-    const rolePreset = ROLE_ARCHETYPE_PRESETS[nextRole];
+    const rolePreset = resolveRolePreset(nextRole);
     const nextExemplars = distilled.voice_exemplars.length
       ? distilled.voice_exemplars.map((ex, idx) => ({
           id: `gv_distilled_${idx + 1}`,
@@ -392,8 +390,89 @@ export async function dispatchOrAdvanceCoWorkTask(
     if (!runtime.storage.getEventById(evidenceId)) {
       if (runtime.storage.getEventById(claimId)) return { ok: false, error: "TASK_CLAIMED_WITHOUT_RECEIPT" };
       if (target.status !== "queued") return { ok: false, error: "TASK_NOT_QUEUED" };
-      const ref = subAgent?.executor;
-      if (!subAgent || !ref) return { ok: false, error: "NO_TASK_EXECUTOR" };
+      if (!subAgent) return { ok: false, error: "NO_TASK_EXECUTOR" };
+      if (subAgent.executionMode === "agent_tool_loop") {
+        if (!subAgent.allowedTools.length) return { ok: false, error: "NO_TASK_EXECUTOR" };
+        if (!isTaskExecutionApproved(target, subAgent)) {
+          return { ok: false, error: "EXECUTOR_APPROVAL_REQUIRED" };
+        }
+        const event = {
+          wall_ts_ms: Date.now(), virtual_ts_ms: nowMs, source_channel_id: "studio.task",
+          audience_scope: "only_owner", venue_type: "internal_background", modality: "text",
+          state_rev_after: runtime.coordinator.getSnapshot().state_rev, active_modules_mask: 31
+        } as const;
+        try {
+          runtime.storage.appendEvent({ ...event, event_id: claimId, event_category: "config_or_ablation_changed",
+            principal_id: "owner:local", principal_trust: "owner_verified", summary_text: "已交给多步工具代理环执行",
+            payload_json: JSON.stringify({ task_id: target.id, title: target.title, mode: "agent_tool_loop", allowedTools: subAgent.allowedTools }) });
+        } catch (error) {
+          if (runtime.storage.getEventById(claimId)) return { ok: false, error: "TASK_CLAIMED_WITHOUT_RECEIPT" };
+          throw error;
+        }
+        target.status = "running";
+        target.stepLabel = "多步工具环执行中";
+        updateStudioConfig(runtime, { agency: { activeTasks: tasks } });
+        try {
+          runtime.workers.w2.startTask({
+            task_id: target.id,
+            goal: target.title,
+            source_event_id: claimId,
+            principal: "owner_verified",
+            audience_scope: "only_owner",
+            capability_risk: "high_side_effect_privileged",
+            steps: [{ step_title: target.title }]
+          });
+          runtime.workers.w2.approveTask(target.id);
+          const isRegisteredModelPkg = runtime.extensionHost
+            .listFacets(agentModelAdapterFacet)
+            .some((entry) => entry.packageId === subAgent.modelProviderId);
+          const upstreamAdapter = isRegisteredModelPkg
+            ? undefined
+            : runtime.channelUpstream.asModelAdapter(subAgent.modelProviderId || "default");
+          const loopOut = await runtime.workers.w2.executeToolLoopTask({
+            taskId: target.id,
+            inputs: [
+              ...(subAgent.systemPrompt ? [{ role: "developer_frame" as const, content: subAgent.systemPrompt, source: "studio.subagent" }] : []),
+              { role: "user" as const, content: target.title, source: "studio.task" }
+            ],
+            adapter: upstreamAdapter,
+            modelPackageId: isRegisteredModelPkg ? subAgent.modelProviderId : undefined,
+            manualPackageIds: subAgent.skillIds.map((skillId) => `carrier:skill:${skillId}`),
+            allowedTools: subAgent.allowedTools,
+            highRiskOwnerApproved: true,
+            maxSteps: subAgent.maxSteps,
+            signal: archive
+          });
+          archive.throwIfAborted();
+          if (loopOut.report.stopReason !== "finished") throw new Error("TASK_STEP_LIMIT");
+          const summary = (loopOut.report.rounds.at(-1)?.text || `已完成 ${loopOut.verifiedToolCount} 项工具操作`).slice(0, 240);
+          runtime.storage.appendEvent({ ...event, event_id: evidenceId, event_category: "action_episode_completed",
+            wall_ts_ms: Date.now(), virtual_ts_ms: runtime.virtualClock.nowMs(), principal_id: "subagent:" + subAgent.id,
+            principal_trust: "tool_output", summary_text: summary,
+            payload_json: JSON.stringify({ task_id: target.id, verified_tools: loopOut.verifiedToolCount }) });
+        } catch {
+          if (archive.aborted) return { ok: false, error: "EXECUTOR_RESULT_UNKNOWN" };
+          const activeTasks = readConsoleStudioConfig(runtime.soulDir).agency.activeTasks;
+          const pending = activeTasks.find(task => task.id === target.id);
+          if (pending) {
+            pending.status = "paused";
+            pending.stepLabel = "执行结果未知，等待核查";
+            updateStudioConfig(runtime, { agency: { activeTasks } });
+          }
+          return { ok: false, error: "EXECUTOR_RESULT_UNKNOWN" };
+        }
+        const activeTasks = readConsoleStudioConfig(runtime.soulDir).agency.activeTasks;
+        const completed = activeTasks.find(task => task.id === target.id);
+        if (!completed) return { ok: false, error: "TASK_NOT_FOUND" };
+        completed.status = "completed";
+        completed.currentStep = completed.totalSteps;
+        completed.stepLabel = "多步工具环已完成";
+        completed.outputSummary = runtime.storage.getEventById(evidenceId)!.summary_text;
+        completed.evidenceId = evidenceId;
+        return { ok: true, task: completed, studioConfig: updateStudioConfig(runtime, { agency: { activeTasks } }) };
+      }
+      const ref = subAgent.executor;
+      if (!ref) return { ok: false, error: "NO_TASK_EXECUTOR" };
       if (!isTaskExecutionApproved(target, subAgent)) {
         return { ok: false, error: "EXECUTOR_APPROVAL_REQUIRED" };
       }
@@ -622,7 +701,7 @@ export function createPrivacyScrubbedReleasePackage(
 
 export function createNewSoulInstance(
   runtime: Ai0DaemonRuntime,
-  input: { slug: string; displayName: string; primaryRole: RelationshipArchetype; avatarEmoji?: string }
+  input: { slug: string; displayName: string; primaryRole: RolePresetId; avatarEmoji?: string }
 ) {
   const safeSlug = (input.slug || input.displayName || `soul_${Date.now()}`)
     .toLowerCase()
@@ -633,7 +712,7 @@ export function createNewSoulInstance(
   try { mkdirSync(targetDir); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("SOUL_ALREADY_EXISTS"); throw error; }
   initializeSoulDirectory(targetDir);
-  const preset = ROLE_ARCHETYPE_PRESETS[input.primaryRole] ?? ROLE_ARCHETYPE_PRESETS.best_friend;
+  const preset = resolveRolePreset(input.primaryRole);
   const studio = readConsoleStudioConfig(targetDir, input.displayName || safeSlug);
   studio.soulStudio.displayName = input.displayName || safeSlug;
   studio.soulStudio.avatarEmoji = input.avatarEmoji || preset.icon;

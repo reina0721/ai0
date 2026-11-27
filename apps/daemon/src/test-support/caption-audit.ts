@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  agentToolDefinitionFacet, cognitionContextContributorFacet, defineExtensionPackage, defineServiceContract,
+  agentToolProviderFacet, cognitionContextContributorFacet, defineExtensionPackage, defineServiceContract,
   expressionRealizerFacet, perceptionFilterFacet, type SdkDebounceInputEvent
 } from "@ai0/sdk";
 import type { InteractionChannel } from "@ai0/protocol";
@@ -48,12 +48,12 @@ export function captionEditor(ports: {
 }) {
   return defineExtensionPackage({
     manifest: { ...author, extension_id: "caption.editor", display_name: "Caption editor", facets: [
-      agentToolDefinitionFacet.id, perceptionFilterFacet.id, cognitionContextContributorFacet.id, expressionRealizerFacet.id
-    ], services: { requires: [{ ...audit, facet: agentToolDefinitionFacet.id }, { ...audit, facet: perceptionFilterFacet.id }] } },
+      agentToolProviderFacet.id, perceptionFilterFacet.id, cognitionContextContributorFacet.id, expressionRealizerFacet.id
+    ], services: { requires: [{ ...audit, facet: agentToolProviderFacet.id }, { ...audit, facet: perceptionFilterFacet.id }] } },
     activate(scope, config) {
       if (config.tool !== false) {
-        const service = scope.consumeService(audit, agentToolDefinitionFacet.id);
-        scope.contributeFacet(agentToolDefinitionFacet, { tools: [{
+        const service = scope.consumeService(audit, agentToolProviderFacet.id);
+        scope.contributeFacet(agentToolProviderFacet, { tools: [{
           name: "caption_overlap", description: "Measure the overlap between two cues",
           inputSchema: { jsonSchema: { type: "object", properties: { left: cueSchema, right: cueSchema }, required: ["left", "right"] }, parse: pair.parse },
           resultSchema: { jsonSchema: { type: "object", properties: { kind: { enum: ["overlap", "clear"] }, overlapMs: { type: "integer" },

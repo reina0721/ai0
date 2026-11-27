@@ -1,7 +1,18 @@
-import { Ai0ExtensionManifestSchema } from "@ai0/protocol";
+import { Ai0ExtensionManifestSchema, LorebookYamlSchema } from "@ai0/protocol";
 import manifestJson from "../ai0.extension.json" with { type: "json" };
-import { LorebookYamlSchema } from "@ai0/protocol";
-import { cognitionContextContributorFacet, consoleConfigSchemaFacet, defineExtensionPackage } from "@ai0/sdk";
+import {
+  cognitionContextContributorFacet,
+  consoleConfigSchemaFacet,
+  defineExtensionPackage,
+  extensionAssetCodecFacet
+} from "@ai0/sdk";
+import {
+  distillSillyTavernCard,
+  simulateLorebookActivation,
+  type LorebookSimEntry
+} from "./card-codec.js";
+
+export * from "./card-codec.js";
 
 const manifest = Ai0ExtensionManifestSchema.parse(manifestJson);
 
@@ -9,6 +20,25 @@ export default defineExtensionPackage({
   manifest,
   activate(scope, config) {
     scope.contributeFacet(consoleConfigSchemaFacet, { fields: manifest.console_contributions?.config_fields ?? [] });
+    scope.contributeFacet(extensionAssetCodecFacet, {
+      format: "sillytavern.card",
+      target: "ai0.distilled-card.v1",
+      decode(input) {
+        if (!input || typeof input !== "object" || Array.isArray(input)) {
+          throw new TypeError("Expected card object");
+        }
+        return distillSillyTavernCard(input as Record<string, unknown>);
+      }
+    });
+    scope.contributeFacet(extensionAssetCodecFacet, {
+      format: "ai0.lorebook.simulation",
+      target: "ai0.lorebook.activated.v1",
+      decode(input) {
+        const body = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
+        const entries = Array.isArray(body.entries) ? body.entries as LorebookSimEntry[] : [];
+        return simulateLorebookActivation(entries, String(body.utterance ?? ""));
+      }
+    });
     const maxDepth = Number(config.max_recursive_depth ?? 3);
     const tokenBudget = Number(config.default_token_budget ?? 240);
     scope.contributeFacet(cognitionContextContributorFacet, {
@@ -43,6 +73,5 @@ export default defineExtensionPackage({
         return results.length ? { slot_id: "slot.lorebook_triggered", text: results.join("\n") } : null;
       }
     });
-
   }
 });

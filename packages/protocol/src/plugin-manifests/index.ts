@@ -10,7 +10,6 @@ import {
 export const StateDomainSchema = z.enum([
   "D1_WORKING_TURN",
   "D2_CONTINUOUS_STATES",
-  "D2_HOMEOSTASIS_AFFECT",
   "D3_MEMORY_PROJECTION",
   "D4_COMMITMENTS_TASKS",
   "D5_IDENTITY_NARRATIVE"
@@ -22,7 +21,9 @@ export const WellKnownExtensionFacetIdSchema = z.enum([
   "agent.tool_provider",
   "agent.skill_manual",
   "agent.model_adapter",
+  "agent.context_contributor",
   "perception.ingress",
+  "perception.source",
   "perception.extractor",
   "perception.filter",
   "cognition.state_dynamics",

@@ -190,7 +190,7 @@ crystallize_as_episodic_memory: false
 | 作者扩展什么 | 调用方与约束 |
 | --- | --- |
 | 模型适配器 | `agentModelAdapterFacet` 声明工具及结构化输出能力。运行层提供每步已组装的请求，适配器将供应商事件转成公共事件。 |
-| 模型工具 | `agentToolDefinitionFacet` 声明参数与结果校验、调用函数及面向模型的投影。每步只暴露已获准的 schema，执行时复核本步骤绑定的代次与权限。模型与普通流程可以复用同一服务；后者可直接取得规范结果。 |
+| 模型工具 | `agentToolProviderFacet` 声明参数与结果校验、`capabilityRisk` / `resultTaint` 风险与污点元数据、调用函数及面向模型的投影（如 `builtin.workspace-tools` 同时暴露 `agent.tool_provider` 主动工作区工具与可选 `perception.source` 被动监听）。每步只暴露已获准且未被外部污点熔断的 schema，执行时复核本步骤绑定的代次与权限。 |
 | 上下文 | `agentContextContributorFacet` 提供有来源与版本的片段。宿主授予指令权威并决定预算。组装器随每步生成记录，实际发送的模型可见字段由传输层按尝试记录。 |
 | 插件间服务 | 作者用 `defineServiceContract` 拥有服务名、版本与输入输出校验。清单声明定义、提供、依赖及适用切面。依赖提供方卸载时撤销依赖它的入口，包内其他独立入口可继续运行。 |
 | 解码与感知 | `extension.asset_codec` 以来源格式和目标格式选择解码器，目标所有者校验结果。Studio 卡片导入和管理接口消费相同的数字生命卡片目标。`perception.extractor` 按模态或扩展字段解读已接纳的帧，归一化器保存解读来源与代次并保留帧的可信身份。 |

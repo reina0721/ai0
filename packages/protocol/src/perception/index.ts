@@ -56,11 +56,11 @@ export interface PerceptionSource {
   subscribe(emit: (content: string) => void, signal: AbortSignal): Promise<() => void | Promise<void>>;
 }
 export const perceptionSourceContract = {
-  owner: "perception", name: "ingress", version: 2,
+  owner: "perception", name: "source", version: 1,
   parse(raw: unknown): PerceptionSource {
     const value = raw as PerceptionSource | null;
     if (typeof value?.subscribe !== "function" || (value.sourceKey !== undefined && typeof value.sourceKey !== "string"))
-      throw new TypeError("Invalid perception.ingress@2");
+      throw new TypeError("Invalid perception.source");
     return value;
   }
 } as const;

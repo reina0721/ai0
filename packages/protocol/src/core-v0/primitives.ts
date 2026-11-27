@@ -124,7 +124,7 @@ export const HandshakeAckSchema = z.object({
   accepted_version: ProtocolVersionSchema,
   enforced_venue_type: VenueTypeSchema,
   max_audience_privacy_ceiling: AudienceScopeSchema,
-  entity_nature: z.literal("artificial_intelligence_digital_life"),
+  entity_nature: z.string().min(1),
   server_virtual_ts_ms: z.number()
 });
 export type HandshakeAck = z.infer<typeof HandshakeAckSchema>;

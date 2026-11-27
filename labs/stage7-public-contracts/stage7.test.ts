@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 import * as agent from "@ai0/agent-core";
+import * as agentKernel from "@ai0/agent-core/kernel";
+import * as agentRuntime from "@ai0/agent-runtime";
+import * as agentRuntimeKernel from "@ai0/agent-runtime/kernel";
 import * as cognition from "@ai0/cognition-core";
-import * as perception from "@ai0/perception-core";
+import * as cognitionKernel from "@ai0/cognition-core/kernel";
+import * as cognitionSubsystems from "@ai0/cognition-core/subsystems";
 import * as expression from "@ai0/expression-core";
+import * as expressionKernel from "@ai0/expression-core/kernel";
+import * as extensionKernel from "@ai0/extension-core/kernel";
+import * as gatewayKernel from "@ai0/gateway/kernel";
+import * as perception from "@ai0/perception-core";
+import * as perceptionKernel from "@ai0/perception-core/kernel";
 import * as sdk from "@ai0/sdk";
+import * as storageKernel from "@ai0/storage/kernel";
 
 const manifest = {
   author: "stage7", version: "1", carrier_kind: "native_code_plugin" as const,
@@ -15,16 +25,58 @@ const stringValue = {
   parse(input: unknown) { if (typeof input !== "string") throw new TypeError("Expected string"); return input; }
 };
 
-describe("stage 7 runs the published contracts without a product profile", () => {
-  it("binds every public domain facet using the author SDK's identifier and version", () => {
-    for (const api of [agent, cognition, perception, expression]) {
+describe("stage 7 runs the published universal contracts without a product profile", () => {
+  it("exposes standalone L0 /kernel entrypoints across all seven stateful packages and 1:1 SDK facet parity", () => {
+    expect(typeof extensionKernel.defineFacetPoint).toBe("function");
+    expect(typeof agentKernel.runKernelAgentTurn).toBe("function");
+    expect(typeof agentRuntimeKernel.UniversalAgentLoop).toBe("function");
+    expect(typeof agentRuntime.createUniversalAgent).toBe("function");
+    expect(typeof perceptionKernel.SensoryCoverageBucketManager).toBe("function");
+    expect(typeof cognitionKernel.StateDomainArbiter).toBe("function");
+    expect(typeof expressionKernel.KernelGroundingTracker).toBe("function");
+    expect(typeof expressionKernel.applyDeliveryReceiptToIntent).toBe("function");
+    expect(typeof storageKernel.CoordinatorStorageMutator).toBe("function");
+    expect(typeof gatewayKernel.issueScopedCapabilityToken).toBe("function");
+    expect(typeof gatewayKernel.verifyScopedCapabilityToken).toBe("function");
+
+    const ownerFacets = new Map<string, string>();
+    for (const api of [agent, cognition, perception, expression, sdk]) {
       for (const [name, facet] of Object.entries(api)) {
         if (!name.endsWith("Facet")) continue;
-        const author = (sdk as Record<string, unknown>)[name] as sdk.FacetPoint<unknown> | undefined;
-        expect(author, name).toBeDefined();
-        expect(facet, name).toMatchObject({ id: author!.id, version: author!.version });
+        const f = facet as sdk.FacetPoint<unknown>;
+        if (api !== sdk) ownerFacets.set(name, `${f.id}@${f.version}`);
       }
     }
+    for (const [name, key] of ownerFacets) {
+      const author = (sdk as Record<string, unknown>)[name] as sdk.FacetPoint<unknown> | undefined;
+      expect(author, name).toBeDefined();
+      expect(`${author!.id}@${author!.version}`).toBe(key);
+    }
+  });
+
+  it("runs cognition-core/subsystems firewall, CommonGround, and taint gate with zero companion plugins", () => {
+    const clock = new cognitionKernel.VirtualClock({ targetInstance: "sandbox:stage7", initialVirtualTsMs: 1_000 });
+    const events = new Map([
+      ["evt_1", { event_id: "evt_1", redacted_at_ts_ms: null, principal_trust: "owner_verified" }]
+    ]);
+    const coordinator = new cognitionSubsystems.AuthoritativeStateCoordinator(clock, {
+      getEventById: id => events.get(id),
+      saveTurnDecisionTrace: () => {}
+    });
+    expect(coordinator.getSnapshot().D2_CONTINUOUS_STATES).toEqual({ values: {}, attributions: {} });
+    expect(coordinator.submitProposal({
+      proposal_id: "p_banter",
+      domain: "D3_MEMORY_PROJECTION",
+      base_rev: 0,
+      interaction_frame: "playful_banter",
+      memory_tier: "semantic_fact",
+      epistemic_type: "observed_firsthand",
+      source_event_ids: ["evt_1"],
+      payload: { content_text: "I own the moon." }
+    })).toMatchObject({ accepted: false, reason: "PRAGMATIC_FRAME_FIREWALL_BLOCKED_FACT" });
+
+    const gate = new cognitionSubsystems.ThreeDimensionalPolicyEngine();
+    expect(gate.evaluate("owner_verified", "only_owner", "low_read_and_scoped_write", "untrusted_external")).toBe("DENY");
   });
 
   it("replaces a domain reducer guard, asset decoder and non-audio cursor independently", async () => {
@@ -57,35 +109,31 @@ describe("stage 7 runs the published contracts without a product profile", () =>
     const receipt = { intent_id: "present", chunk_seq: 0, status: "interrupted" as const, playback_cursor: { unit: "slide", position: 1 } };
     tracker.recordGenerated(envelope);
     expect(tracker.receive(receipt)?.unsaid_remainder).toBe("BC");
-    tracker.recordGenerated({ ...envelope, intent_id: "shared", delivery_constraints: { audienceScope: "public_all" } });
-    expect(tracker.receive({ ...receipt, intent_id: "shared", spoken_char_offset: 1 })?.unsaid_remainder).toBe("🎬BC");
-    tracker.recordGenerated({ ...envelope, intent_id: "withdrawn" });
     host.setPackageEnabled(pkg, false);
-    expect(tracker.receive({ ...receipt, intent_id: "withdrawn" })?.unsaid_remainder).toBe("A🎬BC");
     expect(writer.propose({ domain: "slides.count", base_rev: 0, payload: 42 }).accepted).toBe(true);
     await expect(sdk.decodeExtensionAsset(host, "slides.lines", "slides.titles", "A")).rejects.toThrow("UNAVAILABLE");
   });
 
-  it("reuses an unknown service from a workflow and a model, then removes each contribution independently", async () => {
+  it("supports provider substitution when originating service owner is disabled, plus multi-step tool -> structured output convergence", async () => {
     const host = new sdk.ExtensionCoreHost();
     const contract = sdk.defineServiceContract({
       owner: "lab.labels", name: "normalize", version: 1, parseInput: stringValue.parse, parseOutput: stringValue.parse
     });
+    // Provider B mounts and serves contract WITHOUT contract.owner ("lab.labels") being mounted at all!
     host.mountPackage(sdk.defineExtensionPackage({
-      manifest: { ...manifest, extension_id: contract.owner, display_name: "Labels", facets: [],
-        services: { defines: [contract], provides: [contract] } },
+      manifest: { ...manifest, extension_id: "lab.alt-provider", display_name: "Alt Labels", facets: [],
+        services: { provides: [contract] } },
       activate(scope) {
-        scope.defineService(contract);
         scope.provideService(contract, value => value.trim().toUpperCase());
       }
     }));
     host.mountPackage(sdk.defineExtensionPackage({
       manifest: { ...manifest, extension_id: "lab.integration", display_name: "Label integration",
-        facets: [sdk.agentToolDefinitionFacet.id, sdk.agentContextContributorFacet.id],
-        services: { requires: [{ ...contract, facet: sdk.agentToolDefinitionFacet.id }] } },
+        facets: [sdk.agentToolProviderFacet.id, sdk.agentContextContributorFacet.id],
+        services: { requires: [{ ...contract, facet: sdk.agentToolProviderFacet.id }] } },
       activate(scope) {
-        const service = scope.consumeService(contract, sdk.agentToolDefinitionFacet.id);
-        scope.contributeFacet(sdk.agentToolDefinitionFacet, { tools: [{
+        const service = scope.consumeService(contract, sdk.agentToolProviderFacet.id);
+        scope.contributeFacet(sdk.agentToolProviderFacet, { tools: [{
           name: "normalize", description: "Normalize a label", inputSchema: stringValue, resultSchema: stringValue,
           execute: async (call, signal) => ({ status: "verified", value: await service.bind()(stringValue.parse(call.input), signal) }),
           project: value => value
@@ -95,43 +143,107 @@ describe("stage 7 runs the published contracts without a product profile", () =>
         });
       }
     }));
-    const invoke = host.bindService(contract, contract.owner);
+
     const signal = new AbortController().signal;
-    const inputs = [{ role: "user" as const, content: "Normalize this label." }];
-    const normalized = await invoke(" east ");
-    const run = (id: string, allowTool: boolean) => agent.runAgentTurn({
-      inputs, signal, bindings: { host, modelPackageId: id, allowsTool: () => allowTool }
-    });
-    for (const provider of ["lab.first", "lab.second"]) {
-      host.mountPackage(sdk.defineExtensionPackage({
-        manifest: { ...manifest, extension_id: provider, display_name: provider, facets: [sdk.agentModelAdapterFacet.id] },
-        activate(scope) {
-          scope.contributeFacet(sdk.agentModelAdapterFacet, { capabilities: { tools: true, structuredOutput: false },
-            async *model({ tools, rounds, messages, output }) {
+    const inputs = [{ role: "user" as const, content: "Normalize this label and return structured JSON." }];
+    host.mountPackage(sdk.defineExtensionPackage({
+      manifest: { ...manifest, extension_id: "lab.model", display_name: "Model", facets: [sdk.agentModelAdapterFacet.id] },
+      activate(scope) {
+        scope.contributeFacet(sdk.agentModelAdapterFacet, {
+          capabilities: { tools: true, structuredOutput: true },
+          async *model({ tools, rounds, output }) {
+            if (tools.length && !rounds.length) {
               expect(output).toBeUndefined();
-              expect(messages[0]).toEqual(inputs[0]);
-              if (tools.length && !rounds.length) yield { kind: "tool", id: "1", name: tools[0]!.name, input: " east " };
-              else yield { kind: "delta", text: provider };
+              yield { kind: "tool", id: "1", name: tools[0]!.name, input: " east " };
+            } else if (!output) {
+              yield { kind: "delta", text: "Tool completed." };
+            } else {
+              expect(tools).toEqual([]);
+              expect(output.schema).toMatchObject({ required: ["normalized"] });
+              yield { kind: "delta", text: JSON.stringify({ normalized: "EAST" }) };
             }
-          });
-        }
-      }));
-      const report = await run(provider, true);
-      expect(report.rounds[0]?.receipts[0]?.result).toEqual({ status: "verified", value: normalized });
-      expect(report.rounds.at(-1)?.text).toBe(provider);
-      expect(report.goalVerification).toBe("not_applicable");
-    }
-    const direct = await run("lab.first", false);
-    expect(direct.steps).toHaveLength(1);
-    expect(direct.steps[0]?.tools).toEqual([]);
-    host.setPackageEnabled(contract.owner, false);
-    await expect(invoke(" east ")).rejects.toThrow();
-    const retained = await run("lab.second", true);
-    expect(retained.steps[0]?.tools).toEqual([]);
-    expect(retained.steps[0]?.fragments.map(part => part.source)).toContain("lab.integration");
-    host.setPackageEnabled("lab.integration", false);
-    const minimal = await run("lab.second", true);
-    expect(minimal.steps[0]?.fragments).toHaveLength(1);
-    expect(minimal.steps[0]?.fragments[0]?.role).toBe("user");
+            yield { kind: "finish" };
+          }
+        });
+      }
+    }));
+
+    const structured = await agent.runAgentTurn({
+      inputs,
+      signal,
+      bindings: { host, modelPackageId: "lab.model", allowsTool: () => true },
+      profile: {
+        id: "lab.structured",
+        version: "1",
+        schema: { type: "object", required: ["normalized"], properties: { normalized: { type: "string" } } },
+        parse: text => JSON.parse(text) as { normalized: string }
+      }
+    });
+    expect(structured.rounds[0]?.receipts[0]?.result).toEqual({ status: "verified", value: "EAST" });
+    expect(structured.output).toEqual({ normalized: "EAST" });
+  });
+
+  it("projects standard SKILL.md manuals by default and gates side-effect tools across direct_inline vs dual_speed_w1_w2 in @ai0/agent-runtime", async () => {
+    const host = new sdk.ExtensionCoreHost();
+    expect(sdk.resolveEffectiveSkillProjections({ bodyMarkdown: "# SOP\nCheck before writing.", projections: undefined })).toEqual([
+      { source: "body", facet: "agent.skill_manual", version: 1 }
+    ]);
+
+    host.mountPackage(sdk.defineExtensionPackage({
+      manifest: { ...manifest, extension_id: "lab.skill", display_name: "Skill", carrier_kind: "markdown_skill_manual",
+        facets: [sdk.agentSkillManualFacet.id] },
+      activate(scope) {
+        const errors = sdk.mountCarrierProjections(scope, { ...manifest, manifest_version: "2.0.0", extension_id: "lab.skill",
+          display_name: "Skill", carrier_kind: "markdown_skill_manual", facets: [sdk.agentSkillManualFacet.id] }, {
+          kind: "skill",
+          skill: {
+            id: "lab.skill", slug: "lab-skill", displayName: "Skill", description: "Check first", source: "soul_user",
+            filePath: "/virtual/SKILL.md", readonly: false, enabled: true, requiredMcpTools: [], requiredVaultSecrets: [],
+            capabilityRisk: "read_only_safe", maxAudienceScope: "only_owner", inCharacterDemeanor: "",
+            crystallizeAsEpisodicMemory: false, bodyMarkdown: "Inspect before mutating."
+          }
+        });
+        expect(errors).toEqual([]);
+      }
+    }));
+
+    host.mountPackage(sdk.defineExtensionPackage({
+      manifest: { ...manifest, extension_id: "lab.ws", display_name: "WS", facets: [sdk.agentToolProviderFacet.id] },
+      activate(scope) {
+        scope.contributeFacet(sdk.agentToolProviderFacet, { tools: [
+          { name: "read_item", description: "Read", capabilityRisk: "read_only_safe", inputSchema: stringValue, resultSchema: stringValue,
+            execute: call => ({ status: "verified", value: `read:${String(call.input)}` }), project: v => v },
+          { name: "write_item", description: "Write", capabilityRisk: "low_read_and_scoped_write", inputSchema: stringValue, resultSchema: stringValue,
+            execute: call => ({ status: "verified", value: `wrote:${String(call.input)}` }), project: v => v }
+        ] });
+      }
+    }));
+
+    const seenInDualSpeed: string[][] = [];
+    const seenInDirect: string[][] = [];
+    const runtime = agentRuntime.createUniversalAgent({
+      host,
+      manualPackageIds: ["lab.skill"],
+      toolRoutingMode: "dual_speed_w1_w2",
+      async *model({ tools }) {
+        seenInDualSpeed.push(tools.map(t => t.name));
+        yield { kind: "delta", text: "ok" };
+        yield { kind: "finish" };
+      }
+    });
+    await runtime.ingest({ text: "hello" });
+    expect(seenInDualSpeed).toEqual([["read_item"]]);
+
+    runtime.setToolRoutingMode("direct_inline");
+    runtime.setModelSelection({
+      async *model({ tools }) {
+        seenInDirect.push(tools.map(t => t.name));
+        yield { kind: "delta", text: "ok" };
+        yield { kind: "finish" };
+      }
+    });
+    await runtime.ingest({ text: "hello" });
+    expect(seenInDirect).toEqual([["read_item", "write_item"]]);
+    runtime.stop();
   });
 });

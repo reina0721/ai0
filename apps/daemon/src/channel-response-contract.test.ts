@@ -4,7 +4,7 @@ import { type AgentModelAdapter, type Ai0ExtensionManifest } from "@ai0/protocol
 import { agentModelAdapterFacet, cognitionResponseContractFacet, ExtensionCoreHost } from "@ai0/sdk";
 import { UpstreamModelClient } from "@ai0/agent-core";
 import { channelInference, selectResponseContract } from "./channel-inference.js";
-import type { LlmDialogueSynthesisInput } from "./profiles/digital-life/dialogue.js";
+import type { LlmDialogueSynthesisInput } from "./turn-coordinator.js";
 
 const manifest = (id: string, facets: Ai0ExtensionManifest["facets"]): Ai0ExtensionManifest => ({
   manifest_version: "2.0.0", extension_id: id, display_name: id, version: "1", author: "third-party",

@@ -51,6 +51,8 @@ interface RuntimeRoute {
 }
 
 const ROLE_OPTIONS: ReadonlyArray<{ value: RoleArchetype; label: string }> = [
+  { value: "assistant", label: "通用助手" },
+  { value: "collaborator", label: "工程协作" },
   { value: "best_friend", label: "日常挚友" },
   { value: "romantic_partner", label: "亲密伴侣" },
   { value: "digital_employee", label: "专业助理" },
@@ -181,7 +183,7 @@ function ProfilesEditor(props: { snapshot?: ConsoleLiveSnapshot }): ReactElement
       id,
       name: `自定义配置 ${draft.value.profiles.length + 1}`,
       description: "按场景组装的模型、门控与能力策略",
-      roleArchetype: "best_friend",
+      roleArchetype: "assistant",
       primaryChat: {
         providerId: firstEnabledChat.id,
         modelId

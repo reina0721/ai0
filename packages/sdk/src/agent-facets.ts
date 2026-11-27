@@ -1,13 +1,12 @@
 import { defineFacetPoint, defineServiceContract } from "@ai0/extension-core";
 import {
   agentContextContributorContract, agentModelAdapterContract, agentSkillManualContract,
-  agentToolDefinitionContract, agentToolProviderContract,
+  agentToolProviderContract,
   TaskExecutorInputSchema, TaskExecutorReceiptSchema, type ExtensionServiceRef
 } from "@ai0/protocol";
 
 export const agentModelAdapterFacet = defineFacetPoint(agentModelAdapterContract);
 export const agentContextContributorFacet = defineFacetPoint(agentContextContributorContract);
-export const agentToolDefinitionFacet = defineFacetPoint(agentToolDefinitionContract);
 export const agentToolProviderFacet = defineFacetPoint(agentToolProviderContract);
 export const agentSkillManualFacet = defineFacetPoint(agentSkillManualContract);
 /** Publish this service under the extension's own namespace and select its provider in the sub-agent profile. */
