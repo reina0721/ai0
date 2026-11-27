@@ -5,7 +5,7 @@
 > 面向通用智能体与具身数字生命的**无头正交微内核**、**双环运行支撑体系（Harness）**与**零后门多切面扩展底座**。
 
 [![Architecture](https://img.shields.io/badge/Architecture-Clean--Slate_V1-111827?style=flat-square)](docs/architecture/01-system-overview-and-monorepo.md)
-[![Phase](https://img.shields.io/badge/Phase-Universal_Foundation_(Stage_0--9)-1f2937?style=flat-square)](labs/README.md)
+[![Phase](https://img.shields.io/badge/Phase-Universal_Foundation_(Stage_0--10)-1f2937?style=flat-square)](labs/README.md)
 [![AST Invariants](https://img.shields.io/badge/AST_Invariants-9_Enforced-0f766e?style=flat-square)](scripts/verify-architecture-boundaries.mjs)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.0-339933?style=flat-square&logo=node.js&logoColor=white)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white)](tsconfig.base.json)
@@ -32,14 +32,14 @@
 ## 一、当前工程阶段与设计边界
 
 > [!NOTE]
-> **当前阶段声明**：本项目现阶段聚焦于**底层通用架构设计、微内核分层收敛与跨场景形式化证伪（Stage 0–9）**。仓库中 [docs/vision/](docs/vision/01-vision-and-predecessors.md) 与 [docs/architecture/](docs/architecture/01-system-overview-and-monorepo.md) 承载的是长期愿景与后续产品演进蓝图，留待底层通用架构彻底稳定后再进入下一阶段的修订研究，本阶段保持独立冻结。
+> **当前阶段声明**：本项目现阶段聚焦于**底层通用架构设计、微内核分层收敛与跨场景形式化证伪（Stage 0–10）**。仓库中 [docs/vision/](docs/vision/01-vision-and-predecessors.md) 与 [docs/architecture/](docs/architecture/01-system-overview-and-monorepo.md) 承载的是长期愿景与后续产品演进蓝图，留待底层通用架构彻底稳定后再进入下一阶段的修订研究，本阶段保持独立冻结。
 
 | 维度 | 本阶段已固化并受机器门禁锁死的通用底座 | 留待后续阶段展开的上层愿景与产品演进 |
 | :--- | :--- | :--- |
 | **微内核边界** | 10 个公共核心包，其中 8 个有状态包严格执行 `L0 ./kernel ← L1 ./subsystems` 双层分层，由 [verify-architecture-boundaries.mjs](scripts/verify-architecture-boundaries.mjs) 9 条 AST 铁律自动守门。 | 上层多角色编排产品形态、长期关系叙事产品体验与跨设备商业化部署封装。 |
-| **通用智能体能力** | `@ai0/agent-runtime` 无头双环运行时、`DynamicContractRegistry` 涌现契约、`ScopedExtensionView` 单调收窄、四车道安全投影、同轮污点熔断、两阶段跨域原子事务、`agent.revise_memory` 认识论信念纠偏、`PrincipalIdentityBinder` 跨管道主体绑定与独立 `pnpm agent` CLI。 | 面向特定垂直行业的复杂多智能体协作工作流、自主学习闭环与云端托管容器沙箱。 |
+| **通用智能体能力** | `@ai0/agent-runtime` 无头双环运行时、`DynamicContractRegistry` 涌现契约与多跳版本迁移（`v1 -> v2`）、`AgentCore` 统一门面与 `ExecutionIdempotencyLedger` 副作用幂等账本、`ScopedExtensionView` 单调收窄、四车道安全投影、同轮污点熔断、有界可串行化跨状态域原子事务、多前提（`all_of / any_of`）非单调信念纠偏与内生经验结晶、以及独立 `pnpm agent` CLI。 | 面向特定垂直行业的复杂多智能体协作工作流、大规模强化学习闭环与云端托管容器沙箱。 |
 | **标准扩展生态** | 一等内置工具链（`workspace-tools` 9 工具、`web-tools` 检索+抓取、`utility-tools` 零副作用计算、`mcp-bridge` 渐进式标准 MCP 桥）及 2 份通用元技能 `SKILL.md`。 | 社区插件市场分发基础设施、第三方生态签名校验与大规模具身硬件驱动集。 |
-| **形式化证伪基线** | `labs/stage0` → `labs/stage9` 渐进实验套件、黄金剧本明暗消融回放与 Playwright 浏览器端到端回归测试。 | 真实长周期（数周至数月）人机共处实证标定与个性化记忆压缩参数调优。 |
+| **形式化证伪基线** | `labs/stage0` → `labs/stage10` 渐进实验套件、黄金剧本明暗消融回放与 Playwright 浏览器端到端回归测试。 | 真实长周期（数周至数月）人机共处实证标定与个性化记忆压缩参数调优。 |
 
 ---
 
@@ -149,8 +149,8 @@ flowchart TB
 | 核心包 | 层级归属 | `L0 ./kernel` 不可约公理原语 | `L1 ./subsystems` 可替换治理与切面消费层 | 包级文档 |
 | :--- | :--- | :--- | :--- | :--- |
 | **`@ai0/protocol`** | 公共契约 | 纯 Zod Schema 与开放 `custom.*` 契约（零内部依赖、零 Node I/O 依赖、零伴侣预设） | — | [protocol](packages/protocol/README.md) |
-| **`@ai0/extension-core`** | Tier I 扩展核 | `ExtensionComposition`（Cordis）、`DynamicContract`（Schema 指纹）、`FacetPoint`（含 `custom.*`）、`ServiceContract`、`HookPoint` | `ExtensionCoreHost`（`DynamicContractRegistry` 自举生出/防劫持/引用计数撤回）、`ScopedExtensionView`（单调收窄）、`ServiceDirectory`、`AssetCodec` | [extension-core](packages/extension-core/README.md) |
-| **`@ai0/agent-core`** | Tier I 内环 | `runKernelAgentTurn`、四车道权威投影、重试边界、`AbortSignal`、`goalVerification` | `ContextAssemblyCompiler`、同轮动态污点升级、`modelPackageIds` 多模型回退链、`UpstreamModelClient`（AI SDK v7） | [agent-core](packages/agent-core/README.md) |
+| **`@ai0/extension-core`** | Tier I 扩展核 | `ExtensionComposition`（Cordis）、`DynamicContract` & `DynamicContractMigration`、`FacetPoint`（含 `custom.*`）、`ServiceContract`、`HookPoint` | `ExtensionCoreHost`（`DynamicContractRegistry` 自举/多跳版本迁移/防劫持/引用计数撤回）、`ScopedExtensionView`（单调收窄）、`ServiceDirectory`、`AssetCodec` | [extension-core](packages/extension-core/README.md) |
+| **`@ai0/agent-core`** | Tier I 内环 | `runKernelAgentTurn`、`ExecutionIdempotencyLedger`（外部副作用幂等账本）、四车道权威投影、重试边界、`AbortSignal`、`goalVerification` | 一体自洽 `AgentCore`、`agent.execution_guard@1`（死循环/震荡熔断护栏）、`dynamicCapabilityContract` 校验、`ContextAssemblyCompiler`、`UpstreamModelClient`（AI SDK v7） | [agent-core](packages/agent-core/README.md) |
 | **`@ai0/agent-runtime`** | Tier I 外环 | `UniversalAgentLoop`（时钟推进、通道队列与打断取消） | `ComposedAgentRuntime`、`PrincipalIdentityBinder` 跨端主体绑定、`IntrinsicToolsHostOverlay`（8 内生工具含 `agent.revise_memory`） | [agent-runtime](packages/agent-runtime/README.md) |
 | **`@ai0/perception-core`** | Tier II 感知核 | `UniversalObservationFrame` 六元组（含全链路溯源印记）、`SensoryCoverage`、`TurnLifecycleGate`、`ReflexGate`、`Chronoception` | 一体自洽 `PerceptionCore`、`perception.transducer@1` 跨管道模态转译、`PerceptionFilterPipeline` 通道隔离防抖、`ObservationNormalizer` | [perception-core](packages/perception-core/README.md) |
 | **`@ai0/cognition-core`** | Tier II 认知核 | `VirtualClock`、`ContinuousStateMetaEngine`（阿贝尔群潜空间闭式 ODE）、两阶段批量 `StateDomainArbiter`、`BrainRegionRouter` | 一体自洽 `CognitionCore`、`D1..D5 + custom.*` 跨状态域原子事务与崩溃对账、`reviseMemoryBelief` 信念纠偏、单调收紧 `CapabilityPolicyGate`、`BlackboardCompiler` | [cognition-core](packages/cognition-core/README.md) |
@@ -365,7 +365,7 @@ stateDiagram-v2
 | `L4_SOUL_AWAKENED_NO_CHANNEL` | 绑定跨端 `Principal`，签发受限作用域 `ScopedCapabilityToken`，通过 `HandshakeManifest` 配对首个在线合规通道（如 `builtin.webchat`）。 |
 | `L5_LIVE_READY` | 全部前置条件满足，开始接纳 LIVE 话轮，`VirtualClock` 锁定 1x；任何前置条件失效时自动从首个缺口重新降级计算。 |
 
-### 渐进式架构推演实验室（`labs/stage0` → `labs/stage8`）
+### 渐进式架构推演实验室（`labs/stage0` → `labs/stage10`）
 
 `ai0` 的每一层核心抽象都先在 [labs/](labs/README.md) 中以零产品依赖的可执行反例轨迹证伪，再收敛回主仓 `packages/`：
 
@@ -377,7 +377,8 @@ stateDiagram-v2
 - **`Stage 5–6 · 组合通道切面与策略消融`**（[stage5](labs/stage5-composite-channel-facets/stage5.test.ts) · [stage6](labs/stage6-mechanism-policy-ablation/stage6.test.ts)）：在同一五核机制上对比消融伴侣配置与 0ms 策略等待的 CLI Task Agent；
 - **`Stage 7 · 公开契约作者替换`**（[stage7-public-contracts](labs/stage7-public-contracts/stage7.test.ts)）：检验 SDK 与核心切面 1:1 对等、无原定义者在线时的服务提供方替代与插件独立卸载；
 - **`Stage 8 · 双层底座合拢收官`**（[stage8-universal-agent-convergence](labs/stage8-universal-agent-convergence/stage8.test.ts)）：逐级证伪 **Tier I 纯通用智能体（记忆/文件系统热替换 + `D4` 规划 + `ScopedExtensionView` 子智能体收窄 + 同轮渐进 `SKILL.md` 激活 + `HookPoint` 熔断）** → **Tier I + Tier II 零伴侣插件具身合拢** → **Tier III 伴侣器官热叠加与瞬间归零卸载**；
-- **`Stage 9 · 自举动态契约、一体四核、跨域原子事务与认识论纠偏`**（[stage9-causal-consistency-and-revision](labs/stage9-causal-consistency-and-revision/stage9.test.ts)）：对抗证伪 **涌现式 `DynamicContractRegistry` 自举与 Schema 指纹防劫持** → **`PerceptionCore` 三轴正交（管道 $\times$ 跨管道模态转译 `perception.transducer@1` $\times$ 核内防抖隔离）** → **`CognitionCore` 动态 `custom.*` 状态域与单调收紧 `cognition.capability_policy@1`** → **`D1..D5 + custom.*` 两阶段跨状态域 SQLite 原子事务回滚** → **认识论信念纠偏（`agent.revise_memory` 血缘级联失效与依赖任务自动挂起，严格区分于隐私 `HardForget`）** → **崩溃恢复对账与 `PrincipalIdentityBinder` 跨通道/跨模型主体连续性**。
+- **`Stage 9 · 自举动态契约、一体四核、跨域原子事务与认识论纠偏`**（[stage9-causal-consistency-and-revision](labs/stage9-causal-consistency-and-revision/stage9.test.ts)）：对抗证伪 **涌现式 `DynamicContractRegistry` 自举与 Schema 指纹防劫持** → **`PerceptionCore` 三轴正交（管道 $\times$ 跨管道模态转译 `perception.transducer@1` $\times$ 核内防抖隔离）** → **`CognitionCore` 动态 `custom.*` 状态域与单调收紧 `cognition.capability_policy@1`** → **`D1..D5 + custom.*` 两阶段跨状态域 SQLite 原子事务回滚** → **认识论信念纠偏（`agent.revise_memory` 血缘级联失效与依赖任务自动挂起，严格区分于隐私 `HardForget`）** → **崩溃恢复对账与 `PrincipalIdentityBinder` 跨通道/跨模型主体连续性**；
+- **`Stage 10 · 全局同构对称封顶、开放世界契约演化、副作用幂等账本与通用经验结晶`**（[stage10-open-world-isomorphism-and-evolution](labs/stage10-open-world-isomorphism-and-evolution/stage10.test.ts)）：站在全局开放世界视角对抗证伪 **一等纯契约包清单与 `DynamicContract` 多跳版本迁移（`v1 -> v2 -> v3` 自动升维）** → **四核完全同构（`AgentCore` 统一门面、`agent_capability` 校验、`agent.execution_guard@1` 震荡熔断与崩溃重启 `ExecutionIdempotencyLedger` 零重复扣费）** → **感知乱序因果水位线防倒退与表达下行转码/去重聚合** → **有界可串行化 OCC 事务运行器防饥饿与 `custom_domains` 原生黑板投影** → **多前提真值维护（`all_of` vs `any_of` + 时间有效窗）与在途 `W2` 任务 `AbortSignal` 瞬时强杀** → **零伴侣预设内生经验结晶（`cognition.consolidation_strategy@1` 从重复情节提炼规则并在底层证据被推翻时自动退火失效）**。
 
 ### Monorepo 工程拓扑
 
@@ -402,7 +403,7 @@ ai0/
 │   ├── perception-filters/                  # conversational-gate 话轮防抖与撤稿感知策略
 │   ├── media-pipelines/                     # emotion-tts-sideband 多模态媒体转码与播放游标
 │   └── flows-and-assets/                    # 声明式流程与资产包
-├── labs/                                    # Stage 0 -> Stage 8 渐进式形式化证伪实验套件
+├── labs/                                    # Stage 0 -> Stage 10 渐进式形式化证伪实验套件
 ├── apps/
 │   ├── daemon/                              # @ai0/daemon：薄宿主装配 + 独立 pnpm agent CLI 入口
 │   └── console/                             # @ai0/console-webui：Owner 控制台（React 19 + MUI 9 + Vite 8）
@@ -428,7 +429,7 @@ ai0/
 pnpm install
 pnpm verify:boundaries          # 9 条 AST 架构不变量静态门禁
 pnpm build && pnpm typecheck    # 全仓 24 个工作区项目构建与类型检查
-pnpm test                       # 63 个测试文件（228 条用例，含 labs/stage0..stage9）
+pnpm test                       # 64 个测试文件（235 条用例，含 labs/stage0..stage10）
 pnpm replay:golden              # 黄金回归场景明暗消融回放（22/22 断言）
 pnpm dev                        # 启动守护进程与 Owner 控制台 (http://127.0.0.1:4173)
 ```

@@ -1,5 +1,5 @@
 import type { DynamicContractSnapshot, ExtensionCoreHost, ExtensionHostView } from "@ai0/extension-core";
-import type { AudienceScope } from "@ai0/protocol";
+import type { AudienceScope, CognitionMemoryRecord } from "@ai0/protocol";
 import { VirtualClock, type IVirtualClock } from "../kernel/virtual-clock.js";
 import { BlackboardCompiler, type BlackboardEventStorage, type BlackboardPolicy, type CompiledBlackboard } from "./blackboard-compiler.js";
 import { CapabilityPolicyGate } from "./capability-gate.js";
@@ -9,6 +9,8 @@ import {
   type BeliefRevisionResult,
   type CoordinatorStorageMutator,
   type ReadOnlyCognitiveSnapshot,
+  type SerializableTransactionOptions,
+  type SerializableTransactionResult,
   type StateMutationProposal,
   type StateMutationResult,
   type StateTransactionBundle,
@@ -103,7 +105,12 @@ export class CognitionCore {
     this.coordinator.restoreCheckpoint();
     const reconciled = this.coordinator.reconcileInterruptedWorkOnRestore();
     this.taskWorker.hydrateFromCoordinator();
-    return reconciled;
+    if (reconciled.length > 0) {
+      return reconciled;
+    }
+    return Object.entries(this.getSnapshot().D4_COMMITMENTS_TASKS.active_tasks)
+      .filter(([, task]) => task.status === "interrupted_recoverable")
+      .map(([taskId]) => taskId);
   }
 
   getSnapshot(): ReadOnlyCognitiveSnapshot {
@@ -122,6 +129,15 @@ export class CognitionCore {
   submitTransaction(bundle: StateTransactionBundle): StateTransactionBundleResult {
     if (!this.active) throw new Error("CognitionCore is stopped");
     return this.coordinator.submitTransactionBundle(bundle);
+  }
+
+  runSerializableTransaction(
+    txPrefix: string,
+    buildProposals: (snapshot: ReadOnlyCognitiveSnapshot, attempt: number) => readonly StateMutationProposal[],
+    options?: SerializableTransactionOptions
+  ): SerializableTransactionResult {
+    if (!this.active) throw new Error("CognitionCore is stopped");
+    return this.coordinator.runSerializableTransaction(txPrefix, buildProposals, options);
   }
 
   reviseBelief(request: BeliefRevisionRequest): BeliefRevisionResult {
@@ -145,13 +161,22 @@ export class CognitionCore {
           }
         : {})
     });
-    return this.coordinator.reviseMemoryBelief({
+    const res = this.coordinator.reviseMemoryBelief({
       ...request,
       extra_invalidated_memory_ids: [
         ...(request.extra_invalidated_memory_ids ?? []),
         ...memOutcome.invalidatedMemoryIds
       ]
     });
+    if (res.accepted && res.paused_task_ids.length > 0) {
+      this.taskWorker.abortOnPremiseInvalidation(res.paused_task_ids, request.reason);
+    }
+    return res;
+  }
+
+  runConsolidationCycle(signal?: AbortSignal): Promise<readonly CognitionMemoryRecord[]> {
+    if (!this.active) throw new Error("CognitionCore is stopped");
+    return this.sleepWorker.runExperienceConsolidation(this.defaultMemory, signal);
   }
 
   compileBlackboard(
@@ -159,6 +184,11 @@ export class CognitionCore {
     audienceScope: AudienceScope | string,
     lastUserInteractionTsMs?: number
   ): Promise<CompiledBlackboard> {
-    return this.blackboard.compile(this.getSnapshot(), policy, audienceScope, lastUserInteractionTsMs);
+    return this.blackboard.compile(
+      this.getSnapshot(),
+      { include_custom_domains: true, ...policy },
+      audienceScope,
+      lastUserInteractionTsMs
+    );
   }
 }

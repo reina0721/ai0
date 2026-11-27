@@ -152,3 +152,34 @@ export function defineDynamicContract<TPayload>(
     schemaFingerprint
   });
 }
+
+export function defineDynamicContractMigration<TFrom, TTo>(
+  migration: DynamicContractMigration<TFrom, TTo>
+): DynamicContractMigration<TFrom, TTo> {
+  if (!migration || !VALID_CONTRACT_KINDS.has(migration.kind)) {
+    throw new TypeError("Invalid dynamic contract migration kind");
+  }
+  if (!NAMESPACE_PATTERN.test(migration.namespace) || !NAME_PATTERN.test(migration.name)) {
+    throw new TypeError(`Invalid dynamic contract migration target: ${migration.namespace}.${migration.name}`);
+  }
+  if (
+    !Number.isSafeInteger(migration.fromVersion) ||
+    migration.fromVersion < 1 ||
+    !Number.isSafeInteger(migration.toVersion) ||
+    migration.toVersion < 1 ||
+    migration.fromVersion === migration.toVersion
+  ) {
+    throw new TypeError("Dynamic contract migration requires distinct positive integer versions");
+  }
+  if (typeof migration.migrate !== "function") {
+    throw new TypeError("Dynamic contract migration requires a migrate(payload) function");
+  }
+  return Object.freeze({
+    kind: migration.kind,
+    namespace: migration.namespace,
+    name: migration.name,
+    fromVersion: migration.fromVersion,
+    toVersion: migration.toVersion,
+    migrate: migration.migrate.bind(migration)
+  });
+}

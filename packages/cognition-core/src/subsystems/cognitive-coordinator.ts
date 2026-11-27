@@ -57,6 +57,7 @@ export interface ActiveTask {
   principal?: string;
   audience_scope?: AudienceScope;
   capability_risk?: string;
+  executed_side_effects_count?: number;
   steps?: Array<{ step_title: string; actuator_or_tool_id?: string }>;
 }
 
@@ -209,6 +210,21 @@ export interface StateTransactionBundleResult {
   }>;
 }
 
+export interface SerializableTransactionOptions {
+  readonly maxRetries?: number;
+  readonly proposerPackageId?: string;
+  readonly requireCommittedEvents?: boolean;
+  readonly onConflictRetry?: (
+    attempt: number,
+    snapshot: ReadOnlyCognitiveSnapshot,
+    failedResult: StateTransactionBundleResult
+  ) => void;
+}
+
+export type SerializableTransactionResult = StateTransactionBundleResult & {
+  readonly attempts: number;
+};
+
 export interface BeliefRevisionRequest {
   readonly target_memory_id: string;
   readonly relation: "supersedes" | "contradicts";
@@ -269,6 +285,46 @@ export function accumulateDriveSigmoidAbelian(dCurrent: number, deltaImpulse: nu
   if (z >= 0) return 1 / (1 + Math.exp(-z));
   const ez = Math.exp(z);
   return ez / (1 + ez);
+}
+
+function validateJsonSchemaLite(schema: Readonly<Record<string, unknown>> | undefined, payload: unknown): string | null {
+  if (!schema) return null;
+  if (schema.type === "object") {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+    }
+    const obj = payload as Record<string, unknown>;
+    if (Array.isArray(schema.required)) {
+      for (const reqKey of schema.required) {
+        if (typeof reqKey === "string" && !Object.hasOwn(obj, reqKey)) {
+          return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+        }
+      }
+    }
+    if (schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)) {
+      const props = schema.properties as Record<string, Record<string, unknown>>;
+      for (const [propKey, propSchema] of Object.entries(props)) {
+        if (!Object.hasOwn(obj, propKey) || obj[propKey] === undefined) continue;
+        const val = obj[propKey];
+        const expectedType = propSchema?.type;
+        if (expectedType === "string" && typeof val !== "string") return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+        if (expectedType === "number" && (typeof val !== "number" || !Number.isFinite(val)))
+          return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+        if (expectedType === "integer" && (typeof val !== "number" || !Number.isInteger(val)))
+          return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+        if (expectedType === "boolean" && typeof val !== "boolean") return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+        if (expectedType === "array" && !Array.isArray(val)) return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+        if (expectedType === "object" && (!val || typeof val !== "object" || Array.isArray(val)))
+          return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+      }
+      if (schema.additionalProperties === false) {
+        for (const key of Object.keys(obj)) {
+          if (!Object.hasOwn(props, key)) return "CUSTOM_DOMAIN_SCHEMA_INVALID";
+        }
+      }
+    }
+  }
+  return null;
 }
 
 interface CustomDomainCell {
@@ -515,6 +571,30 @@ export class AuthoritativeStateCoordinator {
         ? structuredClone(this.savedCustomDomainSeeds[domain])
         : structuredClone(wanted.declaration.initialState);
       const cellRef: { state: unknown } = { state: seed };
+      const validateCustomPayload = (payload: Record<string, unknown>): string | null => {
+        const schemaErr = validateJsonSchemaLite(wanted.declaration.jsonSchema, payload);
+        if (schemaErr) return schemaErr;
+        if (host) {
+          const parts = domain.split(".");
+          const namespace = parts[1] ?? "custom";
+          const name = parts.slice(2).join("_") || "state";
+          const contracts = host
+            .listDynamicContracts("cognition_protocol")
+            .filter((c) => c.namespace === namespace && c.name === name);
+          if (contracts.length > 0) {
+            const latestVer = Math.max(...contracts.map((c) => c.version));
+            try {
+              host.validateDynamicContractPayload("cognition_protocol", namespace, name, latestVer, payload);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              return msg.includes("CUSTOM_DOMAIN_SCHEMA_INVALID")
+                ? "CUSTOM_DOMAIN_SCHEMA_INVALID"
+                : `DYNAMIC_CONTRACT_INVALID:${msg}`;
+            }
+          }
+        }
+        return null;
+      };
       const unregister = this.arbiter.register(domain, {
         read: () => cellRef.state,
         ...(wanted.declaration.acceptsOlderRevision
@@ -528,6 +608,8 @@ export class AuthoritativeStateCoordinator {
             }
           : {}),
         stage: (proposal) => {
+          const schemaErr = validateCustomPayload(proposal.payload);
+          if (schemaErr) return { reason: schemaErr };
           const reduced = wanted.declaration.reduce(structuredClone(cellRef.state), {
             domain: proposal.domain,
             base_rev: proposal.base_rev,
@@ -543,6 +625,8 @@ export class AuthoritativeStateCoordinator {
           };
         },
         apply: (proposal) => {
+          const schemaErr = validateCustomPayload(proposal.payload);
+          if (schemaErr) return { reason: schemaErr };
           const reduced = wanted.declaration.reduce(structuredClone(cellRef.state), {
             domain: proposal.domain,
             base_rev: proposal.base_rev,
@@ -814,6 +898,44 @@ export class AuthoritativeStateCoordinator {
         ...(res.queued ? { queued_for_approval: true } : {})
       }))
     };
+  }
+
+  /**
+   * Bounded Serializable Optimistic Concurrency Control (OCC) Transaction Runner:
+   * Evaluates `buildProposals(snapshot, attempt)` against the latest authoritative snapshot and commits
+   * atomically. If a concurrent `W1` turn advances a non-Abelian domain (`REVISION_CONFLICT` / `STALE_TURN`),
+   * automatically re-reads the fresh snapshot and retries up to `maxRetries` times without starvation.
+   */
+  runSerializableTransaction(
+    txPrefix: string,
+    buildProposals: (snapshot: ReadOnlyCognitiveSnapshot, attempt: number) => readonly StateMutationProposal[],
+    options: SerializableTransactionOptions = {}
+  ): SerializableTransactionResult {
+    const maxRetries = Math.max(0, Math.trunc(options.maxRetries ?? 5));
+    let lastResult: StateTransactionBundleResult | undefined;
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      const snapshot = this.getSnapshot();
+      const proposals = buildProposals(snapshot, attempt);
+      const txId = attempt === 1 ? txPrefix : `${txPrefix}#retry${attempt - 1}`;
+      const res = this.submitTransactionBundle({
+        tx_id: txId,
+        proposals,
+        ...(options.proposerPackageId ? { proposer_package_id: options.proposerPackageId } : {}),
+        ...(options.requireCommittedEvents !== undefined
+          ? { require_committed_events: options.requireCommittedEvents }
+          : {})
+      });
+      lastResult = res;
+      if (res.accepted) {
+        return { ...res, attempts: attempt };
+      }
+      const isConflict = res.reason === "REVISION_CONFLICT" || res.reason === "STALE_TURN";
+      if (!isConflict || attempt > maxRetries) {
+        return { ...res, attempts: attempt };
+      }
+      options.onConflictRetry?.(attempt, this.getSnapshot(), res);
+    }
+    return { ...lastResult!, attempts: maxRetries + 1 };
   }
 
   /**
@@ -1320,7 +1442,11 @@ export function bindCustomStateDomainToDynamicContract(
     version: 1,
     ...(declaration.description ? { description: declaration.description } : {}),
     jsonSchema: declaration.jsonSchema ?? { type: "object" },
-    parse: (raw) => raw
+    parse: (raw) => {
+      const schemaErr = validateJsonSchemaLite(declaration.jsonSchema, raw);
+      if (schemaErr) throw new TypeError(schemaErr);
+      return raw;
+    }
   });
   scope.contributeFacet(cognitionStateDomainFacet, declaration);
 }

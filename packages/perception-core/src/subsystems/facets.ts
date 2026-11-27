@@ -275,9 +275,17 @@ export class ObservationNormalizer {
 
   normalize(envelope: PerceptionEnvelope, admission: Omit<ObservationAdmission, "observedAtMs">) {
     let dynamicContractId = admission.dynamicContractId;
+    let effectiveEnvelope = envelope;
     const host = this.host;
     const dynamicExt = envelope.extensions["ai0.dynamic_event"] as
-      | { namespace?: string; name?: string; version?: number; payload?: unknown }
+      | {
+          namespace?: string;
+          name?: string;
+          version?: number;
+          targetVersion?: number;
+          upcastToLatest?: boolean;
+          payload?: unknown;
+        }
       | undefined;
     if (
       host &&
@@ -286,17 +294,49 @@ export class ObservationNormalizer {
       typeof dynamicExt.name === "string" &&
       typeof dynamicExt.version === "number"
     ) {
-      host.validateDynamicContractPayload(
-        "perception_event",
-        dynamicExt.namespace,
-        dynamicExt.name,
-        dynamicExt.version,
-        dynamicExt.payload
-      );
-      dynamicContractId = `perception_event:${dynamicExt.namespace}.${dynamicExt.name}@${dynamicExt.version}`;
+      let resolvedTargetVersion = dynamicExt.targetVersion;
+      if (resolvedTargetVersion === undefined && dynamicExt.upcastToLatest === true) {
+        const candidates = host
+          .listDynamicContracts("perception_event")
+          .filter((c) => c.namespace === dynamicExt.namespace && c.name === dynamicExt.name);
+        if (candidates.length > 0) {
+          resolvedTargetVersion = Math.max(...candidates.map((c) => c.version));
+        }
+      }
+      if (resolvedTargetVersion !== undefined && resolvedTargetVersion !== dynamicExt.version) {
+        const coercedPayload = host.coerceDynamicContractPayload(
+          "perception_event",
+          dynamicExt.namespace,
+          dynamicExt.name,
+          dynamicExt.version,
+          resolvedTargetVersion,
+          dynamicExt.payload
+        );
+        effectiveEnvelope = {
+          ...envelope,
+          extensions: {
+            ...envelope.extensions,
+            "ai0.dynamic_event": {
+              ...dynamicExt,
+              version: resolvedTargetVersion,
+              payload: coercedPayload
+            }
+          }
+        };
+        dynamicContractId = `perception_event:${dynamicExt.namespace}.${dynamicExt.name}@${resolvedTargetVersion}`;
+      } else {
+        host.validateDynamicContractPayload(
+          "perception_event",
+          dynamicExt.namespace,
+          dynamicExt.name,
+          dynamicExt.version,
+          dynamicExt.payload
+        );
+        dynamicContractId = `perception_event:${dynamicExt.namespace}.${dynamicExt.name}@${dynamicExt.version}`;
+      }
     }
 
-    const frame = normalizePerceptionEnvelopeToFrame(envelope, {
+    const frame = normalizePerceptionEnvelopeToFrame(effectiveEnvelope, {
       ...admission,
       ...(dynamicContractId ? { dynamicContractId } : {}),
       observedAtMs: this.clock.nowMs()
@@ -304,10 +344,10 @@ export class ObservationNormalizer {
     if (!host) return frame;
     const extractions = host.listFacets(perceptionExtractorFacet).flatMap(entry => {
       const { modality, extension } = entry.implementation;
-      if (modality !== frame.channel.modality || !Object.hasOwn(envelope.extensions, extension) ||
+      if (modality !== frame.channel.modality || !Object.hasOwn(effectiveEnvelope.extensions, extension) ||
         !host.allowsAudienceScope(entry.packageId, admission.audienceScope, entry.facetId)) return [];
       const extracted = host.invokeFacet(entry, facet => {
-        const result = facet.extract(structuredClone(envelope.extensions[extension]));
+        const result = facet.extract(structuredClone(effectiveEnvelope.extensions[extension]));
         if (!result) return;
         if (typeof result.cue !== "string" || !result.cue) throw new TypeError("Invalid extracted cue");
         return { cue: result.cue, data: structuredClone(result.data) };

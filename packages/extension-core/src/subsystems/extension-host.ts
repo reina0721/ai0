@@ -1,11 +1,13 @@
 import { Ai0ExtensionManifestSchema, type Ai0ExtensionManifest, type AudienceScope, type StateDomain, type ExtensionServiceRef } from "@ai0/protocol";
 import {
   defineDynamicContract,
+  defineDynamicContractMigration,
   DynamicContractConflictError,
   formatDynamicContractId,
   type DefinedDynamicContract,
   type DynamicContractDescriptor,
   type DynamicContractKind,
+  type DynamicContractMigration,
   type DynamicContractSnapshot
 } from "../kernel/dynamic-contract.js";
 import type { FacetPoint } from "../kernel/facet-point.js";
@@ -17,6 +19,7 @@ export type PackageConfig = Readonly<Record<string, unknown>>;
 export interface ExtensionActivationScope extends ServiceActivationScope {
   contributeFacet<T>(point: FacetPoint<T>, implementation: T): void;
   registerDynamicContract<T>(contract: DynamicContractDescriptor<T>): DefinedDynamicContract<T>;
+  registerDynamicContractMigration<TFrom, TTo>(migration: DynamicContractMigration<TFrom, TTo>): void;
   onDispose(dispose: () => void): void;
 }
 export interface ExtensionPackageDefinition {
@@ -93,6 +96,14 @@ export interface ExtensionHostView {
     version: number,
     payload: unknown
   ): T;
+  coerceDynamicContractPayload<T = unknown>(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    fromVersion: number,
+    targetVersion: number,
+    payload: unknown
+  ): T;
   allowsReadDomain(id: string, domain: StateDomain): boolean;
   allowsProposeDomain(id: string, domain: StateDomain): boolean;
   allowsAudienceScope(id: string, audience: AudienceScope, facet?: string): boolean;
@@ -107,12 +118,18 @@ interface ActiveDynamicContractEntry {
   parsersByPackage: Map<string, (raw: unknown) => unknown>;
 }
 
+interface ActiveDynamicMigrationEntry {
+  migration: DynamicContractMigration<unknown, unknown>;
+  packageId: string;
+}
+
 export class ExtensionCoreHost implements ExtensionHostView {
   private readonly packages = new Map<string, MountedPackage>();
   private readonly transitioning = new Set<string>();
   private readonly revisions = new Map<string, number>();
   private readonly services = new ServiceDirectory();
   private readonly dynamicContracts = new Map<string, ActiveDynamicContractEntry>();
+  private readonly dynamicMigrations = new Map<string, ActiveDynamicMigrationEntry>();
   private readonly issued = new WeakMap<FacetRegistration<unknown>, { registration: MountedPackage["registrations"][number]; binding: string }>();
   private readonly revoked = new Set<() => void>();
   private readonly listeners = new Set<(event: ExtensionHostChangeEvent) => void>();
@@ -274,6 +291,71 @@ export class ExtensionCoreHost implements ExtensionHostView {
     return firstActiveParser(structuredClone(payload)) as T;
   }
 
+  coerceDynamicContractPayload<T = unknown>(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    fromVersion: number,
+    targetVersion: number,
+    payload: unknown
+  ): T {
+    if (fromVersion === targetVersion) {
+      return this.validateDynamicContractPayload<T>(kind, namespace, name, targetVersion, payload);
+    }
+
+    const prefix = `${kind}:${namespace}.${name}:`;
+    const adjacency = new Map<number, Array<{ toVersion: number; migrate: (val: unknown) => unknown }>>();
+    for (const [migKey, entry] of this.dynamicMigrations.entries()) {
+      if (!migKey.startsWith(prefix)) continue;
+      const list = adjacency.get(entry.migration.fromVersion) ?? [];
+      list.push({
+        toVersion: entry.migration.toVersion,
+        migrate: entry.migration.migrate
+      });
+      adjacency.set(entry.migration.fromVersion, list);
+    }
+
+    const queue: Array<{ ver: number; steps: Array<{ toVersion: number; migrate: (val: unknown) => unknown }> }> = [
+      { ver: fromVersion, steps: [] }
+    ];
+    const visited = new Set<number>([fromVersion]);
+    let foundPath: Array<{ toVersion: number; migrate: (val: unknown) => unknown }> | undefined;
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      for (const edge of adjacency.get(curr.ver) ?? []) {
+        const nextSteps = [...curr.steps, edge];
+        if (edge.toVersion === targetVersion) {
+          foundPath = nextSteps;
+          break;
+        }
+        if (!visited.has(edge.toVersion)) {
+          visited.add(edge.toVersion);
+          queue.push({ ver: edge.toVersion, steps: nextSteps });
+        }
+      }
+      if (foundPath) break;
+    }
+
+    if (!foundPath) {
+      throw new Error(
+        `No dynamic contract migration path for ${kind}:${namespace}.${name} from v${fromVersion} to v${targetVersion}`
+      );
+    }
+
+    let current: unknown = structuredClone(payload);
+    if (this.getDynamicContract(kind, namespace, name, fromVersion)) {
+      current = this.validateDynamicContractPayload(kind, namespace, name, fromVersion, current);
+    }
+    for (const hop of foundPath) {
+      current = hop.migrate(structuredClone(current));
+      if (this.getDynamicContract(kind, namespace, name, hop.toVersion)) {
+        current = this.validateDynamicContractPayload(kind, namespace, name, hop.toVersion, current);
+      }
+    }
+    return this.validateDynamicContractPayload<T>(kind, namespace, name, targetVersion, current);
+  }
+
   /** End pending work immediately when this exact registration or one of its declared bindings expires. */
   leaseFacet<T>(entry: FacetRegistration<T>): { signal: AbortSignal; dispose(): void } {
     const controller = new AbortController();
@@ -418,6 +500,7 @@ export class ExtensionCoreHost implements ExtensionHostView {
     const services = this.services.prepare(pkg.manifest, generation);
     const registrations: MountedPackage["registrations"] = [];
     const stagedContracts: DefinedDynamicContract<unknown>[] = [];
+    const stagedMigrations: DynamicContractMigration<unknown, unknown>[] = [];
     const disposers: MountedPackage["disposers"] = [];
     let activating = true;
     const dispose = (cleanup: () => void) => {
@@ -455,6 +538,13 @@ export class ExtensionCoreHost implements ExtensionHostView {
           }
           return defined;
         },
+        registerDynamicContractMigration: <TFrom, TTo>(rawMigration: DynamicContractMigration<TFrom, TTo>): void => {
+          if (!activating) {
+            throw new Error("Extension activation has ended");
+          }
+          const validated = defineDynamicContractMigration(rawMigration);
+          stagedMigrations.push(validated as DynamicContractMigration<unknown, unknown>);
+        },
         onDispose: dispose
       }, structuredClone(pkg.config));
       if (cleanup) dispose(cleanup);
@@ -485,6 +575,13 @@ export class ExtensionCoreHost implements ExtensionHostView {
           });
         }
       }
+      for (const mig of stagedMigrations) {
+        const migKey = `${mig.kind}:${mig.namespace}.${mig.name}:${mig.fromVersion}->${mig.toVersion}`;
+        this.dynamicMigrations.set(migKey, {
+          migration: mig,
+          packageId: pkg.manifest.extension_id
+        });
+      }
       this.services.publish(services);
     } catch (error) {
       pkg.disposers = disposers;
@@ -499,6 +596,11 @@ export class ExtensionCoreHost implements ExtensionHostView {
     const pkgId = pkg.manifest.extension_id;
     pkg.status = status;
     this.services.withdraw(pkgId);
+    for (const [migKey, entry] of [...this.dynamicMigrations.entries()]) {
+      if (entry.packageId === pkgId) {
+        this.dynamicMigrations.delete(migKey);
+      }
+    }
     for (const [contractId, entry] of [...this.dynamicContracts.entries()]) {
       if (!entry.holders.has(pkgId)) continue;
       entry.holders.delete(pkgId);

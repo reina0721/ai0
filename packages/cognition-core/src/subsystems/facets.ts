@@ -1,6 +1,7 @@
 import { defineFacetPoint, type ExtensionHostView } from "@ai0/extension-core";
 import {
   cognitionCapabilityPolicyContract,
+  cognitionConsolidationStrategyContract,
   cognitionMemoryProviderContract,
   cognitionProposalPolicyContract,
   cognitionResponseContractPoint,
@@ -89,6 +90,7 @@ export const cognitionProposalPolicyFacet = defineFacetPoint(cognitionProposalPo
 export const cognitionMemoryProviderFacet = defineFacetPoint(cognitionMemoryProviderContract);
 export const cognitionStateDomainFacet = defineFacetPoint(cognitionStateDomainContract);
 export const cognitionCapabilityPolicyFacet = defineFacetPoint(cognitionCapabilityPolicyContract);
+export const cognitionConsolidationStrategyFacet = defineFacetPoint(cognitionConsolidationStrategyContract);
 
 export const cognitionStateDynamicsFacet = defineFacetPoint<{ descriptors: readonly ContinuousStateDescriptor[] }>({
   owner: "cognition", name: "state_dynamics", version: 1,

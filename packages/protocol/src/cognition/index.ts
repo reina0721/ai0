@@ -238,3 +238,40 @@ export const cognitionCapabilityPolicyContract = {
     return value;
   }
 } as const;
+
+export interface CognitionConsolidationCandidate {
+  readonly content: string;
+  readonly memoryTier?: CognitionMemoryTier;
+  readonly audienceScope?: AudienceScope;
+  readonly supportingMemoryIds: readonly string[];
+  readonly minPremiseCount?: number;
+  readonly validUntilMs?: number;
+}
+
+export interface CognitionConsolidationStrategy {
+  readonly priority?: number;
+  consolidate(
+    context: {
+      readonly episodes: readonly CognitionMemoryRecord[];
+      readonly nowMs: number;
+    },
+    signal?: AbortSignal
+  ): readonly CognitionConsolidationCandidate[] | Promise<readonly CognitionConsolidationCandidate[]>;
+}
+
+export const cognitionConsolidationStrategyContract = {
+  owner: "cognition",
+  name: "consolidation_strategy",
+  version: 1,
+  parse(raw: unknown): CognitionConsolidationStrategy {
+    const value = raw as CognitionConsolidationStrategy | null;
+    if (
+      !value ||
+      typeof value.consolidate !== "function" ||
+      (value.priority !== undefined && !Number.isFinite(value.priority))
+    ) {
+      throw new TypeError("Invalid cognition.consolidation_strategy facet");
+    }
+    return value;
+  }
+} as const;

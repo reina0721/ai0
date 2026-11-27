@@ -252,6 +252,23 @@ CREATE TABLE IF NOT EXISTS sb243_annual_metrics (
     crisis_referral_triggered_count     INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS memory_premise_policies (
+    memory_id           TEXT PRIMARY KEY REFERENCES memories(memory_id) ON DELETE CASCADE,
+    quantifier          TEXT NOT NULL DEFAULT 'all_of' CHECK (quantifier IN ('all_of', 'any_of')),
+    min_premise_count   INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS tool_execution_idempotency (
+    idempotency_key     TEXT PRIMARY KEY,
+    scope_id            TEXT NOT NULL,
+    tool_name           TEXT NOT NULL,
+    input_hash          TEXT NOT NULL,
+    result_json         TEXT NOT NULL,
+    recorded_at_step    INTEGER NOT NULL,
+    created_virtual_ts  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tool_idempotency_scope ON tool_execution_idempotency(scope_id);
+
 CREATE TABLE IF NOT EXISTS kernel_runtime_meta (
     meta_key        TEXT PRIMARY KEY,
     meta_value      TEXT NOT NULL

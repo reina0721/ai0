@@ -14,6 +14,10 @@ export interface ExpressionMediaTranscoder {
   cursor?: MediaCursorResolver;
   onUpstreamMediaFrame?(frame: unknown): void | Promise<void>;
   onDownstreamExpression?(intent: ExpressionEnvelope): void | Promise<void>;
+  transcodeExpression?(
+    intent: CommunicativeIntentEnvelope,
+    channel: InteractionChannel
+  ): Readonly<Record<string, unknown>> | undefined;
 }
 export interface ExpressionIntentDecorator {
   priority?: number;
@@ -50,8 +54,9 @@ export const expressionMediaTranscoderFacet = defineFacetPoint<ExpressionMediaTr
       (value.priority !== undefined && !Number.isFinite(value.priority)) ||
       (value.onUpstreamMediaFrame !== undefined && typeof value.onUpstreamMediaFrame !== "function") ||
       (value.onDownstreamExpression !== undefined && typeof value.onDownstreamExpression !== "function") ||
+      (value.transcodeExpression !== undefined && typeof value.transcodeExpression !== "function") ||
       (value.cursor !== undefined && (!value.cursor?.extension || typeof value.cursor.resolve !== "function")) ||
-      (!value.onUpstreamMediaFrame && !value.onDownstreamExpression && !value.cursor)
+      (!value.onUpstreamMediaFrame && !value.onDownstreamExpression && !value.transcodeExpression && !value.cursor)
     ) throw new TypeError("Invalid media transcoder");
     return value;
   }

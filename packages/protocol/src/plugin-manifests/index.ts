@@ -188,6 +188,20 @@ export const PluginConfigFieldSchema = z.object({
 });
 export type PluginConfigField = z.infer<typeof PluginConfigFieldSchema>;
 
+export const DynamicContractRefSchema = z.object({
+  kind: z.enum(["perception_event", "cognition_protocol", "agent_capability", "expression_protocol"]),
+  namespace: z.string().min(1),
+  name: z.string().min(1),
+  version: z.number().int().positive().safe()
+});
+export type DynamicContractRef = z.infer<typeof DynamicContractRefSchema>;
+
+export const ExtensionContractsSchema = z.object({
+  defines: z.array(DynamicContractRefSchema).optional(),
+  consumes: z.array(DynamicContractRefSchema).optional()
+});
+export type ExtensionContracts = z.infer<typeof ExtensionContractsSchema>;
+
 export const RuntimePluginDescriptorSchema = z.object({
   extension_id: z.string(),
   display_name: z.string(),
@@ -198,6 +212,7 @@ export const RuntimePluginDescriptorSchema = z.object({
   carrier_kind: ExtensionCarrierKindSchema,
   facets: z.array(ExtensionFacetIdSchema),
   services: ExtensionServicesSchema.optional(),
+  contracts: ExtensionContractsSchema.optional(),
   projections: z.array(CarrierProjectionSchema).optional(),
   origin: PluginOriginSchema,
   enabled: z.boolean(),
@@ -237,8 +252,9 @@ export const Ai0ExtensionManifestSchema = z.object({
   tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
   default_enabled: z.boolean().optional(),
-  facets: z.array(ExtensionFacetIdSchema),
+  facets: z.array(ExtensionFacetIdSchema).default([]),
   services: ExtensionServicesSchema.optional(),
+  contracts: ExtensionContractsSchema.optional(),
   projections: z.array(CarrierProjectionSchema).optional(),
   values: z.record(z.unknown()).optional(),
   flows: z.record(z.array(ExtensionServiceRefSchema).min(1)).optional(),
@@ -250,7 +266,8 @@ export const Ai0ExtensionManifestSchema = z.object({
   if (manifest.projections?.some(item => !manifest.facets.includes(item.facet))) {
     ctx.addIssue({ code: "custom", path: ["projections"], message: "Projection targets an undeclared facet" });
   }
-  if (!manifest.facets.length && !Object.values(services ?? {}).some(entries => entries?.length)) {
+  const hasContracts = Object.values(manifest.contracts ?? {}).some(entries => entries?.length);
+  if (!manifest.facets.length && !Object.values(services ?? {}).some(entries => entries?.length) && !hasContracts) {
     ctx.addIssue({ code: "custom", path: ["facets"], message: "Declare a facet or a service" });
   }
   if (services?.defines?.some(ref => ref.owner !== manifest.extension_id)) {

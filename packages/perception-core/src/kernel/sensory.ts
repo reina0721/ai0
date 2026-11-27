@@ -14,6 +14,7 @@ export type SensoryCoverageUpdate = Omit<SensoryCoverageBucket,
   "static_frame_motion_lock" | "anti_hallucination_lock"> & { perception_confidence?: number; authorized?: boolean };
 export interface SensoryCoverageUpdateResult {
   bucket: Readonly<SensoryCoverageBucket>;
+  stale_watermark_rejected?: boolean;
   predictive_coding_revision?: { previous_hypothesis: string; actual_summary: string };
   predictive_coding_revision_directive?: string;
 }
@@ -33,6 +34,9 @@ export class SensoryCoverageBucketManager {
     const age = this.clock.nowMs() - update.updated_at_virtual_ts;
     if (update.authorized && age >= 0 && age <= update.freshness_ttl_ms && !["unknown", "blind", "stale", "disconnected"].includes(update.coverage)) this.blind.delete(key);
     const previous = this.buckets.get(key);
+    if (previous && update.updated_at_virtual_ts < previous.updated_at_virtual_ts) {
+      return { bucket: this.refresh(previous), stale_watermark_rejected: true };
+    }
     const contradicted = previous && this.reviseHypothesis?.(structuredClone(update), structuredClone(previous.competing_hypotheses));
     const fields = { ...update };
     delete fields.perception_confidence;

@@ -23,6 +23,7 @@ import {
   ExpressionEnvelopeSchema,
   HandshakeAckSchema,
   HandshakeManifestSchema,
+  parseKnownExtensions,
   PerceptionEnvelopeSchema,
   type AudienceScope,
   type DeliveryReceipt,
@@ -263,9 +264,30 @@ export class ChannelProtocolGateway {
     this.negotiator.unmount(channel);
   }
 
-  handlePerception(sessionId: string, input: PerceptionEnvelope | Record<string, unknown>): {
-    envelope: GatewayPerceptionEnvelope; state: DebounceState; committed?: DebounceBatch;
-  } {
+  parseEnvelopeExtensions(extensions: Record<string, unknown>, supportedExtensions?: readonly string[]) {
+    const host = this.options.extensionHost;
+    return parseKnownExtensions(
+      extensions,
+      supportedExtensions,
+      host
+        ? (key, payload) => {
+            const match = /^([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)\.([a-z][a-z0-9_]*)@(\d+)$/.exec(key);
+            if (!match) return undefined;
+            const [, ns, name, verStr] = match;
+            const ver = Number(verStr);
+            if (host.getDynamicContract("perception_event", ns!, name!, ver)) {
+              return host.validateDynamicContractPayload("perception_event", ns!, name!, ver, payload);
+            }
+            if (host.getDynamicContract("expression_protocol", ns!, name!, ver)) {
+              return host.validateDynamicContractPayload("expression_protocol", ns!, name!, ver, payload);
+            }
+            return undefined;
+          }
+        : undefined
+    );
+  }
+
+  private preparePerceptionContext(sessionId: string, input: PerceptionEnvelope | Record<string, unknown>) {
     const session = this.requireSession(sessionId);
     const original = input as Record<string, unknown>;
     const envelope = PerceptionEnvelopeSchema.parse(input);
@@ -277,13 +299,13 @@ export class ChannelProtocolGateway {
     const claimedAudience = AudienceScopeSchema.parse(
       original.audience_scope ?? extension.audience_scope ?? session.manifest.current_audience.scope
     );
-    const claimedTrust = session.claims.principal_id === "owner:local" ? "owner_verified" : "stranger";
+    const claimedTrust: PrincipalTrust = session.claims.principal_id === "owner:local" ? "owner_verified" : "stranger";
     const audience = enforceAudienceScope(claimedAudience, session.claims.max_audience_privacy_ceiling);
     const declared = envelope.extensions["ext.perception.v1"];
     const sourceKey = envelope.frame?.channel.sourceKey ?? (isRecord(declared) ? declared.source_key : undefined);
     const sources = session.manifest.capabilities.sensor_affordances?.filter(item => item.modality === envelope.modality);
     const source = sourceKey === undefined && sources?.length === 1 ? sources[0] : sources?.find(item => item.source_key === sourceKey);
-    const frame = this.normalizer.normalize(envelope, {
+    const admission = {
       channelId: session.manifest.channel_id,
       principalId: session.claims.principal_id ?? "unknown",
       audienceScope: audience,
@@ -291,7 +313,18 @@ export class ChannelProtocolGateway {
         coverage: source?.coverage ?? this.options.sourceDefaults?.coverage,
         freshnessTtlMs: source?.freshness_ttl_ms ?? this.options.sourceDefaults?.freshnessTtlMs
       }
-    });
+    };
+    return { session, envelope, audience, claimedAudience, claimedTrust, admission };
+  }
+
+  private finalizePerceptionIngest(
+    session: ChannelSession,
+    envelope: PerceptionEnvelope,
+    frame: NonNullable<PerceptionEnvelope["frame"]>,
+    audience: AudienceScope,
+    claimedAudience: AudienceScope,
+    claimedTrust: PrincipalTrust
+  ): { envelope: GatewayPerceptionEnvelope; state: DebounceState; committed?: DebounceBatch } {
     const sanitized: GatewayPerceptionEnvelope = {
       ...envelope,
       frame,
@@ -299,7 +332,10 @@ export class ChannelProtocolGateway {
       principal_trust: audience === claimedAudience ? claimedTrust : "stranger"
     };
     const now = this.clock.nowMs();
-    let event: DebounceInputEvent = { lifecycle: envelope.lifecycle, text: envelope.summary_text, frame, virtual_ts_ms: now };
+    const resolvedText = frame.provenance.transducedVia
+      ? frame.interpretation.primaryCue || envelope.summary_text
+      : envelope.summary_text;
+    let event: DebounceInputEvent = { lifecycle: envelope.lifecycle, text: resolvedText, frame, virtual_ts_ms: now };
     const useConfiguredPolicy = !this.options.extensionHost?.listFacets(perceptionFilterFacet).length;
     if (!useConfiguredPolicy) {
       const result = this.perceptionFilters.ingest(structuredClone(event), session.manifest.channel_id, now);
@@ -340,6 +376,28 @@ export class ChannelProtocolGateway {
     session.debounceState = "BUFFERING";
     session.debounceDueAt = this.clock.nowMs() + session.debounce.debounceWindowMs;
     return { envelope: sanitized, state: session.debounceState };
+  }
+
+  handlePerception(sessionId: string, input: PerceptionEnvelope | Record<string, unknown>): {
+    envelope: GatewayPerceptionEnvelope; state: DebounceState; committed?: DebounceBatch;
+  } {
+    const { session, envelope, audience, claimedAudience, claimedTrust, admission } =
+      this.preparePerceptionContext(sessionId, input);
+    const frame = this.normalizer.normalize(envelope, admission);
+    return this.finalizePerceptionIngest(session, envelope, frame, audience, claimedAudience, claimedTrust);
+  }
+
+  async handlePerceptionAsync(
+    sessionId: string,
+    input: PerceptionEnvelope | Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<{
+    envelope: GatewayPerceptionEnvelope; state: DebounceState; committed?: DebounceBatch;
+  }> {
+    const { session, envelope, audience, claimedAudience, claimedTrust, admission } =
+      this.preparePerceptionContext(sessionId, input);
+    const frame = await this.normalizer.transduceAndNormalize(envelope, admission, signal);
+    return this.finalizePerceptionIngest(session, envelope, frame, audience, claimedAudience, claimedTrust);
   }
 
   flushDebounce(sessionId: string): DebounceBatch | undefined {

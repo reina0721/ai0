@@ -68,6 +68,8 @@ export interface MemoryInput {
   grounding_status?: GroundingStatus;
   invalidated_at_ts?: number | null;
   created_at_rev: number;
+  premise_quantifier?: "all_of" | "any_of";
+  min_premise_count?: number;
 }
 
 export interface StoredMemory extends MemoryInput {
@@ -275,6 +277,16 @@ export interface StorageBeliefRevisionResult {
   readonly replacement_memory?: StoredMemory;
   readonly invalidated_memory_ids: readonly string[];
   readonly affected_commitment_ids: readonly string[];
+}
+
+export interface StoredToolExecutionIdempotency {
+  readonly idempotency_key: string;
+  readonly scope_id: string;
+  readonly tool_name: string;
+  readonly input_hash: string;
+  readonly result_json: string;
+  readonly recorded_at_step: number;
+  readonly created_virtual_ts: number;
 }
 
 export interface CoordinatorStorageOptions {
@@ -596,6 +608,14 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
         )
         .run(memory.memory_id, embeddingJson(embedding, memory.content_text));
 
+      if (memory.premise_quantifier !== undefined || memory.min_premise_count !== undefined) {
+        this.setMemoryPremisePolicy(
+          memory.memory_id,
+          memory.premise_quantifier ?? "all_of",
+          memory.min_premise_count ?? 1
+        );
+      }
+
       const stored = this.getMemoryById(memory.memory_id);
       if (stored === undefined) throw new Error("Inserted memory could not be read back.");
       return stored;
@@ -681,6 +701,87 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     return typeof row?.principal_id === "string" ? row.principal_id : undefined;
   }
 
+  setMemoryPremisePolicy(
+    memoryId: string,
+    quantifier: "all_of" | "any_of",
+    minPremiseCount = 1
+  ): void {
+    const safeMin = Math.max(1, Math.trunc(minPremiseCount));
+    this.#database
+      .prepare(
+        `INSERT INTO memory_premise_policies (memory_id, quantifier, min_premise_count)
+         VALUES (?, ?, ?)
+         ON CONFLICT(memory_id) DO UPDATE SET
+           quantifier = excluded.quantifier,
+           min_premise_count = excluded.min_premise_count`
+      )
+      .run(memoryId, quantifier, safeMin);
+  }
+
+  getMemoryPremisePolicy(memoryId: string): {
+    quantifier: "all_of" | "any_of";
+    min_premise_count: number;
+  } {
+    const row = this.#database
+      .prepare(
+        `SELECT quantifier, min_premise_count FROM memory_premise_policies
+         WHERE memory_id = ?`
+      )
+      .get(memoryId);
+    return {
+      quantifier: row?.quantifier === "any_of" ? "any_of" : "all_of",
+      min_premise_count: Math.max(1, Number(row?.min_premise_count ?? 1))
+    };
+  }
+
+  saveToolExecutionIdempotency(entry: StoredToolExecutionIdempotency): void {
+    this.#database
+      .prepare(
+        `INSERT INTO tool_execution_idempotency (
+          idempotency_key, scope_id, tool_name, input_hash,
+          result_json, recorded_at_step, created_virtual_ts
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(idempotency_key) DO UPDATE SET
+          result_json = excluded.result_json,
+          recorded_at_step = excluded.recorded_at_step`
+      )
+      .run(
+        entry.idempotency_key,
+        entry.scope_id,
+        entry.tool_name,
+        entry.input_hash,
+        entry.result_json,
+        entry.recorded_at_step,
+        entry.created_virtual_ts
+      );
+  }
+
+  getToolExecutionIdempotency(
+    idempotencyKey: string
+  ): StoredToolExecutionIdempotency | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT * FROM tool_execution_idempotency WHERE idempotency_key = ?`
+      )
+      .get(idempotencyKey);
+    return row === undefined
+      ? undefined
+      : plainRow<StoredToolExecutionIdempotency>(row);
+  }
+
+  listToolExecutionIdempotencyByScope(
+    scopeId: string
+  ): StoredToolExecutionIdempotency[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM tool_execution_idempotency
+         WHERE scope_id = ?
+         ORDER BY recorded_at_step ASC`
+      )
+      .all(scopeId);
+    return plainRows<StoredToolExecutionIdempotency>(rows);
+  }
+
   /**
    * Epistemic Belief Revision (distinct from privacy HardForget):
    * Retains historical falsified/superseded memory text for audit, marks `grounding_status = 'disputed_retired'`
@@ -761,6 +862,18 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
            AND parent_id = ?
            AND relation_type IN ('derived_from', 'crystallized_from')`
       );
+      const policyStmt = this.#database.prepare(
+        `SELECT quantifier, min_premise_count FROM memory_premise_policies WHERE memory_id = ?`
+      );
+      const activeParentCountStmt = this.#database.prepare(
+        `SELECT COUNT(*) AS cnt
+         FROM memory_lineage_edges e
+         JOIN memories p ON p.memory_id = e.parent_id
+         WHERE e.child_memory_id = ?
+           AND e.parent_type = 'memory'
+           AND e.relation_type IN ('derived_from', 'crystallized_from')
+           AND p.invalidated_at_ts IS NULL`
+      );
       while (queue.length > 0) {
         const currentParentId = queue.shift()!;
         const childRows = childStmt.all(currentParentId) as Array<{
@@ -769,6 +882,16 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
         for (const row of childRows) {
           const childId = String(row.child_memory_id);
           if (invalidated.has(childId)) continue;
+          const policyRow = policyStmt.get(childId) as
+            | { quantifier?: string; min_premise_count?: number }
+            | undefined;
+          if (policyRow?.quantifier === "any_of") {
+            const minCount = Math.max(1, Number(policyRow.min_premise_count ?? 1));
+            const activeRow = activeParentCountStmt.get(childId) as { cnt?: number } | undefined;
+            if (Number(activeRow?.cnt ?? 0) >= minCount) {
+              continue;
+            }
+          }
           invalidated.add(childId);
           retireStmt.run(input.virtual_ts_ms, input.virtual_ts_ms, childId);
           queue.push(childId);

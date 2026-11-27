@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { VirtualClock } from "@ai0/cognition-core";
 import { ExtensionCoreHost } from "@ai0/extension-core";
-import { perceptionExtractorFacet, perceptionFilterFacet } from "@ai0/perception-core";
+import { perceptionExtractorFacet, perceptionFilterFacet, perceptionTransducerFacet } from "@ai0/perception-core";
 import { expressionMediaTranscoderFacet } from "@ai0/expression-core";
 import { computeSpokenCharOffsetFromAudioMs, ExtMediaSidebandV1Schema } from "@ai0/protocol";
 import {
@@ -282,5 +282,106 @@ describe("Milestone M5 Quality Audit: Dual-Plane Gateway (Channel A Channel Prot
     });
     expect(sandboxClockAdvance.status).toBe(200);
     expect(telemetryFrames).toContain("[SYS]:sandbox:test");
+  });
+
+  it("supports async perception.transducer@1 + dynamic contract recognition on ChannelProtocolGateway", async () => {
+    const extensionHost = new ExtensionCoreHost();
+    extensionHost.mountPackage({
+      manifest: {
+        manifest_version: "2.0.0",
+        extension_id: "test-gateway-transducer",
+        display_name: "Gateway Sensor Transducer",
+        version: "1.0.0",
+        author: "test",
+        carrier_kind: "native_code_plugin",
+        facets: [perceptionTransducerFacet.id],
+        contracts: {
+          defines: [{ kind: "perception_event", namespace: "env", name: "air_quality", version: 1 }]
+        },
+        permissions: {
+          read_blackboard_domains: [],
+          propose_mutation_domains: [],
+          max_audience_scope: "public_all",
+          network_access: false
+        }
+      },
+      activate(scope) {
+        scope.registerDynamicContract({
+          kind: "perception_event",
+          namespace: "env",
+          name: "air_quality",
+          version: 1,
+          jsonSchema: { type: "object", required: ["ppm"] },
+          parse(raw) {
+            const obj = raw as { ppm?: unknown };
+            if (typeof obj?.ppm !== "number") throw new TypeError("ppm required");
+            return obj;
+          }
+        });
+        scope.contributeFacet(perceptionTransducerFacet, {
+          inputModalities: ["sensor"],
+          async transduce(input) {
+            const raw = input.rawPayload as Record<string, unknown>;
+            return {
+              outputModality: "text",
+              primaryCue: `CO2=${String(raw.co2_ppm)}ppm`,
+              data: { ppm: Number(raw.co2_ppm ?? 400) },
+              dynamicEventContract: { namespace: "env", name: "air_quality", version: 1 }
+            };
+          }
+        });
+      }
+    });
+
+    const clock = new VirtualClock({ targetInstance: "sandbox:gw-async", initialVirtualTsMs: 1_000 });
+    const gateway = new ChannelProtocolGateway({ extensionHost, clock, debounceWindowMs: 0 });
+    const secret = "gw-async-secret";
+    const token = issueScopedCapabilityToken(
+      {
+        channel_id: "channel.sensor_hub",
+        plugin_id: "plugin.sensor_hub",
+        principal_id: "owner:local",
+        max_audience_privacy_ceiling: "only_owner",
+        allowed_modalities: ["sensor", "text"],
+        expires_at_ts_ms: 60_000,
+        target: "sandbox"
+      },
+      secret
+    );
+    const ack = gateway.handleInboundHandshake(
+      {
+        protocol_version: "0.1.0",
+        channel_id: "channel.sensor_hub",
+        channel_kind: "webchat",
+        display_name: "Sensor Hub",
+        venue_type: "local_ambient",
+        auth_token: token,
+        current_audience: { scope: "only_owner", member_count: 1 },
+        latency_budget_ms: 200,
+        capabilities: { sensors: ["sensor", "text"], supported_extensions: [], actuators: [] }
+      },
+      secret
+    );
+
+    const parsedExts = gateway.parseEnvelopeExtensions({
+      "env.air_quality@1": { ppm: 615 }
+    });
+    expect(parsedExts.recognized["env.air_quality@1"]).toEqual({ ppm: 615 });
+    expect(parsedExts.degraded_extensions).toEqual([]);
+
+    const out = await gateway.handlePerceptionAsync(ack.session_id, {
+      event_id: "evt_sensor_1",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      lifecycle: "commit",
+      actor: { platform_uid: "sensor:office", display_name: "Office Sensor" },
+      modality: "sensor",
+      summary_text: "",
+      confidence: 1,
+      persistence_hint: "permanent",
+      extensions: { co2_ppm: 615 }
+    });
+    expect(out.state).toBe("COMMITTED");
+    expect(out.committed?.text).toBe("CO2=615ppm");
+    expect(out.envelope.frame?.provenance.dynamicContractId).toBe("perception_event:env.air_quality@1");
   });
 });

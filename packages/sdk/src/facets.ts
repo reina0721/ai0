@@ -2,6 +2,7 @@ import { cognitionResponseContractPoint } from "@ai0/protocol";
 import { defineFacetPoint } from "@ai0/extension-core";
 import {
   cognitionCapabilityPolicyContract,
+  cognitionConsolidationStrategyContract,
   cognitionMemoryProviderContract,
   cognitionProposalPolicyContract,
   cognitionStateDomainContract,
@@ -14,6 +15,7 @@ export const cognitionProposalPolicyFacet = defineFacetPoint(cognitionProposalPo
 export const cognitionMemoryProviderFacet = defineFacetPoint(cognitionMemoryProviderContract);
 export const cognitionStateDomainFacet = defineFacetPoint(cognitionStateDomainContract);
 export const cognitionCapabilityPolicyFacet = defineFacetPoint(cognitionCapabilityPolicyContract);
+export const cognitionConsolidationStrategyFacet = defineFacetPoint(cognitionConsolidationStrategyContract);
 import {
   ConsolePageSchema,
   perceptionSourceContract,
@@ -67,6 +69,10 @@ export interface SdkExpressionMediaTranscoder {
   };
   onUpstreamMediaFrame?(frame: unknown): unknown | Promise<unknown>;
   onDownstreamExpression?(intent: ExpressionEnvelope): unknown | Promise<unknown>;
+  transcodeExpression?(
+    intent: CommunicativeIntentEnvelope,
+    channel: InteractionChannel
+  ): Readonly<Record<string, unknown>> | undefined;
 }
 
 export interface SdkExpressionIntentDecorator {
@@ -238,8 +244,9 @@ export const expressionMediaTranscoderFacet = defineFacetPoint<SdkExpressionMedi
       (value.priority !== undefined && !Number.isFinite(value.priority)) ||
       (value.onUpstreamMediaFrame !== undefined && typeof value.onUpstreamMediaFrame !== "function") ||
       (value.onDownstreamExpression !== undefined && typeof value.onDownstreamExpression !== "function") ||
+      (value.transcodeExpression !== undefined && typeof value.transcodeExpression !== "function") ||
       (value.cursor !== undefined && (!value.cursor?.extension || typeof value.cursor.resolve !== "function")) ||
-      (!value.onUpstreamMediaFrame && !value.onDownstreamExpression && !value.cursor)
+      (!value.onUpstreamMediaFrame && !value.onDownstreamExpression && !value.transcodeExpression && !value.cursor)
     ) {
       throw new TypeError("Invalid expression.media_transcoder facet");
     }

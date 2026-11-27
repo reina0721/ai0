@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
+  AgentCore,
   agentSkillManualFacet,
   resolveTurnActiveTaint,
   runAgentTurn,
   selectAgentModel,
-  type AgentRunResult
+  type AgentRunResult,
+  type ExecutionIdempotencyStorePort
 } from "@ai0/agent-core";
 import {
   AgencyTaskWorker,
@@ -22,6 +24,9 @@ import {
   type CoordinatorStorageMutator,
   type DynamicBlackboardSlotInput,
   type ReadOnlyCognitiveSnapshot,
+  type SerializableTransactionOptions,
+  type SerializableTransactionResult,
+  type StateMutationProposal,
   type StateTransactionBundle,
   type StateTransactionBundleResult,
   type ToolLoopTaskExecutionOptions,
@@ -127,6 +132,8 @@ export interface UniversalAgentEvent {
     readonly namespace: string;
     readonly name: string;
     readonly version: number;
+    readonly targetVersion?: number;
+    readonly upcastToLatest?: boolean;
     readonly payload: unknown;
   };
   readonly lifecycle?: InputLifecycle;
@@ -165,6 +172,7 @@ export interface UniversalAgentOptions {
   readonly host?: ExtensionHostView;
   readonly clock?: VirtualClock;
   readonly coordinatorStorage?: CoordinatorStorageMutator;
+  readonly idempotencyStore?: ExecutionIdempotencyStorePort;
   readonly model?: AgentModelAdapter["model"];
   readonly adapter?: AgentModelAdapter;
   readonly modelPackageId?: string;
@@ -193,6 +201,7 @@ const DEFAULT_SAFETY_INVARIANT =
 export class ComposedAgentRuntime {
   readonly host: ExtensionHostView;
   readonly identityBinder: PrincipalIdentityBinder;
+  readonly agentCore: AgentCore;
   readonly perceptionCore: PerceptionCore;
   readonly cognitionCore: CognitionCore;
   readonly expressionCore: ExpressionCore;
@@ -305,6 +314,11 @@ export class ComposedAgentRuntime {
           saveTurnDecisionTrace: () => {}
         };
 
+    this.agentCore = new AgentCore({
+      host: this.executionHost,
+      idempotencyStore: options.idempotencyStore,
+      defaultModelPackageIds: options.modelPackageIds
+    });
     this.perceptionCore = new PerceptionCore({ clock: this.clock, host: this.host });
     this.cognitionCore = new CognitionCore({
       clock: this.clock,
@@ -376,6 +390,18 @@ export class ComposedAgentRuntime {
 
   submitTransactionBundle(bundle: StateTransactionBundle): StateTransactionBundleResult {
     return this.cognitionCore.submitTransaction(bundle);
+  }
+
+  runSerializableTransaction(
+    txPrefix: string,
+    buildProposals: (snapshot: ReadOnlyCognitiveSnapshot, attempt: number) => readonly StateMutationProposal[],
+    options?: SerializableTransactionOptions
+  ): SerializableTransactionResult {
+    return this.cognitionCore.runSerializableTransaction(txPrefix, buildProposals, options);
+  }
+
+  runConsolidationCycle(signal?: AbortSignal): Promise<readonly CognitionMemoryRecord[]> {
+    return this.cognitionCore.runConsolidationCycle(signal);
   }
 
   reconcileCrashRecovery(): readonly string[] {
@@ -507,30 +533,42 @@ export class ComposedAgentRuntime {
     query: CognitionMemoryQuery,
     signal?: AbortSignal
   ): Promise<readonly CognitionMemoryRecord[]> {
+    const resolvedQuery: CognitionMemoryQuery = {
+      ...query,
+      nowMs: query.nowMs ?? this.clock.nowMs()
+    };
     const mounted = sortFacetsByPriority(this.host.listFacets(cognitionMemoryProviderFacet)).filter((entry) =>
-      this.host.allowsAudienceScope(entry.packageId, query.audienceScope, entry.facetId)
+      this.host.allowsAudienceScope(entry.packageId, resolvedQuery.audienceScope, entry.facetId)
     );
     if (mounted.length === 0) {
-      return this.defaultMemory.retrieve(query, signal);
+      return this.defaultMemory.retrieve(resolvedQuery, signal);
     }
     const merged = new Map<string, CognitionMemoryRecord>();
     for (const entry of mounted) {
-      const records = await this.host.invokeFacetAsync(entry, (provider) => provider.retrieve(query, signal));
+      const records = await this.host.invokeFacetAsync(entry, (provider) => provider.retrieve(resolvedQuery, signal));
       for (const rec of records ?? []) {
-        if (!query.includeInvalidated && rec.validityStatus && rec.validityStatus !== "active") {
+        if (!resolvedQuery.includeInvalidated && rec.validityStatus && rec.validityStatus !== "active") {
           continue;
         }
         if (
-          (query.audienceScope === "only_owner" ||
+          !resolvedQuery.includeInvalidated &&
+          resolvedQuery.nowMs !== undefined &&
+          ((rec.validFromMs !== undefined && resolvedQuery.nowMs < rec.validFromMs) ||
+            (rec.validUntilMs !== undefined && resolvedQuery.nowMs >= rec.validUntilMs))
+        ) {
+          continue;
+        }
+        if (
+          (resolvedQuery.audienceScope === "only_owner" ||
             rec.audienceScope === "public_all" ||
-            rec.audienceScope === query.audienceScope) &&
+            rec.audienceScope === resolvedQuery.audienceScope) &&
           !merged.has(rec.memoryId)
         ) {
           merged.set(rec.memoryId, rec);
         }
       }
     }
-    return [...merged.values()].slice(0, query.limit ?? 8);
+    return [...merged.values()].slice(0, resolvedQuery.limit ?? 8);
   }
 
   async proposeMemory(
@@ -541,6 +579,10 @@ export class ComposedAgentRuntime {
       sourceEventId?: string;
       audienceScope?: AudienceScope;
       basedOnMemoryIds?: readonly string[];
+      premiseQuantifier?: "all_of" | "any_of";
+      minPremiseCount?: number;
+      validFromMs?: number;
+      validUntilMs?: number;
     },
     signal?: AbortSignal
   ): Promise<{ accepted: boolean; reason?: string; record?: CognitionMemoryRecord }> {
@@ -587,7 +629,11 @@ export class ComposedAgentRuntime {
       validityStatus: "active",
       ...(params.basedOnMemoryIds && params.basedOnMemoryIds.length > 0
         ? { basedOnMemoryIds: [...params.basedOnMemoryIds] }
-        : {})
+        : {}),
+      ...(params.premiseQuantifier ? { premiseQuantifier: params.premiseQuantifier } : {}),
+      ...(params.minPremiseCount !== undefined ? { minPremiseCount: params.minPremiseCount } : {}),
+      ...(params.validFromMs !== undefined ? { validFromMs: params.validFromMs } : {}),
+      ...(params.validUntilMs !== undefined ? { validUntilMs: params.validUntilMs } : {})
     };
     const mounted = sortFacetsByPriority(this.host.listFacets(cognitionMemoryProviderFacet)).filter((entry) =>
       this.host.allowsAudienceScope(entry.packageId, audienceScope, entry.facetId)
@@ -742,6 +788,9 @@ export class ComposedAgentRuntime {
     }
 
     this.taskWorker.hydrateFromCoordinator();
+    if (coordinatorResult.paused_task_ids.length > 0) {
+      this.taskWorker.abortOnPremiseInvalidation(coordinatorResult.paused_task_ids, params.reason);
+    }
 
     return {
       accepted: true,
@@ -986,6 +1035,7 @@ export class ComposedAgentRuntime {
   ): Promise<ToolLoopTaskExecutionResult> {
     return this.taskWorker.executeToolLoopTask({
       ...options,
+      idempotencyLedger: options.idempotencyLedger ?? this.agentCore.idempotencyLedger,
       modelPackageId: options.modelPackageId ?? this.modelPackageId ?? this.modelPackageIds?.[0],
       adapter: options.adapter ?? this.adapter,
       model: options.model ?? this.modelFn
@@ -998,6 +1048,7 @@ export class ComposedAgentRuntime {
     }
     this.unsubscribeHostChanges?.();
     this.unsubscribeHostChanges = undefined;
+    this.agentCore.dispose();
     this.perceptionCore.dispose();
     this.cognitionCore.dispose();
     this.expressionCore.dispose();
@@ -1230,12 +1281,14 @@ export class ComposedAgentRuntime {
     }
 
     const hasContinuousStates = Object.keys(snapshot.D2_CONTINUOUS_STATES.values).length > 0;
-    if (extraSlots.length > 0 || hasContinuousStates) {
+    const hasCustomDomains = Boolean(snapshot.custom_domains && Object.keys(snapshot.custom_domains).length > 0);
+    if (extraSlots.length > 0 || hasContinuousStates || hasCustomDomains) {
       const compiledBlackboard = await this.blackboardCompiler.compile(
         snapshot,
         {
           max_total_tokens: this.blackboardMaxTokens,
           tier0_safety_invariants: this.systemInvariant,
+          include_custom_domains: true,
           slots: {
             "slot.tier1_working_turn": { max_tokens: 0, enabled: false },
             "slot.tier1_memory_projection": { max_tokens: 0, enabled: false },
@@ -1293,6 +1346,8 @@ export class ComposedAgentRuntime {
       },
       audience: obs.audienceScope,
       initialTaint: obs.taintLevel,
+      idempotencyLedger: this.agentCore.idempotencyLedger,
+      idempotencyScopeId: `turn:${obs.eventId}`,
       allowsTool: (_packageId: string, name: string, meta: { capabilityRisk?: CapabilityRisk; activeTurnTaint: TaintLevel }) => {
         latestActiveTaint = meta.activeTurnTaint;
         if (this.allowedTools && !this.allowedTools.includes(name)) return false;
@@ -1317,7 +1372,7 @@ export class ComposedAgentRuntime {
       getActiveTaint: () => latestActiveTaint
     };
     try {
-      return await runAgentTurn({
+      return await this.agentCore.runTurn({
         inputs,
         signal,
         maxSteps: this.maxSteps,

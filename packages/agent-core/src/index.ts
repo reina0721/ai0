@@ -1,6 +1,9 @@
 export {
   abortable,
   assembleKernelStep,
+  computeToolIdempotencyKey,
+  computeToolInputDigest,
+  ExecutionIdempotencyLedger,
   fingerprintContent,
   invokeBoundTool,
   KernelAgentRuntime,
@@ -11,6 +14,8 @@ export {
   type AgentDriver,
   type AgentRunResult,
   type ApprovedActionTurn,
+  type ExecutionIdempotencyEntry,
+  type ExecutionIdempotencyStorePort,
   type KernelAgentOptions,
   type KernelDispatchedTool,
   type KernelSelectedModel,

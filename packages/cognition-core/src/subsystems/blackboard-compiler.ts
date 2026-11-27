@@ -33,6 +33,7 @@ export interface BlackboardPolicy {
   slot_token_budgets?: Partial<Record<BlackboardSlotId, number>>;
   slot_content?: Partial<Record<BlackboardSlotId, string>>;
   extra_slots?: readonly DynamicBlackboardSlotInput[];
+  include_custom_domains?: boolean;
   narrative_self_text?: string;
   memory_projection_text?: string;
   last_user_interaction_ts_ms?: number;
@@ -220,6 +221,25 @@ export class BlackboardCompiler {
         disposition: original !== slotText ? "trimmed" : slotText ? "included" : "empty",
         tokens: estimateBlackboardTokens(slotText)
       });
+    }
+    if (!socialMask && policy.include_custom_domains === true && snapshot.custom_domains) {
+      const coveredCustomSlots = new Set((policy.extra_slots ?? []).map((item) => item.slot_id));
+      for (const [domainName, domainState] of Object.entries(snapshot.custom_domains)) {
+        const slotId = `slot.${domainName}`;
+        if (coveredCustomSlots.has(slotId)) continue;
+        const cap = 200;
+        const original = textOf(domainState);
+        if (!original) continue;
+        const slotText = truncate(original, cap);
+        slots.push({
+          slot_id: slotId,
+          content: slotText,
+          locked: false,
+          budget: cap,
+          disposition: original !== slotText ? "trimmed" : "included",
+          tokens: estimateBlackboardTokens(slotText)
+        });
+      }
     }
     if (slots[0]?.slot_id !== "slot.tier0_safety_invariants" || !slots[0].locked) {
       throw new BlackboardBudgetInvariantError("tier0 safety slot must be locked at index 0");

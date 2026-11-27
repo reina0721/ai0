@@ -67,6 +67,14 @@ export class InMemoryCognitiveMemoryProvider implements CognitionMemoryProvider 
       if (!query.includeInvalidated && (record.validityStatus ?? "active") !== "active") {
         continue;
       }
+      if (
+        !query.includeInvalidated &&
+        query.nowMs !== undefined &&
+        ((record.validFromMs !== undefined && query.nowMs < record.validFromMs) ||
+          (record.validUntilMs !== undefined && query.nowMs >= record.validUntilMs))
+      ) {
+        continue;
+      }
       if (!recordVisibleToAudience(record.audienceScope, query.audienceScope)) continue;
       if (tierFilter && !tierFilter.has(record.memoryTier)) continue;
 
@@ -115,7 +123,7 @@ export class InMemoryCognitiveMemoryProvider implements CognitionMemoryProvider 
       });
     }
 
-    // BFS transitive stale-premise invalidation over `basedOnMemoryIds`
+    // BFS transitive stale-premise invalidation over `basedOnMemoryIds` with `all_of` / `any_of` support
     const queue = [input.targetMemoryId];
     const visited = new Set<string>(queue);
     while (queue.length > 0) {
@@ -124,6 +132,18 @@ export class InMemoryCognitiveMemoryProvider implements CognitionMemoryProvider 
         if (memId === input.replacementRecord?.memoryId) continue;
         if ((rec.validityStatus ?? "active") !== "active") continue;
         if (!rec.basedOnMemoryIds?.includes(brokenId)) continue;
+
+        if (rec.premiseQuantifier === "any_of") {
+          const minCount = Math.max(1, rec.minPremiseCount ?? 1);
+          const remainingActivePremises = rec.basedOnMemoryIds.filter((pid) => {
+            const parent = this.records.get(pid);
+            return parent !== undefined && (parent.validityStatus ?? "active") === "active";
+          }).length;
+          if (remainingActivePremises >= minCount) {
+            continue;
+          }
+        }
+
         this.records.set(memId, {
           ...rec,
           validityStatus: "stale_premise_invalidated",

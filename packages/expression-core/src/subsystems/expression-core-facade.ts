@@ -20,11 +20,12 @@ export interface ExpressionCoreOptions {
   readonly clock?: ExpressionClockPort;
   readonly style?: Readonly<EmbodiedPresentationStyle>;
   readonly renderer?: PresentationRenderer;
+  readonly coalesceDuplicateWindowMs?: number;
 }
 
 /**
  * Cohesive ExpressionCore uniting lifecycle, dynamic extension/protocol loading,
- * privacy-fenced vocabulary negotiation, and four-stage delivery grounding receipts.
+ * privacy-fenced vocabulary negotiation, outbound duplicate coalescing, and four-stage delivery grounding receipts.
  */
 export class ExpressionCore {
   readonly host?: ExtensionHostView;
@@ -32,11 +33,19 @@ export class ExpressionCore {
   readonly grounding: GroundingReceiptTracker;
   readonly opportunities?: InteractionOpportunityPool;
 
+  private readonly clock?: ExpressionClockPort;
+  private readonly coalesceDuplicateWindowMs: number;
+  private readonly recentDispatches = new Map<
+    string,
+    { signature: string; atMs: number; dispatch: NegotiatedIntentDispatch }
+  >();
   private active = true;
   private unsubscribeHost?: () => void;
 
   constructor(options: ExpressionCoreOptions = {}) {
     this.host = options.host;
+    this.clock = options.clock;
+    this.coalesceDuplicateWindowMs = Math.max(0, options.coalesceDuplicateWindowMs ?? 0);
     this.negotiator = new RealizerVocabularyNegotiator(options.host, options.style, options.renderer);
     this.grounding = new GroundingReceiptTracker(options.host);
     if (options.clock) {
@@ -87,12 +96,30 @@ export class ExpressionCore {
   negotiateAndRecord(
     intent: CommunicativeIntentEnvelope,
     preferredChannelId?: string
-  ): NegotiatedIntentDispatch {
+  ): NegotiatedIntentDispatch & { coalesced?: boolean } {
     if (!this.active) {
       throw new Error("ExpressionCore is stopped");
     }
     const dispatch = this.negotiator.negotiate(intent, preferredChannelId);
     if (dispatch.status === "dispatched") {
+      if (this.coalesceDuplicateWindowMs > 0 && this.clock) {
+        const nowMs = this.clock.nowMs();
+        const sig = JSON.stringify([
+          dispatch.channelId,
+          intent.intent,
+          intent.utterance ?? "",
+          intent.deliveryConstraints.audienceScope
+        ]);
+        const prior = this.recentDispatches.get(dispatch.channelId);
+        if (prior && prior.signature === sig && nowMs - prior.atMs <= this.coalesceDuplicateWindowMs) {
+          return { ...structuredClone(prior.dispatch), coalesced: true };
+        }
+        this.recentDispatches.set(dispatch.channelId, {
+          signature: sig,
+          atMs: nowMs,
+          dispatch: structuredClone(dispatch)
+        });
+      }
       this.grounding.recordGenerated(dispatch.envelope);
     }
     return dispatch;

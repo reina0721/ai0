@@ -215,6 +215,17 @@ $$
 5. **认识论信念纠偏（`agent.revise_memory` ≠ 隐私 `HardForget`）**：外部错误信息入库 `M1` 并派生子推断记忆 `M2`、规划与后台任务 `T1` 后，经 `agent.revise_memory` 更正为 `M3`——活动检索仅返回 `M3`，审计历史完整保留 `M1`（`superseded`）与 `M2`（`stale_premise_invalidated`），且依赖旧前提的 `T1` 自动挂起为 `premise_invalidated_needs_review`。
 6. **中途崩溃对账恢复与跨端跨模型主体连续性**：模拟进程在 `W2` 任务第 `1/3` 步崩溃重启，新实例自动将僵尸 `running` 任务对账为 `interrupted_recoverable` 并续跑完成；通过 `PrincipalIdentityBinder` 跨 CLI、工程群聊与 WebChat 切换模型适配器时，保持主体连续性、`state_rev` 单调递增、群聊零私密记忆泄漏及 `ExpressionCore` 渠道回执溯源。
 
+## Stage 10 · 全局同构对称封顶、开放世界契约演化、副作用幂等闭环与通用经验结晶
+
+[stage10.test.ts](stage10-open-world-isomorphism-and-evolution/stage10.test.ts) 从开放世界全局元架构视角对四核 `X × Y × Z × DynamicContract` 同构对称性与端到端因果一致性做最终封顶验证：
+
+1. **一等纯契约包清单与动态契约多跳演化（`v1 -> v2 -> v3`）**：支持无伪造业务切面的纯契约包扩展（`manifest.contracts.defines / consumes`），通过 `defineDynamicContractMigration` 构建有界多跳迁移链，旧版 `v1` 传感帧在 `PerceptionCore` 自动升维校验至 `v3`，且网关层 `parseKnownExtensions` 原生识别动态注册契约而不误判降级。
+2. **四核完全同构（`AgentCore` 统一门面 + `agent_capability` 运行期校验 + `agent.execution_guard@1` 震荡熔断 + `ExecutionIdempotencyLedger`）**：`AgentCore` 与其余三核对齐生命周期与动态契约发现；`Z` 轴执行护栏实时拦截模型重复相同工具参数的死循环震荡；跨进程持久化的 `ExecutionIdempotencyLedger` 确保崩溃重启重放已完成的外部写动作时直接复用已核验回执，物理执行次数严格保持 `1` 次。
+3. **感知乱序因果水位线防倒退与表达下行转码聚合**：`SensoryCoverageBucketManager` 以虚拟时钟单调水位线拦截迟到的旧传感器包覆盖最新状态；`ExpressionCore` 接通 `expression.media_transcoder@1` 下行协议合成与动态 `expression_protocol` 校验，并支持时间窗内重复状态播报自动合并。
+4. **有界可串行化 OCC 事务运行器（`runSerializableTransaction`）与 `custom_domains` Schema 强制校验**：在并发 `W1` 抢占推进非阿贝尔状态域版本时自动基于新快照重算提交，消除后台 `W2/W3` 事务饥饿；`cognition.state_domain@1` 声明的 `jsonSchema` 在运行期自动拒绝畸形载荷。
+5. **多前提真值维护（`all_of` vs `any_of` + 时间有效窗）与在途 `W2` 任务 `AbortSignal` 物理熔断**：区分合取依赖（任一前提证伪即级联失效）与独立佐证（仅当剩余有效证据低于 `minPremiseCount` 时才失效），支持 `validUntilMs` 过期自动过滤；当前提记忆被推翻时，立即向在途 `W2` 任务注入 `AbortSignal` 中断执行并记录 `executed_side_effects_count`。
+6. **无伴侣预设内生经验结晶（`cognition.consolidation_strategy@1`）与原生 `custom_domains` 黑板投影**：在零伴侣插件下将重复核验的 `episodic_trace` 自动提炼为带血缘锚定的 `semantic_fact` 通用经验规则，并在底层支撑情节陆续被证伪低于阈值时自动级联退火失效；`BlackboardCompiler` 原生投影 `only_owner` 可见的 `custom_domains` 并在公开受众下自动施加社交面具隔离。
+
 ## 验证与运行
 
 在仓库根目录，使用已安装的工作区依赖运行以下命令。

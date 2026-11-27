@@ -99,6 +99,10 @@ export interface IntrinsicToolRuntimePort {
       memoryTier: CognitionMemoryTier;
       interactionFrame?: string;
       basedOnMemoryIds?: readonly string[];
+      premiseQuantifier?: "all_of" | "any_of";
+      minPremiseCount?: number;
+      validFromMs?: number;
+      validUntilMs?: number;
     },
     signal: AbortSignal
   ): Promise<{ accepted: boolean; reason?: string; record?: CognitionMemoryRecord }>;
@@ -493,7 +497,11 @@ export function createIntrinsicAgentTools(
               enum: ["episodic_trace", "perceptual_hypothesis", "non_literal_frame", "semantic_fact"]
             },
             interactionFrame: { type: "string" },
-            basedOnMemoryIds: { type: "array", items: { type: "string" } }
+            basedOnMemoryIds: { type: "array", items: { type: "string" } },
+            premiseQuantifier: { type: "string", enum: ["all_of", "any_of"] },
+            minPremiseCount: { type: "integer", minimum: 1 },
+            validFromMs: { type: "number" },
+            validUntilMs: { type: "number" }
           }
         },
         parse(raw) {
@@ -508,12 +516,37 @@ export function createIntrinsicAgentTools(
           if (obj.interactionFrame !== undefined && typeof obj.interactionFrame !== "string") {
             throw new TypeError("interactionFrame must be a string");
           }
+          if (
+            obj.premiseQuantifier !== undefined &&
+            obj.premiseQuantifier !== "all_of" &&
+            obj.premiseQuantifier !== "any_of"
+          ) {
+            throw new TypeError("premiseQuantifier must be 'all_of' or 'any_of'");
+          }
+          if (
+            obj.minPremiseCount !== undefined &&
+            (typeof obj.minPremiseCount !== "number" || !Number.isInteger(obj.minPremiseCount) || obj.minPremiseCount < 1)
+          ) {
+            throw new TypeError("minPremiseCount must be a positive integer");
+          }
+          if (obj.validFromMs !== undefined && (typeof obj.validFromMs !== "number" || !Number.isFinite(obj.validFromMs))) {
+            throw new TypeError("validFromMs must be a finite number");
+          }
+          if (obj.validUntilMs !== undefined && (typeof obj.validUntilMs !== "number" || !Number.isFinite(obj.validUntilMs))) {
+            throw new TypeError("validUntilMs must be a finite number");
+          }
           const basedOnMemoryIds = parseOptionalStringArray(obj.basedOnMemoryIds, "basedOnMemoryIds");
           return {
             content: obj.content.trim(),
             memoryTier: tier,
             ...(typeof obj.interactionFrame === "string" ? { interactionFrame: obj.interactionFrame } : {}),
-            ...(basedOnMemoryIds ? { basedOnMemoryIds } : {})
+            ...(basedOnMemoryIds ? { basedOnMemoryIds } : {}),
+            ...(obj.premiseQuantifier !== undefined
+              ? { premiseQuantifier: obj.premiseQuantifier as "all_of" | "any_of" }
+              : {}),
+            ...(typeof obj.minPremiseCount === "number" ? { minPremiseCount: obj.minPremiseCount } : {}),
+            ...(typeof obj.validFromMs === "number" ? { validFromMs: obj.validFromMs } : {}),
+            ...(typeof obj.validUntilMs === "number" ? { validUntilMs: obj.validUntilMs } : {})
           };
         }
       },
@@ -525,6 +558,10 @@ export function createIntrinsicAgentTools(
             memoryTier: CognitionMemoryTier;
             interactionFrame?: string;
             basedOnMemoryIds?: readonly string[];
+            premiseQuantifier?: "all_of" | "any_of";
+            minPremiseCount?: number;
+            validFromMs?: number;
+            validUntilMs?: number;
           };
           const outcome = await port.proposeMemory(parsed, signal);
           if (!outcome.accepted) {
@@ -721,6 +758,17 @@ export class IntrinsicToolsHostOverlay implements ExtensionHostView {
     payload: unknown
   ): T {
     return this.base.validateDynamicContractPayload(kind, namespace, name, version, payload);
+  }
+
+  coerceDynamicContractPayload<T = unknown>(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    fromVersion: number,
+    toVersion: number,
+    payload: unknown
+  ): T {
+    return this.base.coerceDynamicContractPayload(kind, namespace, name, fromVersion, toVersion, payload);
   }
 
   allowsReadDomain(id: string, domain: StateDomain): boolean {

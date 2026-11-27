@@ -176,3 +176,22 @@ export const agentSkillManualContract = {
     return skill;
   }
 } as const;
+
+export const agentExecutionGuardContract = {
+  owner: "agent",
+  name: "execution_guard",
+  version: 1,
+  parse(raw: unknown): AgentExecutionGuard {
+    const guard = raw as AgentExecutionGuard | null;
+    if (
+      !guard ||
+      (guard.priority !== undefined && !Number.isFinite(guard.priority)) ||
+      (guard.beforeToolCall !== undefined && typeof guard.beforeToolCall !== "function") ||
+      (guard.afterToolCall !== undefined && typeof guard.afterToolCall !== "function") ||
+      (!guard.beforeToolCall && !guard.afterToolCall)
+    ) {
+      throw new TypeError("Invalid agent.execution_guard");
+    }
+    return guard;
+  }
+} as const;

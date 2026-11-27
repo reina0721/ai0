@@ -1,5 +1,5 @@
 import { sortFacetsByPriority, type ExtensionHostView } from "@ai0/extension-core";
-import { expressionIntentDecoratorFacet, expressionRealizerFacet } from "./facets.js";
+import { expressionIntentDecoratorFacet, expressionMediaTranscoderFacet, expressionRealizerFacet } from "./facets.js";
 import { CommunicativeIntentEnvelopeSchema, DeliveryReceiptSchema, InteractionChannelSchema, type CommunicativeIntentEnvelope, type ExpressionEnvelope,
   type ExpressionVocabulary, type InteractionChannel, type NegotiatedIntentDispatch } from "@ai0/protocol";
 
@@ -114,10 +114,30 @@ export class RealizerVocabularyNegotiator {
       const supportsEmbodied = Boolean(caps.embodiment_surface);
       const stance = intent.expressiveStance;
       const render = this.renderer;
-      const extensions = supportsEmbodied && render ? render({ intent: structuredClone(intent), channel: structuredClone(channel),
-        style, nonverbalToken: affordance?.kind === "nonverbal" ? affordance.token : undefined,
-        media: structuredClone(this.media.get(channel.channel_id)) }) : {};
+      const extensions: Record<string, unknown> = {
+        ...(supportsEmbodied && render
+          ? render({
+              intent: structuredClone(intent),
+              channel: structuredClone(channel),
+              style,
+              nonverbalToken: affordance?.kind === "nonverbal" ? affordance.token : undefined,
+              media: structuredClone(this.media.get(channel.channel_id))
+            })
+          : {})
+      };
       if (host) {
+        for (const entry of sortFacetsByPriority(host.listFacets(expressionMediaTranscoderFacet))) {
+          if (!entry.implementation.transcodeExpression) continue;
+          if (!host.allowsAudienceScope(entry.packageId, constraints.audienceScope, expressionMediaTranscoderFacet.id)) {
+            continue;
+          }
+          const produced = host.invokeFacet(entry, (facet) =>
+            facet.transcodeExpression!(structuredClone(intent), structuredClone(channel))
+          );
+          if (produced && typeof produced === "object" && !Array.isArray(produced)) {
+            Object.assign(extensions, structuredClone(produced));
+          }
+        }
         for (const [extKey, extPayload] of Object.entries(extensions)) {
           const match = /^([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)\.([a-z][a-z0-9_]*)@(\d+)$/.exec(extKey);
           if (match) {

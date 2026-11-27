@@ -1,4 +1,4 @@
-import type { ExtensionHostView, FacetRegistration } from "@ai0/extension-core";
+import { sortFacetsByPriority, type ExtensionHostView, type FacetRegistration } from "@ai0/extension-core";
 import {
   AgentPromptInputSchema,
   AuthorityRoleSchema,
@@ -24,6 +24,10 @@ import {
 import { abortable } from "../kernel/abortable.js";
 import { fingerprintContent, projectPromptInputs } from "../kernel/authority-lanes.js";
 import {
+  computeToolIdempotencyKey,
+  type ExecutionIdempotencyLedger
+} from "../kernel/idempotency-ledger.js";
+import {
   runKernelAgentTurn,
   type AgentRunResult,
   type ApprovedActionTurn,
@@ -33,6 +37,7 @@ import {
 } from "../kernel/turn-runtime.js";
 import {
   agentContextContributorFacet,
+  agentExecutionGuardFacet,
   agentModelAdapterFacet,
   agentSkillManualFacet,
   agentToolProviderFacet
@@ -51,6 +56,8 @@ export interface AgentBindings {
   modelPackageIds?: readonly string[];
   manualPackageIds?: readonly string[];
   initialTaint?: TaintLevel;
+  idempotencyLedger?: ExecutionIdempotencyLedger;
+  idempotencyScopeId?: string;
   allowsTool?(packageId: string, name: string, meta: AgentToolAuthorizationMeta): boolean;
   toolPriority?(packageId: string): number;
   allowsContext?(packageId: string, audience: AudienceScope): boolean;
@@ -154,7 +161,12 @@ export function resolveTurnActiveTaint(bindings: AgentBindings | undefined, roun
   return active;
 }
 
-function bindTools(bindings?: AgentBindings, activeTurnTaint: TaintLevel = "trusted_owner") {
+function bindTools(
+  bindings?: AgentBindings,
+  activeTurnTaint: TaintLevel = "trusted_owner",
+  step = 0,
+  priorRounds: readonly AgentRound[] = []
+) {
   const tools = new Map<string, BoundTool>();
   if (!bindings) return tools;
   const manuals = selectedManuals(bindings);
@@ -188,14 +200,94 @@ function bindTools(bindings?: AgentBindings, activeTurnTaint: TaintLevel = "trus
       }
     }
     const schema = (value: AgentToolDefinition["inputSchema"]) => ({ jsonSchema: structuredClone(value.jsonSchema), parse: value.parse.bind(value) });
+    const rawExecute = tool.execute.bind(tool);
     const definition: AgentToolDefinition = {
       name,
       description: tool.description,
       ...(tool.capabilityRisk ? { capabilityRisk: tool.capabilityRisk } : {}),
       ...(tool.resultTaint ? { resultTaint: tool.resultTaint } : {}),
+      ...(tool.dynamicCapabilityContract
+        ? { dynamicCapabilityContract: structuredClone(tool.dynamicCapabilityContract) }
+        : {}),
       inputSchema: schema(tool.inputSchema),
       resultSchema: schema(tool.resultSchema),
-      execute: tool.execute.bind(tool),
+      execute: async (call, sig, ctx) => {
+        if (tool.dynamicCapabilityContract) {
+          const { namespace, name: capName, version } = tool.dynamicCapabilityContract;
+          try {
+            bindings.host.validateDynamicContractPayload("agent_capability", namespace, capName, version, call.input);
+          } catch (error) {
+            return {
+              status: "failed",
+              error: `DYNAMIC_CAPABILITY_INVALID:${error instanceof Error ? error.message : String(error)}`
+            };
+          }
+        }
+
+        const guards = sortFacetsByPriority(bindings.host.listFacets(agentExecutionGuardFacet)).filter((g) =>
+          bindings.host.allowsAudienceScope(g.packageId, audience, g.facetId)
+        );
+        for (const guardEntry of guards) {
+          if (!guardEntry.implementation.beforeToolCall) continue;
+          const decision = await bindings.host.invokeFacetAsync(guardEntry, (guard) =>
+            guard.beforeToolCall!({
+              step,
+              call,
+              priorRounds,
+              audience,
+              activeTurnTaint
+            })
+          );
+          if (decision?.action === "block") {
+            return {
+              status: "failed",
+              error: `EXECUTION_GUARD_BLOCKED:${decision.reason}`
+            };
+          }
+        }
+
+        const effectiveRisk: CapabilityRisk = tool.capabilityRisk ?? "high_side_effect_privileged";
+        const useIdempotency = Boolean(
+          bindings.idempotencyLedger && bindings.idempotencyScopeId && effectiveRisk !== "read_only_safe"
+        );
+        let computedKey: { idempotencyKey: string; inputHash: string } | undefined;
+        if (useIdempotency) {
+          computedKey = computeToolIdempotencyKey(bindings.idempotencyScopeId!, name, call.input);
+          const replayed = bindings.idempotencyLedger!.lookupAndCountReplay(computedKey.idempotencyKey);
+          if (replayed) {
+            return replayed.result;
+          }
+        }
+
+        let out = await rawExecute(call, sig, ctx);
+
+        for (const guardEntry of guards) {
+          if (!guardEntry.implementation.afterToolCall) continue;
+          const modified = await bindings.host.invokeFacetAsync(guardEntry, (guard) =>
+            guard.afterToolCall!({
+              step,
+              call,
+              result: out,
+              audience
+            })
+          );
+          if (modified) {
+            out = modified;
+          }
+        }
+
+        if (useIdempotency && computedKey && out.status === "verified") {
+          bindings.idempotencyLedger!.set({
+            idempotencyKey: computedKey.idempotencyKey,
+            scopeId: bindings.idempotencyScopeId!,
+            toolName: name,
+            inputHash: computedKey.inputHash,
+            result: out,
+            recordedAtStep: step
+          });
+        }
+        return out;
+      },
       project: tool.project.bind(tool)
     };
     tools.set(name, {
@@ -349,7 +441,9 @@ export async function assembleAgentStep(options: {
     for (const { call, result } of round.receipts) messages.push({ role: "tool", callId: call.id, name: call.name, result });
   }
   const activeTurnTaint = resolveTurnActiveTaint(bindings, rounds);
-  const bound = !options.disableTools && model.adapter.capabilities?.tools ? bindTools(bindings, activeTurnTaint) : new Map<string, BoundTool>();
+  const bound = !options.disableTools && model.adapter.capabilities?.tools
+    ? bindTools(bindings, activeTurnTaint, step, rounds)
+    : new Map<string, BoundTool>();
   const tools = [...bound.values()].map(({ definition }) => ({
     name: definition.name, description: definition.description, inputSchema: structuredClone(definition.inputSchema.jsonSchema)
   }));

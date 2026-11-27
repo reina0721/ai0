@@ -1,4 +1,9 @@
-import { runAgentTurn, type AgentRunResult, type ApprovedActionTurn } from "@ai0/agent-core";
+import {
+  ExecutionIdempotencyLedger,
+  runAgentTurn,
+  type AgentRunResult,
+  type ApprovedActionTurn
+} from "@ai0/agent-core";
 import { sortFacetsByPriority, type ExtensionHostView } from "@ai0/extension-core";
 import type {
   AgentModelAdapter,
@@ -7,6 +12,7 @@ import type {
   AgentRound,
   AudienceScope,
   CapabilityRisk,
+  CognitionMemoryRecord,
   PrincipalTrust,
   TaintLevel
 } from "@ai0/protocol";
@@ -18,10 +24,12 @@ import type {
   StateMutationProposal
 } from "./cognitive-coordinator.js";
 import {
+  cognitionConsolidationStrategyFacet,
   cognitionContextContributorFacet,
   cognitionSleepOrganFacet,
   selectReadableSnapshot
 } from "./facets.js";
+import type { InMemoryCognitiveMemoryProvider } from "./memory-provider.js";
 
 export interface ReadOnlyCognitiveEventView {
   listEvents(query?: Readonly<Record<string, unknown>>): readonly Readonly<Record<string, unknown>>[];
@@ -90,6 +98,7 @@ export interface AgencyTaskRecord {
     | "cancelled";
   steps: Array<{ step_title: string; actuator_or_tool_id?: string }>;
   based_on_memory_ids?: string[];
+  executed_side_effects_count?: number;
 }
 
 export interface ToolLoopTaskExecutionOptions {
@@ -104,6 +113,8 @@ export interface ToolLoopTaskExecutionOptions {
   readonly allowedTools?: readonly string[];
   readonly highRiskOwnerApproved?: boolean;
   readonly initialTaint?: TaintLevel;
+  readonly idempotencyLedger?: ExecutionIdempotencyLedger;
+  readonly idempotencyScopeId?: string;
   readonly maxSteps?: number;
   readonly signal?: AbortSignal;
   readonly verifyGoal?: (rounds: readonly AgentRound[], signal: AbortSignal) => boolean | Promise<boolean>;
@@ -116,6 +127,7 @@ export interface ToolLoopTaskExecutionResult {
 }
 
 export class AgencyTaskWorker {
+  readonly idempotencyLedger = new ExecutionIdempotencyLedger();
   private readonly tasks = new Map<string, AgencyTaskRecord>();
   private readonly taskControllers = new Map<string, AbortController>();
   private proposalSequence = 0;
@@ -153,6 +165,9 @@ export class AgencyTaskWorker {
         cursor: active.current_step,
         status: active.status,
         steps: active.steps ? [...active.steps] : [{ step_title: active.goal }],
+        ...(active.executed_side_effects_count !== undefined
+          ? { executed_side_effects_count: active.executed_side_effects_count }
+          : {}),
         ...(active.based_on_memory_ids ? { based_on_memory_ids: [...active.based_on_memory_ids] } : {})
       };
       this.tasks.set(taskId, record);
@@ -180,6 +195,30 @@ export class AgencyTaskWorker {
     return { ...task, steps: [...task.steps] };
   }
 
+  /**
+   * Immediately fires AbortSignal on any in-flight `W2` tool/model loop whose supporting memory
+   * premise was invalidated by a concurrent `W1` belief revision, preventing zombie side-effects.
+   */
+  abortOnPremiseInvalidation(
+    taskIds: readonly string[],
+    reason = "Task premise invalidated by belief revision"
+  ): number {
+    let aborted = 0;
+    for (const taskId of taskIds) {
+      const local = this.tasks.get(taskId);
+      if (local) {
+        local.status = "premise_invalidated_needs_review";
+      }
+      const controller = this.taskControllers.get(taskId);
+      if (controller && !controller.signal.aborted) {
+        this.taskControllers.delete(taskId);
+        controller.abort(new DOMException(reason, "AbortError"));
+        aborted++;
+      }
+    }
+    return aborted;
+  }
+
   executeApprovedAction(turn: ApprovedActionTurn) {
     return runAgentTurn(turn);
   }
@@ -198,6 +237,8 @@ export class AgencyTaskWorker {
     const combinedSignal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
     const initialTaint: TaintLevel =
       options.initialTaint ?? (task.principal === "owner_verified" ? "trusted_owner" : "untrusted_external");
+    const activeLedger = options.idempotencyLedger ?? this.idempotencyLedger;
+    const scopeId = options.idempotencyScopeId ?? `w2_task:${task.task_id}`;
 
     try {
       const report = await runAgentTurn({
@@ -215,6 +256,8 @@ export class AgencyTaskWorker {
           manualPackageIds: options.manualPackageIds,
           audience: task.audience_scope,
           initialTaint,
+          idempotencyLedger: activeLedger,
+          idempotencyScopeId: scopeId,
           allowsTool: (_packageId, name, meta) => {
             this.syncTaskStatusFromCoordinator(task.task_id);
             if (this.tasks.get(task.task_id)?.status !== "running") return false;
@@ -233,6 +276,7 @@ export class AgencyTaskWorker {
           }
         },
         onStep: (manifest) => {
+          task.executed_side_effects_count = activeLedger.listByScope(scopeId).length;
           this.syncTaskStatusFromCoordinator(task.task_id);
           if (this.tasks.get(task.task_id)?.status !== "running") return;
           task.cursor = manifest.step + 1;
@@ -242,6 +286,7 @@ export class AgencyTaskWorker {
         }
       });
 
+      task.executed_side_effects_count = activeLedger.listByScope(scopeId).length;
       const verifiedToolCount = report.rounds
         .flatMap((round) => round.receipts)
         .filter((receipt) => receipt.result.status === "verified").length;
@@ -283,6 +328,18 @@ export class AgencyTaskWorker {
         }
       }
       return { report, task: { ...task, steps: [...task.steps] }, verifiedToolCount };
+    } catch (error) {
+      task.executed_side_effects_count = activeLedger.listByScope(scopeId).length;
+      this.syncTaskStatusFromCoordinator(task.task_id);
+      const latestStatus = this.tasks.get(task.task_id)?.status;
+      if (latestStatus === "premise_invalidated_needs_review") {
+        this.publish(
+          task,
+          `[前提记忆已纠正待重审] ${task.goal} (已执行副作用 ${task.executed_side_effects_count} 项)`.slice(0, 100),
+          initialTaint
+        );
+      }
+      throw error;
     } finally {
       if (this.taskControllers.get(task.task_id) === controller) {
         this.taskControllers.delete(task.task_id);
@@ -475,6 +532,9 @@ export class AgencyTaskWorker {
           audience_scope: task.audience_scope,
           capability_risk: task.capability_risk,
           steps: [...task.steps],
+          ...(task.executed_side_effects_count !== undefined
+            ? { executed_side_effects_count: task.executed_side_effects_count }
+            : {}),
           ...(task.based_on_memory_ids ? { based_on_memory_ids: [...task.based_on_memory_ids] } : {})
         }
       }
@@ -538,6 +598,111 @@ export class SleepConsolidationWorker {
       }
     }
     return accepted;
+  }
+
+  /**
+   * Companion-neutral endogenous experience crystallization (`cognition.consolidation_strategy@1`):
+   * Distills recurring active `episodic_trace` records into lineage-backed `semantic_fact` habits/rules
+   * (`premiseQuantifier: "any_of"` + `minPremiseCount`). If supporting episodes are later refuted or forgotten
+   * below `minPremiseCount`, JTMS automatically invalidates the crystallized rule.
+   */
+  async runExperienceConsolidation(
+    memoryProvider: InMemoryCognitiveMemoryProvider,
+    signal?: AbortSignal
+  ): Promise<readonly CognitionMemoryRecord[]> {
+    const host = this.extensionHost;
+    if (!host) return [];
+    const nowMs = this.clock.nowMs();
+    const activeEpisodes = memoryProvider
+      .listAll()
+      .filter(
+        (rec) =>
+          (rec.validityStatus ?? "active") === "active" &&
+          rec.memoryTier === "episodic_trace" &&
+          (rec.validFromMs === undefined || nowMs >= rec.validFromMs) &&
+          (rec.validUntilMs === undefined || nowMs < rec.validUntilMs)
+      );
+    if (activeEpisodes.length === 0) return [];
+
+    const existingSemanticFacts = new Set(
+      memoryProvider
+        .listAll()
+        .filter((rec) => (rec.validityStatus ?? "active") === "active" && rec.memoryTier === "semantic_fact")
+        .map((rec) => `${rec.audienceScope}::${rec.content}`)
+    );
+
+    const crystallized: CognitionMemoryRecord[] = [];
+    for (const entry of sortFacetsByPriority(host.listFacets(cognitionConsolidationStrategyFacet))) {
+      signal?.throwIfAborted();
+      const visibleEpisodes = activeEpisodes.filter((ep) =>
+        host.allowsAudienceScope(entry.packageId, ep.audienceScope, entry.facetId)
+      );
+      if (visibleEpisodes.length === 0) continue;
+
+      const candidates = await host.invokeFacetAsync(entry, (strategy) =>
+        strategy.consolidate({ episodes: structuredClone(visibleEpisodes), nowMs }, signal)
+      );
+      for (const candidate of candidates ?? []) {
+        if (!candidate.content?.trim() || !Array.isArray(candidate.supportingMemoryIds) || !candidate.supportingMemoryIds.length) {
+          continue;
+        }
+        const resolvedAudienceScope: AudienceScope = candidate.audienceScope ?? "only_owner";
+        const dedupeKey = `${resolvedAudienceScope}::${candidate.content.trim()}`;
+        if (existingSemanticFacts.has(dedupeKey)) continue;
+
+        const supporting = candidate.supportingMemoryIds
+          .map((id) => memoryProvider.getById(id))
+          .filter((rec): rec is CognitionMemoryRecord => rec !== undefined && (rec.validityStatus ?? "active") === "active");
+        if (supporting.length !== candidate.supportingMemoryIds.length) continue;
+
+        const sourceEventIds = [...new Set(supporting.flatMap((rec) => rec.sourceEventIds ?? []))];
+        const hasUntrusted = supporting.some((rec) => rec.taintLevel === "untrusted_external");
+        const hasSemiTrusted = supporting.some((rec) => rec.taintLevel === "semi_trusted_friend");
+        const taintLevel: TaintLevel = hasUntrusted
+          ? "untrusted_external"
+          : hasSemiTrusted
+            ? "semi_trusted_friend"
+            : "trusted_owner";
+
+        const verdict = this.coordinator.runSerializableTransaction(`w3_consolidate:${nowMs}:${++this.proposalSequence}`, (snap) => [
+          {
+            proposal_id: `w3_consolidate_d3:${nowMs}:${this.proposalSequence}`,
+            domain: "D3_MEMORY_PROJECTION",
+            base_rev: snap.domain_revs.D3_MEMORY_PROJECTION,
+            source_event_ids: sourceEventIds,
+            based_on_memory_ids: [...candidate.supportingMemoryIds],
+            proposer: "W3",
+            memory_tier: "semantic_fact",
+            epistemic_type: taintLevel === "trusted_owner" ? "observed_firsthand" : "reported_hearsay",
+            taint_level: taintLevel,
+            payload: {
+              operation: "crystallize_experience",
+              content_text: candidate.content.trim()
+            }
+          }
+        ]);
+        if (!verdict.accepted) continue;
+
+        const record: CognitionMemoryRecord = {
+          memoryId: `mem_cryst_${nowMs}_${this.proposalSequence}`,
+          content: candidate.content.trim(),
+          memoryTier: candidate.memoryTier ?? "semantic_fact",
+          audienceScope: resolvedAudienceScope,
+          createdAtMs: nowMs,
+          ...(sourceEventIds.length > 0 ? { sourceEventIds } : {}),
+          taintLevel,
+          validityStatus: "active",
+          basedOnMemoryIds: [...candidate.supportingMemoryIds],
+          premiseQuantifier: "any_of",
+          minPremiseCount: Math.max(1, candidate.minPremiseCount ?? candidate.supportingMemoryIds.length),
+          ...(candidate.validUntilMs !== undefined ? { validUntilMs: candidate.validUntilMs } : {})
+        };
+        memoryProvider.store(record);
+        existingSemanticFacts.add(dedupeKey);
+        crystallized.push(record);
+      }
+    }
+    return crystallized;
   }
 
   runSleepMemoryConsolidation(onAccepted?: (eventId: string) => void): number {

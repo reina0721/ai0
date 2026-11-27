@@ -150,6 +150,91 @@ describe("CoordinatorStorageMutator epistemic belief revision and cross-channel 
     expect(storage.resolveChannelPrincipal("channel.webchat", "sess_abc")).toBe("principal:alice");
     expect(storage.resolveChannelPrincipal("channel.cli", "uid_1000")).toBe("principal:alice");
 
+    // Multi-premise `any_of` + `min_premise_count` lineage policy & tool execution idempotency persistence
+    storage.insertMemoryWithLineage(
+      {
+        memory_id: "mem_ep_a",
+        memory_tier: "episodic_experience",
+        epistemic_type: "observed_firsthand",
+        attributed_principal: "owner:local",
+        visibility_scope: "only_owner",
+        taint_level: "trusted_owner",
+        content_text: "Supporting episode A",
+        created_virtual_ts: 3_000,
+        last_recalled_ts: 3_000,
+        valid_from_virtual_ts: 3_000,
+        created_at_rev: 4
+      },
+      [{ parent_type: "event", parent_id: "evt_verified_correction", relation_type: "derived_from" }]
+    );
+    storage.insertMemoryWithLineage(
+      {
+        memory_id: "mem_ep_b",
+        memory_tier: "episodic_experience",
+        epistemic_type: "observed_firsthand",
+        attributed_principal: "owner:local",
+        visibility_scope: "only_owner",
+        taint_level: "trusted_owner",
+        content_text: "Supporting episode B",
+        created_virtual_ts: 3_100,
+        last_recalled_ts: 3_100,
+        valid_from_virtual_ts: 3_100,
+        created_at_rev: 5
+      },
+      [{ parent_type: "event", parent_id: "evt_verified_correction", relation_type: "derived_from" }]
+    );
+    storage.insertMemoryWithLineage(
+      {
+        memory_id: "mem_cryst_habit",
+        memory_tier: "semantic_fact",
+        epistemic_type: "inferred_hypothesis",
+        attributed_principal: "owner:local",
+        visibility_scope: "only_owner",
+        taint_level: "trusted_owner",
+        content_text: "Crystallized habit backed by any_of(A, B)",
+        created_virtual_ts: 3_200,
+        last_recalled_ts: 3_200,
+        valid_from_virtual_ts: 3_200,
+        created_at_rev: 6,
+        premise_quantifier: "any_of",
+        min_premise_count: 1
+      },
+      [
+        { parent_type: "memory", parent_id: "mem_ep_a", relation_type: "crystallized_from" },
+        { parent_type: "memory", parent_id: "mem_ep_b", relation_type: "crystallized_from" }
+      ]
+    );
+
+    const revEpA = storage.reviseBeliefLineage({
+      target_memory_id: "mem_ep_a",
+      relation: "contradicts",
+      virtual_ts_ms: 4_000,
+      state_rev: 7
+    });
+    expect(revEpA.invalidated_memory_ids).toEqual(["mem_ep_a"]);
+    expect(storage.getMemoryRecord("mem_cryst_habit")?.invalidated_at_ts).toBeNull();
+
+    const revEpB = storage.reviseBeliefLineage({
+      target_memory_id: "mem_ep_b",
+      relation: "contradicts",
+      virtual_ts_ms: 4_500,
+      state_rev: 8
+    });
+    expect(revEpB.invalidated_memory_ids).toEqual(["mem_ep_b", "mem_cryst_habit"]);
+    expect(storage.getMemoryRecord("mem_cryst_habit")?.grounding_status).toBe("disputed_retired");
+
+    storage.saveToolExecutionIdempotency({
+      idempotency_key: "w2_task:t1::billing.charge::1a2b",
+      scope_id: "w2_task:t1",
+      tool_name: "billing.charge",
+      input_hash: "1a2b",
+      result_json: JSON.stringify({ status: "verified", value: { ok: true } }),
+      recorded_at_step: 0,
+      created_virtual_ts: 5_000
+    });
+    expect(storage.getToolExecutionIdempotency("w2_task:t1::billing.charge::1a2b")?.tool_name).toBe("billing.charge");
+    expect(storage.listToolExecutionIdempotencyByScope("w2_task:t1")).toHaveLength(1);
+
     storage.close();
   });
 });
