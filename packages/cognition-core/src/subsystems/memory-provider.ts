@@ -2,7 +2,9 @@ import type {
   AudienceScope,
   CognitionMemoryProvider,
   CognitionMemoryQuery,
-  CognitionMemoryRecord
+  CognitionMemoryRecord,
+  CognitionMemoryRevisionInput,
+  CognitionMemoryRevisionOutcome
 } from "@ai0/protocol";
 
 function recordVisibleToAudience(recordScope: AudienceScope, queryScope: AudienceScope): boolean {
@@ -21,7 +23,8 @@ function tokenizeQuery(text: string): string[] {
 
 /**
  * Built-in L1 in-memory replaceable implementation of `cognition.memory_provider@1`.
- * Enforces AudienceScope privacy visibility and supports hot-swapping with SQLite or vector providers.
+ * Enforces AudienceScope privacy visibility, retains full epistemic provenance,
+ * and supports belief revision with transitive `basedOnMemoryIds` stale-premise invalidation.
  */
 export class InMemoryCognitiveMemoryProvider implements CognitionMemoryProvider {
   readonly priority: number;
@@ -38,7 +41,13 @@ export class InMemoryCognitiveMemoryProvider implements CognitionMemoryProvider 
 
   store(record: CognitionMemoryRecord): void {
     this.records.delete(record.memoryId);
-    this.records.set(record.memoryId, structuredClone(record));
+    this.records.set(
+      record.memoryId,
+      structuredClone({
+        ...record,
+        validityStatus: record.validityStatus ?? "active"
+      })
+    );
     while (this.records.size > this.maxEntries) {
       const oldestKey = this.records.keys().next().value;
       if (oldestKey === undefined) break;
@@ -55,6 +64,9 @@ export class InMemoryCognitiveMemoryProvider implements CognitionMemoryProvider 
 
     const scored: Array<{ record: CognitionMemoryRecord; score: number }> = [];
     for (const record of this.records.values()) {
+      if (!query.includeInvalidated && (record.validityStatus ?? "active") !== "active") {
+        continue;
+      }
       if (!recordVisibleToAudience(record.audienceScope, query.audienceScope)) continue;
       if (tierFilter && !tierFilter.has(record.memoryTier)) continue;
 
@@ -77,6 +89,65 @@ export class InMemoryCognitiveMemoryProvider implements CognitionMemoryProvider 
 
     scored.sort((a, b) => b.score - a.score || b.record.createdAtMs - a.record.createdAtMs);
     return scored.slice(0, limit).map((item) => item.record);
+  }
+
+  revise(input: CognitionMemoryRevisionInput, signal?: AbortSignal): CognitionMemoryRevisionOutcome {
+    signal?.throwIfAborted();
+    const target = this.records.get(input.targetMemoryId);
+    const invalidatedSet = new Set<string>();
+
+    if (target) {
+      const nextStatus = input.relation === "supersedes" ? "superseded" : "refuted_invalidated";
+      this.records.set(input.targetMemoryId, {
+        ...target,
+        validityStatus: nextStatus,
+        ...(input.replacementRecord ? { supersededByMemoryId: input.replacementRecord.memoryId } : {}),
+        invalidatedAtMs: input.revisedAtMs,
+        invalidatedReason: input.reason ?? input.relation
+      });
+      invalidatedSet.add(input.targetMemoryId);
+    }
+
+    if (input.replacementRecord) {
+      this.store({
+        ...input.replacementRecord,
+        validityStatus: "active"
+      });
+    }
+
+    // BFS transitive stale-premise invalidation over `basedOnMemoryIds`
+    const queue = [input.targetMemoryId];
+    const visited = new Set<string>(queue);
+    while (queue.length > 0) {
+      const brokenId = queue.shift()!;
+      for (const [memId, rec] of this.records.entries()) {
+        if (memId === input.replacementRecord?.memoryId) continue;
+        if ((rec.validityStatus ?? "active") !== "active") continue;
+        if (!rec.basedOnMemoryIds?.includes(brokenId)) continue;
+        this.records.set(memId, {
+          ...rec,
+          validityStatus: "stale_premise_invalidated",
+          invalidatedAtMs: input.revisedAtMs,
+          invalidatedReason: `Premise ${brokenId} was ${input.relation === "supersedes" ? "superseded" : "refuted"}`
+        });
+        invalidatedSet.add(memId);
+        if (!visited.has(memId)) {
+          visited.add(memId);
+          queue.push(memId);
+        }
+      }
+    }
+
+    return {
+      updatedTarget: Boolean(target),
+      invalidatedMemoryIds: [...invalidatedSet],
+      ...(input.replacementRecord ? { replacementRecord: structuredClone(input.replacementRecord) } : {})
+    };
+  }
+
+  getById(memoryId: string): CognitionMemoryRecord | undefined {
+    const rec = this.records.get(memoryId);
+    return rec ? structuredClone(rec) : undefined;
   }
 
   listAll(): readonly CognitionMemoryRecord[] {

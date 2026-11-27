@@ -71,11 +71,15 @@ export class RealizerVocabularyNegotiator {
     const host = this.extensionHost;
     const candidates = new Map(this.channels);
     const styles = new Map<string, EmbodiedPresentationStyle>();
-    if (host) for (const entry of host.listFacets(expressionRealizerFacet)) {
-      const channel = entry.implementation.channel;
-      if (!candidates.has(channel.channel_id) && host.allowsAudienceScope(entry.packageId, constraints.audienceScope, expressionRealizerFacet.id)) {
-        candidates.set(channel.channel_id, channel);
-        if (entry.implementation.presentationStyle) styles.set(channel.channel_id, entry.implementation.presentationStyle);
+    const realizerOrigins = new Map<string, { packageId: string; generation: number }>();
+    if (host) {
+      for (const entry of sortFacetsByPriority(host.listFacets(expressionRealizerFacet))) {
+        const channel = entry.implementation.channel;
+        if (!candidates.has(channel.channel_id) && host.allowsAudienceScope(entry.packageId, constraints.audienceScope, expressionRealizerFacet.id)) {
+          candidates.set(channel.channel_id, channel);
+          realizerOrigins.set(channel.channel_id, { packageId: entry.packageId, generation: entry.generation });
+          if (entry.implementation.presentationStyle) styles.set(channel.channel_id, entry.implementation.presentationStyle);
+        }
       }
     }
     for (const channel of candidates.values()) {
@@ -84,14 +88,19 @@ export class RealizerVocabularyNegotiator {
           (constraints.maxLatencyMs !== undefined && channel.latency_budget_ms > constraints.maxLatencyMs)) continue;
       let intent = request;
       let decoratorStyle: EmbodiedPresentationStyle | undefined;
+      const decoratorTraces: Array<{ packageId: string; generation: number }> = [];
       if (host) for (const entry of sortFacetsByPriority(host.listFacets(expressionIntentDecoratorFacet))) {
         if (!host.allowsAudienceScope(entry.packageId, constraints.audienceScope, expressionIntentDecoratorFacet.id)) continue;
         decoratorStyle ??= entry.implementation.presentationStyle;
-        intent = host.invokeFacet(entry, facet => CommunicativeIntentEnvelopeSchema.parse({
+        const decorated = host.invokeFacet(entry, facet => CommunicativeIntentEnvelopeSchema.parse({
           ...facet.decorate(structuredClone(intent), structuredClone(channel)),
           intent: request.intent, intentId: request.intentId, correlationEventId: request.correlationEventId,
           deliveryConstraints: constraints
-        })) ?? intent;
+        }));
+        if (decorated !== undefined) {
+          intent = decorated;
+          decoratorTraces.push({ packageId: entry.packageId, generation: entry.generation });
+        }
       }
       const style = styles.get(channel.channel_id) ?? decoratorStyle ?? this.style;
       const caps = channel.capabilities;
@@ -105,6 +114,21 @@ export class RealizerVocabularyNegotiator {
       const supportsEmbodied = Boolean(caps.embodiment_surface);
       const stance = intent.expressiveStance;
       const render = this.renderer;
+      const extensions = supportsEmbodied && render ? render({ intent: structuredClone(intent), channel: structuredClone(channel),
+        style, nonverbalToken: affordance?.kind === "nonverbal" ? affordance.token : undefined,
+        media: structuredClone(this.media.get(channel.channel_id)) }) : {};
+      if (host) {
+        for (const [extKey, extPayload] of Object.entries(extensions)) {
+          const match = /^([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*)\.([a-z][a-z0-9_]*)@(\d+)$/.exec(extKey);
+          if (match) {
+            const [, ns, name, verStr] = match;
+            const ver = Number(verStr);
+            if (host.getDynamicContract("expression_protocol", ns!, name!, ver)) {
+              host.validateDynamicContractPayload("expression_protocol", ns!, name!, ver, extPayload);
+            }
+          }
+        }
+      }
       const envelope: ExpressionEnvelope = {
         intent_id: intent.intentId, correlation_event_id: intent.correlationEventId, chunk_seq: 0, is_final: true,
         action_type: intent.intent === "communicate" ? (constraints.requireNonVerbalQuiet ? "explicit_silence" : "speak")
@@ -115,11 +139,18 @@ export class RealizerVocabularyNegotiator {
         ...(intent.intent === "actuate" && actuatorId ? { actuator_invocation: {
           actuator_id: actuatorId, arguments: intent.actuationHint?.arguments ?? {}
         } } : {}),
-        extensions: supportsEmbodied && render ? render({ intent: structuredClone(intent), channel: structuredClone(channel),
-          style, nonverbalToken: affordance?.kind === "nonverbal" ? affordance.token : undefined,
-          media: structuredClone(this.media.get(channel.channel_id)) }) : {}
+        extensions
       };
-      return { status: "dispatched", channelId: channel.channel_id, envelope };
+      const origin = realizerOrigins.get(channel.channel_id);
+      return {
+        status: "dispatched",
+        channelId: channel.channel_id,
+        envelope,
+        provenance: {
+          ...(origin ? { realizerPackageId: origin.packageId, realizerGeneration: origin.generation } : {}),
+          decoratorTraces
+        }
+      };
     }
     return { status: "held_pending_compliant_channel", envelope: null };
   }

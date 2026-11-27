@@ -351,6 +351,32 @@ export type ProtocolRpcMessage = z.infer<typeof ProtocolRpcMessageSchema>;
  * Returns the number of character-start timestamps at or before the played time.
  * The timestamp array is expected to be monotonically increasing.
  */
+export const ProvenanceStampSchema = z.object({
+  packageId: z.string().optional(),
+  generation: z.number().int().nonnegative().optional(),
+  sourceEventId: z.string().optional(),
+  channelId: z.string().optional(),
+  principalId: z.string().optional(),
+  principalTrust: z.string().optional(),
+  taintLevel: z.enum(["trusted_owner", "semi_trusted_friend", "untrusted_external"]).optional(),
+  dynamicContractId: z.string().optional()
+});
+export type ProvenanceStamp = z.infer<typeof ProvenanceStampSchema>;
+
+export const PrincipalChannelBindingSchema = z.object({
+  channelId: z.string().min(1),
+  externalSubjectId: z.string().min(1),
+  principalId: z.string().min(1),
+  principalTrust: z.enum([
+    "owner_verified",
+    "bound_friend",
+    "stranger",
+    "environment_sensor",
+    "tool_output"
+  ])
+});
+export type PrincipalChannelBinding = z.infer<typeof PrincipalChannelBindingSchema>;
+
 export function computeSpokenCharOffsetFromAudioMs(
   charOffsetTimestampsMs: ReadonlyArray<number>,
   playedAudioMs: number

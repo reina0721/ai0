@@ -75,7 +75,21 @@ export const InteractionFrameSchema = z.enum([
   "roleplay_fiction",
   "gentle_support"
 ]);
-export type InteractionFrame = z.infer<typeof InteractionFrameSchema>;
+export type WellKnownInteractionFrame = z.infer<typeof InteractionFrameSchema>;
+export const WellKnownInteractionFrameSchema = InteractionFrameSchema;
+export const CustomInteractionFrameSchema = z
+  .string()
+  .regex(/^custom\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/)
+  .refine(
+    (frame): frame is `custom.${string}.${string}` => frame.startsWith("custom."),
+    "Custom interaction frames must match custom.<namespace>.<frame>"
+  );
+export type CustomInteractionFrame = z.infer<typeof CustomInteractionFrameSchema>;
+export const OpenInteractionFrameSchema = z.union([
+  WellKnownInteractionFrameSchema,
+  CustomInteractionFrameSchema
+]);
+export type InteractionFrame = z.infer<typeof OpenInteractionFrameSchema>;
 
 const SandboxTargetInstanceSchema = z
   .string()
@@ -128,7 +142,7 @@ const VerifiableTurnStepsSchema = z.object({
   }),
   step5_strategy_proposal: z.object({
     chosen_strategy: z.string(),
-    interaction_frame: InteractionFrameSchema.optional(),
+    interaction_frame: OpenInteractionFrameSchema.optional(),
     model_reported_rationale: z.object({
       authority_badge: z.literal("MODEL_SELF_REPORT_UNVERIFIED"),
       text: z.string()

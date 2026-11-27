@@ -1,5 +1,11 @@
 import { z } from "zod";
+import type { PrincipalTrust, TaintLevel } from "../control-plane/index.js";
 import type { AudienceScope } from "../core-v0/audience.js";
+import {
+  CustomStateDomainSchema,
+  type CapabilityRisk,
+  type CustomStateDomain
+} from "../plugin-manifests/index.js";
 
 export const StateTopologySchema = z.enum(["bipolar_tanh", "unipolar_sigmoid"]);
 export const ContinuousStateDescriptorSchema = z.object({
@@ -73,6 +79,18 @@ export type CognitionMemoryTier =
   | "non_literal_frame"
   | "semantic_fact";
 
+export type CognitionMemoryValidityStatus =
+  | "active"
+  | "superseded"
+  | "refuted_invalidated"
+  | "stale_premise_invalidated";
+
+export type CognitionEpistemicType =
+  | "observed_firsthand"
+  | "reported_hearsay"
+  | "inferred_hypothesis"
+  | "imagined_narrative";
+
 export interface CognitionMemoryRecord {
   readonly memoryId: string;
   readonly content: string;
@@ -80,6 +98,18 @@ export interface CognitionMemoryRecord {
   readonly audienceScope: AudienceScope;
   readonly createdAtMs: number;
   readonly score?: number;
+  readonly sourceEventIds?: readonly string[];
+  readonly basedOnMemoryIds?: readonly string[];
+  readonly premiseQuantifier?: "all_of" | "any_of";
+  readonly minPremiseCount?: number;
+  readonly validFromMs?: number;
+  readonly validUntilMs?: number;
+  readonly epistemicType?: CognitionEpistemicType;
+  readonly taintLevel?: TaintLevel;
+  readonly validityStatus?: CognitionMemoryValidityStatus;
+  readonly supersededByMemoryId?: string;
+  readonly invalidatedAtMs?: number;
+  readonly invalidatedReason?: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
@@ -88,6 +118,22 @@ export interface CognitionMemoryQuery {
   readonly audienceScope: AudienceScope;
   readonly limit?: number;
   readonly tiers?: readonly CognitionMemoryTier[];
+  readonly includeInvalidated?: boolean;
+  readonly nowMs?: number;
+}
+
+export interface CognitionMemoryRevisionInput {
+  readonly targetMemoryId: string;
+  readonly relation: "supersedes" | "contradicts";
+  readonly replacementRecord?: CognitionMemoryRecord;
+  readonly reason?: string;
+  readonly revisedAtMs: number;
+}
+
+export interface CognitionMemoryRevisionOutcome {
+  readonly updatedTarget: boolean;
+  readonly invalidatedMemoryIds: readonly string[];
+  readonly replacementRecord?: CognitionMemoryRecord;
 }
 
 export interface CognitionMemoryProvider {
@@ -97,6 +143,10 @@ export interface CognitionMemoryProvider {
     signal?: AbortSignal
   ): readonly CognitionMemoryRecord[] | Promise<readonly CognitionMemoryRecord[]>;
   store?(record: CognitionMemoryRecord, signal?: AbortSignal): void | Promise<void>;
+  revise?(
+    input: CognitionMemoryRevisionInput,
+    signal?: AbortSignal
+  ): CognitionMemoryRevisionOutcome | Promise<CognitionMemoryRevisionOutcome>;
 }
 
 export const cognitionMemoryProviderContract = {
@@ -109,9 +159,81 @@ export const cognitionMemoryProviderContract = {
       !value ||
       typeof value.retrieve !== "function" ||
       (value.store !== undefined && typeof value.store !== "function") ||
+      (value.revise !== undefined && typeof value.revise !== "function") ||
       (value.priority !== undefined && !Number.isFinite(value.priority))
     ) {
       throw new TypeError("Invalid cognition.memory_provider facet");
+    }
+    return value;
+  }
+} as const;
+
+export interface CognitionStateDomainDeclaration<S = unknown> {
+  readonly domain: CustomStateDomain;
+  readonly description?: string;
+  readonly jsonSchema?: Readonly<Record<string, unknown>>;
+  readonly initialState: S;
+  readonly acceptsOlderRevision?: (proposal: {
+    readonly domain: string;
+    readonly base_rev: number;
+    readonly payload: unknown;
+  }) => boolean;
+  reduce(
+    snapshot: S,
+    proposal: {
+      readonly domain: string;
+      readonly base_rev: number;
+      readonly source_event_ids?: readonly string[];
+      readonly payload: unknown;
+    }
+  ): { readonly value: S } | { readonly reason: string };
+}
+
+export const cognitionStateDomainContract = {
+  owner: "cognition",
+  name: "state_domain",
+  version: 1,
+  parse(raw: unknown): CognitionStateDomainDeclaration {
+    const value = raw as CognitionStateDomainDeclaration | null;
+    if (
+      !value ||
+      !CustomStateDomainSchema.safeParse(value.domain).success ||
+      typeof value.reduce !== "function" ||
+      (value.acceptsOlderRevision !== undefined && typeof value.acceptsOlderRevision !== "function") ||
+      (value.jsonSchema !== undefined &&
+        (typeof value.jsonSchema !== "object" || value.jsonSchema === null || Array.isArray(value.jsonSchema)))
+    ) {
+      throw new TypeError("Invalid cognition.state_domain facet");
+    }
+    return value;
+  }
+} as const;
+
+export type CapabilityPolicyVote = "ALLOW" | "ALLOW_REDACTED" | "REQUIRE_OWNER_CONFIRM" | "DENY";
+
+export interface CognitionCapabilityPolicy {
+  readonly priority?: number;
+  evaluate(context: {
+    readonly principalTrust: PrincipalTrust;
+    readonly audienceScope: AudienceScope;
+    readonly capabilityRisk: CapabilityRisk;
+    readonly triggerTaintLevel?: TaintLevel;
+    readonly toolName?: string;
+  }): { readonly decision: CapabilityPolicyVote; readonly reason?: string };
+}
+
+export const cognitionCapabilityPolicyContract = {
+  owner: "cognition",
+  name: "capability_policy",
+  version: 1,
+  parse(raw: unknown): CognitionCapabilityPolicy {
+    const value = raw as CognitionCapabilityPolicy | null;
+    if (
+      !value ||
+      typeof value.evaluate !== "function" ||
+      (value.priority !== undefined && !Number.isFinite(value.priority))
+    ) {
+      throw new TypeError("Invalid cognition.capability_policy facet");
     }
     return value;
   }

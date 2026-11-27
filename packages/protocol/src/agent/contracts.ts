@@ -20,10 +20,36 @@ export interface AgentToolDefinition {
   description: string;
   capabilityRisk?: CapabilityRisk;
   resultTaint?: TaintLevel;
+  dynamicCapabilityContract?: {
+    readonly namespace: string;
+    readonly name: string;
+    readonly version: number;
+  };
   inputSchema: AgentValueSchema;
   resultSchema: AgentValueSchema;
   execute(call: AgentToolCall, signal: AbortSignal, context?: { audience: AudienceScope }): AgentToolResult | Promise<AgentToolResult>;
   project(value: unknown): unknown;
+}
+
+export type AgentExecutionGuardDecision =
+  | { readonly action: "allow" }
+  | { readonly action: "block"; readonly reason: string };
+
+export interface AgentExecutionGuard {
+  readonly priority?: number;
+  beforeToolCall?(context: {
+    readonly step: number;
+    readonly call: AgentToolCall;
+    readonly priorRounds: readonly AgentRound[];
+    readonly audience: AudienceScope;
+    readonly activeTurnTaint: TaintLevel;
+  }): AgentExecutionGuardDecision | Promise<AgentExecutionGuardDecision>;
+  afterToolCall?(context: {
+    readonly step: number;
+    readonly call: AgentToolCall;
+    readonly result: AgentToolResult;
+    readonly audience: AudienceScope;
+  }): AgentToolResult | void | Promise<AgentToolResult | void>;
 }
 export interface AgentToolAdvertisement {
   name: string;

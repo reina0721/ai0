@@ -9,3 +9,4 @@ export * from "./blackboard-compiler.js";
 export * from "./safety-guard.js";
 export * from "./umo-session-router.js";
 export * from "./worker-loops.js";
+export * from "./cognition-core-facade.js";

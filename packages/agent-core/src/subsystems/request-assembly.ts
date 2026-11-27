@@ -48,9 +48,11 @@ export interface AgentToolAuthorizationMeta {
 export interface AgentBindings {
   host: ExtensionHostView;
   modelPackageId?: string;
+  modelPackageIds?: readonly string[];
   manualPackageIds?: readonly string[];
   initialTaint?: TaintLevel;
   allowsTool?(packageId: string, name: string, meta: AgentToolAuthorizationMeta): boolean;
+  toolPriority?(packageId: string): number;
   allowsContext?(packageId: string, audience: AudienceScope): boolean;
   contextRole?(packageId: string): AuthorityRole;
   contextPriority?(packageId: string): number;
@@ -68,24 +70,52 @@ export interface AgentOptions extends Omit<KernelAgentOptions, "stepCompiler"> {
 }
 
 export function selectAgentModel(bindings: AgentBindings | undefined, direct: AgentModelAdapter | undefined): KernelSelectedModel {
-  if (!bindings?.modelPackageId) {
+  const candidateIds = [
+    ...(bindings?.modelPackageId ? [bindings.modelPackageId] : []),
+    ...(bindings?.modelPackageIds ?? [])
+  ];
+  if (candidateIds.length === 0) {
     if (!direct) throw new Error("Select an agent model adapter");
     return { adapter: direct, identity: { id: "direct" }, live: () => true, lease: undefined };
   }
   if (direct) throw new Error("Select one model adapter per run");
-  const entries = bindings.host.listFacets(agentModelAdapterFacet).filter(entry => entry.packageId === bindings.modelPackageId);
-  const entry = entries[0];
-  if (entries.length !== 1 || !entry) throw new Error(`Model adapter unavailable or ambiguous: ${bindings.modelPackageId}`);
-  const live = () => bindings.host.listFacets(agentModelAdapterFacet).includes(entry) &&
-    bindings.host.allowsAudienceScope(entry.packageId, bindings.audience ?? "only_owner", entry.facetId);
-  if (!live()) throw new Error("Model adapter audience denied");
-  return {
-    adapter: agentModelAdapterFacet.parse(entry.implementation),
-    identity: { id: entry.packageId, generation: entry.generation },
-    live,
-    lease: () => bindings.host.leaseFacet(entry),
-    allowsNetwork: () => bindings.host.allowsNetworkAccess(entry.packageId)
-  };
+  const host = bindings!.host;
+  const audience = bindings!.audience ?? "only_owner";
+  const allEntries = host.listFacets(agentModelAdapterFacet);
+
+  if (candidateIds.length === 1) {
+    const targetId = candidateIds[0]!;
+    const entries = allEntries.filter(entry => entry.packageId === targetId);
+    const entry = entries[0];
+    if (entries.length !== 1 || !entry) throw new Error(`Model adapter unavailable or ambiguous: ${targetId}`);
+    const live = () => host.listFacets(agentModelAdapterFacet).includes(entry) &&
+      host.allowsAudienceScope(entry.packageId, bindings!.audience ?? "only_owner", entry.facetId);
+    if (!live()) throw new Error("Model adapter audience denied");
+    return {
+      adapter: agentModelAdapterFacet.parse(entry.implementation),
+      identity: { id: entry.packageId, generation: entry.generation },
+      live,
+      lease: () => host.leaseFacet(entry),
+      allowsNetwork: () => host.allowsNetworkAccess(entry.packageId)
+    };
+  }
+
+  for (const targetId of candidateIds) {
+    const entries = allEntries.filter(entry => entry.packageId === targetId);
+    if (entries.length !== 1) continue;
+    const entry = entries[0]!;
+    const live = () => host.listFacets(agentModelAdapterFacet).includes(entry) &&
+      host.allowsAudienceScope(entry.packageId, bindings!.audience ?? "only_owner", entry.facetId);
+    if (!live()) continue;
+    return {
+      adapter: agentModelAdapterFacet.parse(entry.implementation),
+      identity: { id: entry.packageId, generation: entry.generation },
+      live,
+      lease: () => host.leaseFacet(entry),
+      allowsNetwork: () => host.allowsNetworkAccess(entry.packageId)
+    };
+  }
+  throw new Error(`No live authorized model adapter available in fallback chain: ${candidateIds.join(", ")}`);
 }
 
 function selectedManuals(bindings: AgentBindings) {
@@ -144,7 +174,19 @@ function bindTools(bindings?: AgentBindings, activeTurnTaint: TaintLevel = "trus
   const add = (entry: BoundTool["entry"], tool: AgentToolDefinition, mounted: () => boolean) => {
     const { name } = tool;
     if (!allowed(entry.packageId, tool)) return;
-    if (tools.has(name)) throw new Error(`Ambiguous visible tool: ${name}`);
+    if (tools.has(name)) {
+      const existing = tools.get(name)!;
+      if (bindings.toolPriority) {
+        const candidatePrio = bindings.toolPriority(entry.packageId);
+        const existingPrio = bindings.toolPriority(existing.entry.packageId);
+        if (candidatePrio > existingPrio) return;
+        if (candidatePrio === existingPrio) {
+          throw new Error(`Ambiguous visible tool: ${name}`);
+        }
+      } else {
+        throw new Error(`Ambiguous visible tool: ${name}`);
+      }
+    }
     const schema = (value: AgentToolDefinition["inputSchema"]) => ({ jsonSchema: structuredClone(value.jsonSchema), parse: value.parse.bind(value) });
     const definition: AgentToolDefinition = {
       name,

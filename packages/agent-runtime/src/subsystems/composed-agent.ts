@@ -11,27 +11,33 @@ import {
   AuthoritativeStateCoordinator,
   BlackboardCompiler,
   CapabilityPolicyGate,
+  CognitionCore,
   cognitionContextContributorFacet,
   cognitionMemoryProviderFacet,
   InMemoryCognitiveMemoryProvider,
   selectReadableSnapshot,
   VirtualClock,
   type AgencyTaskRecord,
+  type BeliefRevisionResult,
+  type CoordinatorStorageMutator,
   type DynamicBlackboardSlotInput,
   type ReadOnlyCognitiveSnapshot,
+  type StateTransactionBundle,
+  type StateTransactionBundleResult,
   type ToolLoopTaskExecutionOptions,
   type ToolLoopTaskExecutionResult
 } from "@ai0/cognition-core";
 import { ExtensionCoreHost, sortFacetsByPriority, type ExtensionHostView } from "@ai0/extension-core";
 import {
+  ExpressionCore,
   GroundingReceiptTracker,
   RealizerVocabularyNegotiator
 } from "@ai0/expression-core";
 import {
+  PerceptionCore,
   PerceptionFilterPipeline,
   SensoryCoverageBucketManager,
   subscribePerceptionSource,
-  type DebounceInputEvent,
   type InputLifecycle
 } from "@ai0/perception-core";
 import type {
@@ -47,6 +53,8 @@ import type {
   DeliveryReceipt,
   InteractionChannel,
   NegotiatedIntentDispatch,
+  PerceptionEnvelope,
+  PrincipalChannelBinding,
   PrincipalTrust,
   TaintLevel
 } from "@ai0/protocol";
@@ -63,16 +71,66 @@ import {
   type SubagentDelegationResult
 } from "./intrinsic-tools.js";
 
+/**
+ * Cross-channel & cross-device PrincipalIdentityBinder:
+ * Resolves channel-local `externalSubjectId` tokens to canonical `principalId` + `principalTrust`
+ * so the same subject maintains unbroken causal identity across CLI, group chats, webchat, and model switches.
+ */
+export class PrincipalIdentityBinder {
+  private readonly bindings = new Map<string, PrincipalChannelBinding>();
+
+  bind(params: {
+    channelId: string;
+    externalSubjectId: string;
+    principalId: string;
+    principalTrust: PrincipalTrust;
+    boundAtMs: number;
+  }): PrincipalChannelBinding {
+    const key = JSON.stringify([params.channelId, params.externalSubjectId]);
+    const record: PrincipalChannelBinding = Object.freeze({
+      channelId: params.channelId,
+      externalSubjectId: params.externalSubjectId,
+      principalId: params.principalId,
+      principalTrust: params.principalTrust,
+      boundAtMs: params.boundAtMs
+    });
+    this.bindings.set(key, record);
+    return record;
+  }
+
+  unbind(channelId: string, externalSubjectId: string): boolean {
+    return this.bindings.delete(JSON.stringify([channelId, externalSubjectId]));
+  }
+
+  resolve(channelId: string, externalSubjectId: string): PrincipalChannelBinding | undefined {
+    return this.bindings.get(JSON.stringify([channelId, externalSubjectId]));
+  }
+
+  listBindings(principalId?: string): readonly PrincipalChannelBinding[] {
+    const all = [...this.bindings.values()];
+    return principalId ? all.filter((item) => item.principalId === principalId) : all;
+  }
+}
+
 export interface UniversalAgentEvent {
   readonly eventId?: string;
   readonly channelId?: string;
+  readonly externalSubjectId?: string;
   readonly principalId?: string;
   readonly principalTrust?: PrincipalTrust;
   readonly audienceScope?: AudienceScope;
   readonly taintLevel?: TaintLevel;
   readonly interactionFrame?: string;
+  readonly modality?: string;
+  readonly rawPayload?: unknown;
+  readonly dynamicEventContract?: {
+    readonly namespace: string;
+    readonly name: string;
+    readonly version: number;
+    readonly payload: unknown;
+  };
   readonly lifecycle?: InputLifecycle;
-  readonly text: string;
+  readonly text?: string;
   readonly nowMs?: number;
 }
 
@@ -84,6 +142,8 @@ export interface AdmittedAgentObservation {
   readonly audienceScope: AudienceScope;
   readonly taintLevel: TaintLevel;
   readonly interactionFrame?: string;
+  readonly dynamicContractId?: string;
+  readonly provenance?: Readonly<Record<string, unknown>>;
   readonly text: string;
   readonly observedAtMs: number;
 }
@@ -104,9 +164,11 @@ export type AgentDeliveryOutcome =
 export interface UniversalAgentOptions {
   readonly host?: ExtensionHostView;
   readonly clock?: VirtualClock;
+  readonly coordinatorStorage?: CoordinatorStorageMutator;
   readonly model?: AgentModelAdapter["model"];
   readonly adapter?: AgentModelAdapter;
   readonly modelPackageId?: string;
+  readonly modelPackageIds?: readonly string[];
   readonly modelId?: string;
   readonly profile?: AgentOutputProfile;
   readonly systemInvariant?: string;
@@ -130,6 +192,10 @@ const DEFAULT_SAFETY_INVARIANT =
 
 export class ComposedAgentRuntime {
   readonly host: ExtensionHostView;
+  readonly identityBinder: PrincipalIdentityBinder;
+  readonly perceptionCore: PerceptionCore;
+  readonly cognitionCore: CognitionCore;
+  readonly expressionCore: ExpressionCore;
   readonly defaultMemory: InMemoryCognitiveMemoryProvider;
   readonly clock: VirtualClock;
   readonly coordinator: AuthoritativeStateCoordinator;
@@ -155,6 +221,7 @@ export class ComposedAgentRuntime {
   private autoRecallMemories: boolean;
   private readonly blackboardMaxTokens: number;
   private modelPackageId?: string;
+  private modelPackageIds?: readonly string[];
   private adapter?: AgentModelAdapter;
   private modelFn?: AgentModelAdapter["model"];
   private profile?: AgentOutputProfile;
@@ -176,32 +243,20 @@ export class ComposedAgentRuntime {
     string,
     { event_id: string; redacted_at_ts_ms: null; principal_trust: PrincipalTrust; summary_text: string }
   >();
-  private readonly pendingDebounceMeta = new Map<string, Omit<AdmittedAgentObservation, "text" | "observedAtMs">>();
   private readonly sourceUnsubscribers: Array<() => void> = [];
+  private unsubscribeHostChanges?: () => void;
 
   constructor(options: UniversalAgentOptions = {}) {
     this.host = options.host ?? new ExtensionCoreHost();
-    this.defaultMemory = new InMemoryCognitiveMemoryProvider();
+    this.identityBinder = new PrincipalIdentityBinder();
     this.clock = options.clock ?? new VirtualClock({ targetInstance: "sandbox:agent-runtime", initialVirtualTsMs: 0 });
-    this.policyGate = new CapabilityPolicyGate();
-    this.coordinator = new AuthoritativeStateCoordinator(
-      this.clock,
-      {
-        getEventById: (id) => this.storedEvents.get(id),
-        saveTurnDecisionTrace: () => {}
-      },
-      this.host
-    );
-    this.blackboardCompiler = new BlackboardCompiler(this.clock, {
-      listEvents: () => []
-    });
     this.intrinsicToolsEnabled = options.enableIntrinsicTools === true;
     this.autoRecallMemories = options.autoRecallMemories !== false;
     this.blackboardMaxTokens = Math.max(256, options.blackboardMaxTokens ?? 1600);
 
     const intrinsicTools = createIntrinsicAgentTools(
       {
-        updatePlan: (goal, steps) => this.updatePlan(goal, steps),
+        updatePlan: (goal, steps, basedOnMemoryIds) => this.updatePlan(goal, steps, basedOnMemoryIds),
         delegateSubagent: (params, signal) => this.delegateSubagent(params, signal),
         listSkills: (query) =>
           this.listAvailableSkills(this.currentTurnContext?.observation.audienceScope ?? "only_owner", query),
@@ -217,7 +272,8 @@ export class ComposedAgentRuntime {
             audienceScope: obs?.audienceScope ?? "only_owner",
             capabilityRisk: params.capabilityRisk ?? "low_read_and_scoped_write",
             triggerTaintLevel: activeTaint,
-            steps: params.steps
+            steps: params.steps,
+            basedOnMemoryIds: params.basedOnMemoryIds
           });
         },
         recallMemories: (query, signal) =>
@@ -228,7 +284,8 @@ export class ComposedAgentRuntime {
             },
             signal
           ),
-        proposeMemory: (params, signal) => this.proposeMemory(params, signal)
+        proposeMemory: (params, signal) => this.proposeMemory(params, signal),
+        reviseMemory: (params, signal) => this.reviseMemory(params, signal)
       },
       { subagentCapabilityRisk: options.subagentCapabilityRisk }
     );
@@ -238,14 +295,44 @@ export class ComposedAgentRuntime {
       intrinsicTools
     );
 
-    this.taskWorker = new AgencyTaskWorker(this.coordinator, this.policyGate, this.clock, this.executionHost);
-    this.perceptionPipeline = new PerceptionFilterPipeline(this.host);
-    this.sensoryCoverage = new SensoryCoverageBucketManager(this.clock);
-    this.negotiator = new RealizerVocabularyNegotiator(this.host);
-    this.grounding = new GroundingReceiptTracker(this.host);
+    const backingStorage: CoordinatorStorageMutator = options.coordinatorStorage
+      ? {
+          ...options.coordinatorStorage,
+          getEventById: (id) => options.coordinatorStorage!.getEventById(id) ?? this.storedEvents.get(id)
+        }
+      : {
+          getEventById: (id) => this.storedEvents.get(id),
+          saveTurnDecisionTrace: () => {}
+        };
+
+    this.perceptionCore = new PerceptionCore({ clock: this.clock, host: this.host });
+    this.cognitionCore = new CognitionCore({
+      clock: this.clock,
+      host: this.executionHost,
+      storage: backingStorage
+    });
+    this.expressionCore = new ExpressionCore({ host: this.host, clock: this.clock });
+
+    const maybeCoreHost = this.host as Partial<ExtensionCoreHost>;
+    if (typeof maybeCoreHost.onDidChange === "function") {
+      this.unsubscribeHostChanges = maybeCoreHost.onDidChange(() => {
+        this.cognitionCore.coordinator.synchronizeCustomDomains();
+      });
+    }
+
+    this.defaultMemory = this.cognitionCore.defaultMemory;
+    this.policyGate = this.cognitionCore.policyGate;
+    this.coordinator = this.cognitionCore.coordinator;
+    this.blackboardCompiler = this.cognitionCore.blackboard;
+    this.taskWorker = this.cognitionCore.taskWorker;
+    this.perceptionPipeline = this.perceptionCore.filters;
+    this.sensoryCoverage = this.perceptionCore.coverage;
+    this.negotiator = this.expressionCore.negotiator;
+    this.grounding = this.expressionCore.grounding;
 
     this.toolRoutingMode = options.toolRoutingMode ?? "direct_inline";
     this.modelPackageId = options.modelPackageId;
+    this.modelPackageIds = options.modelPackageIds;
     this.adapter = options.adapter;
     this.modelFn = options.model;
     this.profile = options.profile;
@@ -273,6 +360,30 @@ export class ComposedAgentRuntime {
       },
       this.clock.nowMs()
     );
+  }
+
+  bindPrincipal(params: {
+    channelId: string;
+    externalSubjectId: string;
+    principalId: string;
+    principalTrust: PrincipalTrust;
+  }): PrincipalChannelBinding {
+    return this.identityBinder.bind({
+      ...params,
+      boundAtMs: this.clock.nowMs()
+    });
+  }
+
+  submitTransactionBundle(bundle: StateTransactionBundle): StateTransactionBundleResult {
+    return this.cognitionCore.submitTransaction(bundle);
+  }
+
+  reconcileCrashRecovery(): readonly string[] {
+    return this.cognitionCore.restoreAndReconcile();
+  }
+
+  resumeAsyncGoalTask(taskId: string): AgencyTaskRecord {
+    return this.taskWorker.resumeInterruptedTask(taskId);
   }
 
   setToolRoutingMode(mode: ToolRoutingMode): void {
@@ -343,13 +454,19 @@ export class ComposedAgentRuntime {
     return this.activePlan ? structuredClone(this.activePlan) : null;
   }
 
-  updatePlan(goal: string | undefined, steps: readonly AgentPlanStep[]): AgentActivePlan {
+  updatePlan(
+    goal: string | undefined,
+    steps: readonly AgentPlanStep[],
+    basedOnMemoryIds?: readonly string[]
+  ): AgentActivePlan {
     const planId = this.activePlan?.planId ?? `plan_${randomUUID()}`;
     const resolvedGoal = goal ?? this.activePlan?.goal ?? steps[0]?.title ?? "Active plan";
+    const resolvedBasedOn = basedOnMemoryIds ?? this.activePlan?.basedOnMemoryIds;
     const nextPlan: AgentActivePlan = {
       planId,
       goal: resolvedGoal,
       steps: structuredClone(steps),
+      ...(resolvedBasedOn && resolvedBasedOn.length > 0 ? { basedOnMemoryIds: [...resolvedBasedOn] } : {}),
       updatedAtMs: this.clock.nowMs()
     };
     this.activePlan = nextPlan;
@@ -371,13 +488,16 @@ export class ComposedAgentRuntime {
       domain: "D4_COMMITMENTS_TASKS",
       base_rev: current.domain_revs.D4_COMMITMENTS_TASKS,
       source_event_ids: [sourceEventId],
+      ...(resolvedBasedOn && resolvedBasedOn.length > 0 ? { based_on_memory_ids: [...resolvedBasedOn] } : {}),
       payload: {
         task_id: planId,
+        goal: resolvedGoal,
         status: allCompleted ? "completed" : "running",
         progress_cursor: steps.filter((s) => s.status === "completed").length,
         current_step_summary: inProgress
           ? `${resolvedGoal} -> [${inProgress.status}] ${inProgress.title}`
-          : `${resolvedGoal} (${steps.length} steps completed)`
+          : `${resolvedGoal} (${steps.length} steps completed)`,
+        ...(resolvedBasedOn && resolvedBasedOn.length > 0 ? { based_on_memory_ids: [...resolvedBasedOn] } : {})
       }
     });
     return structuredClone(nextPlan);
@@ -397,6 +517,9 @@ export class ComposedAgentRuntime {
     for (const entry of mounted) {
       const records = await this.host.invokeFacetAsync(entry, (provider) => provider.retrieve(query, signal));
       for (const rec of records ?? []) {
+        if (!query.includeInvalidated && rec.validityStatus && rec.validityStatus !== "active") {
+          continue;
+        }
         if (
           (query.audienceScope === "only_owner" ||
             rec.audienceScope === "public_all" ||
@@ -417,6 +540,7 @@ export class ComposedAgentRuntime {
       interactionFrame?: string;
       sourceEventId?: string;
       audienceScope?: AudienceScope;
+      basedOnMemoryIds?: readonly string[];
     },
     signal?: AbortSignal
   ): Promise<{ accepted: boolean; reason?: string; record?: CognitionMemoryRecord }> {
@@ -443,6 +567,9 @@ export class ComposedAgentRuntime {
       epistemic_type: activeTaint === "trusted_owner" ? "observed_firsthand" : "reported_hearsay",
       taint_level: activeTaint,
       source_event_ids: [sourceEventId],
+      ...(params.basedOnMemoryIds && params.basedOnMemoryIds.length > 0
+        ? { based_on_memory_ids: [...params.basedOnMemoryIds] }
+        : {}),
       payload: { content_text: params.content }
     });
     if (!verdict.accepted) {
@@ -454,7 +581,13 @@ export class ComposedAgentRuntime {
       content: params.content,
       memoryTier: params.memoryTier,
       audienceScope,
-      createdAtMs: this.clock.nowMs()
+      createdAtMs: this.clock.nowMs(),
+      sourceEventIds: [sourceEventId],
+      taintLevel: activeTaint,
+      validityStatus: "active",
+      ...(params.basedOnMemoryIds && params.basedOnMemoryIds.length > 0
+        ? { basedOnMemoryIds: [...params.basedOnMemoryIds] }
+        : {})
     };
     const mounted = sortFacetsByPriority(this.host.listFacets(cognitionMemoryProviderFacet)).filter((entry) =>
       this.host.allowsAudienceScope(entry.packageId, audienceScope, entry.facetId)
@@ -475,6 +608,150 @@ export class ComposedAgentRuntime {
     return { accepted: true, record };
   }
 
+  async reviseMemory(
+    params: {
+      targetMemoryId: string;
+      relation: "supersedes" | "contradicts";
+      replacementContent?: string;
+      memoryTier?: CognitionMemoryTier;
+      interactionFrame?: string;
+      sourceEventId?: string;
+      audienceScope?: AudienceScope;
+      reason?: string;
+    },
+    signal?: AbortSignal
+  ): Promise<{
+    accepted: boolean;
+    reason?: string;
+    invalidatedMemoryIds: readonly string[];
+    pausedTaskIds: readonly string[];
+    replacementRecord?: CognitionMemoryRecord;
+    coordinatorResult?: BeliefRevisionResult;
+  }> {
+    const obs = this.currentTurnContext?.observation;
+    const sourceEventId = params.sourceEventId ?? obs?.eventId ?? `evt_memrev_${randomUUID()}`;
+    const audienceScope = params.audienceScope ?? obs?.audienceScope ?? "only_owner";
+    const activeTaint = this.currentTurnContext?.getActiveTaint() ?? obs?.taintLevel ?? "trusted_owner";
+    const nowMs = this.clock.nowMs();
+
+    if (!this.storedEvents.has(sourceEventId)) {
+      this.storedEvents.set(sourceEventId, {
+        event_id: sourceEventId,
+        redacted_at_ts_ms: null,
+        principal_trust: obs?.principalTrust ?? "owner_verified",
+        summary_text: params.replacementContent ?? `Revise memory ${params.targetMemoryId}`
+      });
+    }
+
+    const replacementRecord: CognitionMemoryRecord | undefined = params.replacementContent
+      ? {
+          memoryId: `mem_${randomUUID()}`,
+          content: params.replacementContent,
+          memoryTier: params.memoryTier ?? "semantic_fact",
+          audienceScope,
+          createdAtMs: nowMs,
+          sourceEventIds: [sourceEventId],
+          taintLevel: activeTaint,
+          validityStatus: "active",
+          ...(params.relation === "supersedes"
+            ? { supersedesMemoryId: params.targetMemoryId }
+            : { contradictsMemoryId: params.targetMemoryId })
+        }
+      : undefined;
+
+    const externalInvalidated = new Set<string>();
+    const mounted = sortFacetsByPriority(this.host.listFacets(cognitionMemoryProviderFacet)).filter((entry) =>
+      this.host.allowsAudienceScope(entry.packageId, audienceScope, entry.facetId)
+    );
+    let handledInExternal = false;
+    for (const entry of mounted) {
+      if (!entry.implementation.revise) continue;
+      const extRes = await this.host.invokeFacetAsync(entry, (provider) =>
+        provider.revise!(
+          {
+            targetMemoryId: params.targetMemoryId,
+            relation: params.relation,
+            ...(replacementRecord ? { replacementRecord } : {}),
+            revisedAtMs: nowMs,
+            ...(params.reason ? { reason: params.reason } : {})
+          },
+          signal
+        )
+      );
+      handledInExternal = true;
+      for (const id of extRes?.invalidatedMemoryIds ?? []) {
+        externalInvalidated.add(id);
+      }
+    }
+
+    if (!handledInExternal) {
+      const defRes = this.defaultMemory.revise({
+        targetMemoryId: params.targetMemoryId,
+        relation: params.relation,
+        ...(replacementRecord ? { replacementRecord } : {}),
+        revisedAtMs: nowMs,
+        ...(params.reason ? { reason: params.reason } : {})
+      });
+      for (const id of defRes.invalidatedMemoryIds) {
+        externalInvalidated.add(id);
+      }
+    }
+
+    const coordinatorResult = this.coordinator.reviseMemoryBelief({
+      target_memory_id: params.targetMemoryId,
+      relation: params.relation,
+      ...(replacementRecord
+        ? {
+            replacement_memory: {
+              memoryId: replacementRecord.memoryId,
+              content: replacementRecord.content,
+              memoryTier: replacementRecord.memoryTier,
+              audienceScope: replacementRecord.audienceScope
+            }
+          }
+        : {}),
+      interaction_frame: params.interactionFrame ?? obs?.interactionFrame,
+      source_event_ids: [sourceEventId],
+      taint_level: activeTaint,
+      ...(params.reason ? { reason: params.reason } : {}),
+      extra_invalidated_memory_ids: [...externalInvalidated]
+    });
+
+    if (!coordinatorResult.accepted) {
+      return {
+        accepted: false,
+        reason: coordinatorResult.reason,
+        invalidatedMemoryIds: [],
+        pausedTaskIds: [],
+        coordinatorResult
+      };
+    }
+
+    if (
+      this.activePlan?.basedOnMemoryIds?.some((memId) =>
+        coordinatorResult.invalidated_memory_ids.includes(memId)
+      )
+    ) {
+      this.activePlan = {
+        ...this.activePlan,
+        steps: this.activePlan.steps.map((s) =>
+          s.status === "in_progress" || s.status === "pending" ? { ...s, status: "blocked" } : s
+        ),
+        updatedAtMs: nowMs
+      };
+    }
+
+    this.taskWorker.hydrateFromCoordinator();
+
+    return {
+      accepted: true,
+      invalidatedMemoryIds: coordinatorResult.invalidated_memory_ids,
+      pausedTaskIds: coordinatorResult.paused_task_ids,
+      ...(replacementRecord ? { replacementRecord } : {}),
+      coordinatorResult
+    };
+  }
+
   async delegateSubagent(params: SubagentDelegationParams, signal: AbortSignal): Promise<SubagentDelegationResult> {
     const obs = this.currentTurnContext?.observation;
     const audienceScope: AudienceScope = obs?.audienceScope ?? "only_owner";
@@ -484,9 +761,14 @@ export class ComposedAgentRuntime {
     // Resolve the parent's authorized model adapter before narrowing the subagent's extension view,
     // so setting allowNetwork: false on the subagent blocks external web/tool sockets without breaking inference.
     let resolvedAdapter: AgentModelAdapter | undefined = this.adapter;
-    if (!resolvedAdapter && !this.modelFn && this.modelPackageId) {
+    if (!resolvedAdapter && !this.modelFn && (this.modelPackageId || (this.modelPackageIds?.length ?? 0) > 0)) {
       resolvedAdapter = selectAgentModel(
-        { host: this.host, modelPackageId: this.modelPackageId, audience: audienceScope },
+        {
+          host: this.host,
+          ...(this.modelPackageId ? { modelPackageId: this.modelPackageId } : {}),
+          ...(this.modelPackageIds ? { modelPackageIds: this.modelPackageIds } : {}),
+          audience: audienceScope
+        },
         undefined
       ).adapter;
     }
@@ -569,10 +851,12 @@ export class ComposedAgentRuntime {
 
   setModelSelection(selection: {
     modelPackageId?: string;
+    modelPackageIds?: readonly string[];
     adapter?: AgentModelAdapter;
     model?: AgentModelAdapter["model"];
   }): void {
     this.modelPackageId = selection.modelPackageId;
+    this.modelPackageIds = selection.modelPackageIds;
     this.adapter = selection.adapter;
     this.modelFn = selection.model;
   }
@@ -586,15 +870,15 @@ export class ComposedAgentRuntime {
   }
 
   mountChannel(channel: InteractionChannel): void {
-    this.negotiator.mount(channel);
+    this.expressionCore.mountChannel(channel);
   }
 
   unmountChannel(channelId: string): void {
-    this.negotiator.unmount(channelId);
+    this.expressionCore.unmountChannel(channelId);
   }
 
   receiveDeliveryReceipt(receipt: DeliveryReceipt) {
-    return this.grounding.receive(receipt);
+    return this.expressionCore.receiveReceipt(receipt);
   }
 
   async connectPerceptionSource(
@@ -659,6 +943,7 @@ export class ComposedAgentRuntime {
     audienceScope?: AudienceScope;
     capabilityRisk?: CapabilityRisk;
     triggerTaintLevel?: TaintLevel;
+    basedOnMemoryIds?: readonly string[];
     steps?: Array<{ step_title: string; actuator_or_tool_id?: string }>;
   }): AgencyTaskRecord {
     if (!this.storedEvents.has(params.sourceEventId)) {
@@ -677,6 +962,9 @@ export class ComposedAgentRuntime {
       audience_scope: params.audienceScope ?? "only_owner",
       capability_risk: params.capabilityRisk ?? "low_read_and_scoped_write",
       trigger_taint_level: params.triggerTaintLevel,
+      ...(params.basedOnMemoryIds && params.basedOnMemoryIds.length > 0
+        ? { based_on_memory_ids: [...params.basedOnMemoryIds] }
+        : {}),
       steps: params.steps ?? [{ step_title: params.goal }]
     });
   }
@@ -698,7 +986,7 @@ export class ComposedAgentRuntime {
   ): Promise<ToolLoopTaskExecutionResult> {
     return this.taskWorker.executeToolLoopTask({
       ...options,
-      modelPackageId: options.modelPackageId ?? this.modelPackageId,
+      modelPackageId: options.modelPackageId ?? this.modelPackageId ?? this.modelPackageIds?.[0],
       adapter: options.adapter ?? this.adapter,
       model: options.model ?? this.modelFn
     });
@@ -708,75 +996,129 @@ export class ComposedAgentRuntime {
     for (const dispose of this.sourceUnsubscribers.splice(0)) {
       dispose();
     }
+    this.unsubscribeHostChanges?.();
+    this.unsubscribeHostChanges = undefined;
+    this.perceptionCore.dispose();
+    this.cognitionCore.dispose();
+    this.expressionCore.dispose();
     this.loop.stop();
   }
 
-  private perceiveEvent(input: UniversalAgentEvent, nowMs: number) {
+  private async perceiveEvent(input: UniversalAgentEvent, nowMs: number) {
     const channelId = input.channelId ?? "channel.headless";
-    const principalTrust: PrincipalTrust = input.principalTrust ?? "owner_verified";
+    const boundSubject = input.externalSubjectId
+      ? this.identityBinder.resolve(channelId, input.externalSubjectId)
+      : undefined;
+    const principalId = boundSubject?.principalId ?? input.principalId ?? "owner:local";
+    const principalTrust: PrincipalTrust = boundSubject?.principalTrust ?? input.principalTrust ?? "owner_verified";
     const audienceScope: AudienceScope = input.audienceScope ?? "only_owner";
     const taintLevel: TaintLevel =
       input.taintLevel ?? (principalTrust === "owner_verified" ? "trusted_owner" : "untrusted_external");
-    const baseMeta = {
-      eventId: input.eventId ?? `evt_${randomUUID()}`,
-      channelId,
-      principalId: input.principalId ?? "owner:local",
-      principalTrust,
-      audienceScope,
-      taintLevel,
-      ...(input.interactionFrame ? { interactionFrame: input.interactionFrame } : {})
-    };
+    const eventId = input.eventId ?? `evt_${randomUUID()}`;
 
-    if (this.bypassPerception) {
+    if (this.bypassPerception && input.rawPayload === undefined && !input.dynamicEventContract) {
       if (input.lifecycle === "retract") {
         return { observations: [], cancelledChannelId: channelId };
       }
       return {
-        observations: [{ ...baseMeta, text: input.text, observedAtMs: nowMs }]
+        observations: [
+          {
+            eventId,
+            channelId,
+            principalId,
+            principalTrust,
+            audienceScope,
+            taintLevel,
+            ...(input.interactionFrame ? { interactionFrame: input.interactionFrame } : {}),
+            text: input.text ?? "",
+            observedAtMs: nowMs
+          }
+        ]
       };
     }
 
-    this.pendingDebounceMeta.set(channelId, baseMeta);
-    const debounceEvent: DebounceInputEvent = {
+    const rawRecord =
+      typeof input.rawPayload === "object" && input.rawPayload !== null && !Array.isArray(input.rawPayload)
+        ? (input.rawPayload as Record<string, unknown>)
+        : input.rawPayload !== undefined
+          ? { rawPayload: input.rawPayload }
+          : {};
+
+    const envelope: PerceptionEnvelope = {
+      event_id: eventId,
+      timestamp: new Date(nowMs).toISOString(),
       lifecycle: input.lifecycle ?? "commit",
-      text: input.text,
-      virtual_ts_ms: nowMs
+      actor: {
+        platform_uid: input.externalSubjectId ?? principalId,
+        display_name: principalId
+      },
+      modality: (input.modality ?? "text") as PerceptionEnvelope["modality"],
+      summary_text: input.text ?? "",
+      confidence: 1,
+      persistence_hint: "permanent",
+      extensions: {
+        ...rawRecord,
+        ...(input.dynamicEventContract ? { "ai0.dynamic_event": input.dynamicEventContract } : {})
+      }
     };
-    const filtered = this.perceptionPipeline.ingest(debounceEvent, channelId, nowMs);
-    if (filtered.kind === "neutral_retract") {
-      this.pendingDebounceMeta.delete(channelId);
+
+    const { frame, disposition } = await this.perceptionCore.transduceAndIngestEnvelope(envelope, {
+      eventId,
+      channelId,
+      principalId,
+      principalTrust,
+      audienceScope,
+      taintLevel,
+      trustedGrant: principalTrust === "owner_verified",
+      ...(input.interactionFrame ? { interactionFrame: input.interactionFrame } : {}),
+      bypassFilters: this.bypassPerception
+    });
+
+    if (disposition.kind === "neutral_retract") {
       return { observations: [], cancelledChannelId: channelId };
     }
-    if (filtered.kind !== "pass" && filtered.kind !== "observe") {
+    if (disposition.kind !== "pass" && disposition.kind !== "observe") {
       return { observations: [] };
     }
-    const text = filtered.event.text ?? input.text;
+    const text = disposition.event?.text ?? frame.interpretation.primaryCue ?? input.text ?? "";
     return {
-      observations: [{ ...baseMeta, text, observedAtMs: nowMs }]
+      observations: [
+        {
+          eventId: disposition.admission.eventId,
+          channelId: disposition.admission.channelId,
+          principalId: disposition.admission.principalId,
+          principalTrust: disposition.admission.principalTrust,
+          audienceScope: disposition.admission.audienceScope,
+          taintLevel: disposition.admission.taintLevel,
+          ...(disposition.admission.interactionFrame
+            ? { interactionFrame: disposition.admission.interactionFrame }
+            : {}),
+          ...(disposition.admission.dynamicContractId
+            ? { dynamicContractId: disposition.admission.dynamicContractId }
+            : {}),
+          provenance: structuredClone(frame.provenance),
+          text,
+          observedAtMs: nowMs
+        }
+      ]
     };
   }
 
   private flushPerception(nowMs: number): AdmittedAgentObservation[] {
     if (this.bypassPerception) return [];
-    return this.perceptionPipeline.flushDue(nowMs).map((item) => {
-      const onlyPendingChannel =
-        this.pendingDebounceMeta.size === 1 ? [...this.pendingDebounceMeta.keys()][0] : undefined;
-      const resolvedChannel = item.frame?.channel.channelId ?? onlyPendingChannel ?? "channel.headless";
-      const meta = this.pendingDebounceMeta.get(resolvedChannel) ?? {
-        eventId: `evt_${randomUUID()}`,
-        channelId: resolvedChannel,
-        principalId: "owner:local",
-        principalTrust: "owner_verified" as const,
-        audienceScope: "only_owner" as const,
-        taintLevel: "trusted_owner" as const
-      };
-      this.pendingDebounceMeta.delete(resolvedChannel);
-      return {
-        ...meta,
-        text: item.text ?? item.frame?.interpretation.primaryCue ?? "",
-        observedAtMs: nowMs
-      };
-    });
+    return this.perceptionCore.flushDue(nowMs).map((flushed) => ({
+      eventId: flushed.admission.eventId,
+      channelId: flushed.admission.channelId,
+      principalId: flushed.admission.principalId,
+      principalTrust: flushed.admission.principalTrust,
+      audienceScope: flushed.admission.audienceScope,
+      taintLevel: flushed.admission.taintLevel,
+      ...(flushed.admission.interactionFrame ? { interactionFrame: flushed.admission.interactionFrame } : {}),
+      ...(flushed.admission.dynamicContractId ? { dynamicContractId: flushed.admission.dynamicContractId } : {}),
+      ...(flushed.event.frame ? { provenance: structuredClone(flushed.event.frame.provenance) } : {}),
+      text: flushed.event.text ?? flushed.event.frame?.interpretation.primaryCue ?? "",
+      observedAtMs: nowMs
+    }));
   }
 
   private updateCognitiveState(obs: AdmittedAgentObservation, _nowMs: number): ReadOnlyCognitiveSnapshot {
@@ -939,7 +1281,8 @@ export class ComposedAgentRuntime {
     const selfManuals = () => this.activeManualIds;
     const bindings = {
       host: this.executionHost,
-      modelPackageId: this.modelPackageId,
+      ...(this.modelPackageId ? { modelPackageId: this.modelPackageId } : {}),
+      ...(this.modelPackageIds ? { modelPackageIds: this.modelPackageIds } : {}),
       get manualPackageIds(): readonly string[] | undefined {
         const current = [...selfManuals()].filter((id) =>
           selfHost
@@ -1011,7 +1354,7 @@ export class ComposedAgentRuntime {
       };
     }
 
-    const dispatch = this.negotiator.negotiate(
+    const dispatch = this.expressionCore.negotiateAndRecord(
       {
         intentId: `intent_${obs.eventId}`,
         correlationEventId: obs.eventId,
@@ -1021,9 +1364,6 @@ export class ComposedAgentRuntime {
       },
       obs.channelId
     );
-    if (dispatch.status === "dispatched") {
-      this.grounding.recordGenerated(dispatch.envelope);
-    }
     return {
       mode: "realizer_negotiated",
       text: finalText,

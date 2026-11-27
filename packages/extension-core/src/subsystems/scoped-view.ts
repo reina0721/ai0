@@ -1,4 +1,9 @@
 import type { AudienceScope, StateDomain } from "@ai0/protocol";
+import {
+  formatDynamicContractId,
+  type DynamicContractKind,
+  type DynamicContractSnapshot
+} from "../kernel/dynamic-contract.js";
 import type { FacetPoint } from "../kernel/facet-point.js";
 import type { HookPoint } from "../kernel/hook-point.js";
 import type { ServiceContract } from "../kernel/service-contract.js";
@@ -157,6 +162,63 @@ export class ScopedExtensionView implements ExtensionHostView {
       throw new Error(`Service provider ${providerPackageId} is outside scope ${this.scopeId}`);
     }
     return this.parent.bindService(contract, providerPackageId, audience);
+  }
+
+  listDynamicContracts(kind?: DynamicContractKind): readonly DynamicContractSnapshot[] {
+    const snapshots: DynamicContractSnapshot[] = [];
+    for (const item of this.parent.listDynamicContracts(kind)) {
+      const visibleHolders = item.holders.filter((pkgId) => this.permitsPackage(pkgId));
+      if (visibleHolders.length === 0) continue;
+      snapshots.push({
+        ...structuredClone(item),
+        originPackageId: this.permitsPackage(item.originPackageId) ? item.originPackageId : visibleHolders[0]!,
+        holders: visibleHolders
+      });
+    }
+    return snapshots;
+  }
+
+  getDynamicContract(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    version: number
+  ): DynamicContractSnapshot | undefined {
+    const id = formatDynamicContractId(kind, namespace, name, version);
+    return this.listDynamicContracts(kind).find((c) => c.id === id);
+  }
+
+  validateDynamicContractPayload<T = unknown>(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    version: number,
+    payload: unknown
+  ): T {
+    const visible = this.getDynamicContract(kind, namespace, name, version);
+    if (!visible) {
+      throw new Error(
+        `Dynamic contract ${formatDynamicContractId(kind, namespace, name, version)} is unavailable in scope ${this.scopeId}`
+      );
+    }
+    return this.parent.validateDynamicContractPayload<T>(kind, namespace, name, version, payload);
+  }
+
+  coerceDynamicContractPayload<T = unknown>(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    fromVersion: number,
+    targetVersion: number,
+    payload: unknown
+  ): T {
+    const visibleTarget = this.getDynamicContract(kind, namespace, name, targetVersion);
+    if (!visibleTarget) {
+      throw new Error(
+        `Dynamic contract ${formatDynamicContractId(kind, namespace, name, targetVersion)} is unavailable in scope ${this.scopeId}`
+      );
+    }
+    return this.parent.coerceDynamicContractPayload<T>(kind, namespace, name, fromVersion, targetVersion, payload);
   }
 
   allowsReadDomain(id: string, domain: StateDomain): boolean {

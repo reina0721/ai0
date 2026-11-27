@@ -1,13 +1,19 @@
 import { cognitionResponseContractPoint } from "@ai0/protocol";
 import { defineFacetPoint } from "@ai0/extension-core";
 import {
+  cognitionCapabilityPolicyContract,
   cognitionMemoryProviderContract,
   cognitionProposalPolicyContract,
-  perceptionExtractorContract
+  cognitionStateDomainContract,
+  perceptionExtractorContract,
+  perceptionTransducerContract
 } from "@ai0/protocol";
 export const perceptionExtractorFacet = defineFacetPoint(perceptionExtractorContract);
+export const perceptionTransducerFacet = defineFacetPoint(perceptionTransducerContract);
 export const cognitionProposalPolicyFacet = defineFacetPoint(cognitionProposalPolicyContract);
 export const cognitionMemoryProviderFacet = defineFacetPoint(cognitionMemoryProviderContract);
+export const cognitionStateDomainFacet = defineFacetPoint(cognitionStateDomainContract);
+export const cognitionCapabilityPolicyFacet = defineFacetPoint(cognitionCapabilityPolicyContract);
 import {
   ConsolePageSchema,
   perceptionSourceContract,
@@ -43,12 +49,14 @@ export interface SdkPerceptionFilter {
 }
 
 export interface SdkExpressionRealizer {
+  priority?: number;
   channel: InteractionChannel;
   presentationStyle?: EmbodiedPresentationStyle;
   deliver?(envelope: ExpressionEnvelope, signal?: AbortSignal): void | DeliveryReceipt | Promise<void | DeliveryReceipt>;
 }
 
 export interface SdkExpressionMediaTranscoder {
+  priority?: number;
   cursor?: import("@ai0/protocol").MediaCursorResolver;
   getSupportedVocabulary?(): {
     voice_emotion_tags?: string[];
@@ -203,11 +211,19 @@ export const expressionRealizerFacet = defineFacetPoint<SdkExpressionRealizer>({
   version: 1,
   parse(raw) {
     const value = raw as SdkExpressionRealizer | null;
-    if (!value || (value.deliver !== undefined && typeof value.deliver !== "function")) {
+    if (
+      !value ||
+      (value.deliver !== undefined && typeof value.deliver !== "function") ||
+      (value.priority !== undefined && !Number.isFinite(value.priority))
+    ) {
       throw new TypeError("Invalid expression.realizer facet");
     }
-    return { channel: InteractionChannelSchema.parse(value.channel),
-      presentationStyle: EmbodiedPresentationStyleSchema.optional().parse(value.presentationStyle), deliver: value.deliver };
+    return {
+      ...(value.priority !== undefined ? { priority: value.priority } : {}),
+      channel: InteractionChannelSchema.parse(value.channel),
+      presentationStyle: EmbodiedPresentationStyleSchema.optional().parse(value.presentationStyle),
+      deliver: value.deliver
+    };
   }
 });
 
@@ -219,6 +235,7 @@ export const expressionMediaTranscoderFacet = defineFacetPoint<SdkExpressionMedi
     const value = raw as SdkExpressionMediaTranscoder | null;
     if (
       !value ||
+      (value.priority !== undefined && !Number.isFinite(value.priority)) ||
       (value.onUpstreamMediaFrame !== undefined && typeof value.onUpstreamMediaFrame !== "function") ||
       (value.onDownstreamExpression !== undefined && typeof value.onDownstreamExpression !== "function") ||
       (value.cursor !== undefined && (!value.cursor?.extension || typeof value.cursor.resolve !== "function")) ||

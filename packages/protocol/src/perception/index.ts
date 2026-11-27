@@ -64,3 +64,52 @@ export const perceptionSourceContract = {
     return value;
   }
 } as const;
+
+export interface TransducedObservationResult {
+  readonly outputModality: string;
+  readonly primaryCue: string;
+  readonly summaryText?: string;
+  readonly confidence?: number;
+  readonly competingHypotheses?: readonly string[];
+  readonly epistemicTier?: "direct_sensor" | "verified_telemetry" | "untrusted_utterance";
+  readonly dynamicEventContract?: {
+    readonly namespace: string;
+    readonly name: string;
+    readonly version: number;
+  };
+  readonly data?: unknown;
+}
+
+export interface PerceptionTransducer {
+  readonly priority?: number;
+  readonly inputModalities: readonly string[];
+  transduce(
+    input: {
+      readonly modality: string;
+      readonly rawPayload: unknown;
+      readonly channelId: string;
+      readonly summaryText?: string;
+    },
+    signal: AbortSignal
+  ): TransducedObservationResult | undefined | Promise<TransducedObservationResult | undefined>;
+}
+
+export const perceptionTransducerContract = {
+  owner: "perception",
+  name: "transducer",
+  version: 1,
+  parse(raw: unknown): PerceptionTransducer {
+    const value = raw as PerceptionTransducer | null;
+    if (
+      !value ||
+      !Array.isArray(value.inputModalities) ||
+      value.inputModalities.length === 0 ||
+      !value.inputModalities.every((m) => typeof m === "string" && m.trim().length > 0) ||
+      typeof value.transduce !== "function" ||
+      (value.priority !== undefined && !Number.isFinite(value.priority))
+    ) {
+      throw new TypeError("Invalid perception.transducer");
+    }
+    return value;
+  }
+} as const;

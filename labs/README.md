@@ -204,6 +204,17 @@ $$
 2. **Tier I + Tier II（具身与社会情境主体正交合拢）**：开启感知、认知、表达三核与 `dual_speed_w1_w2`，在零伴侣插件下验证 `W1` 自主通过 `agent.dispatch_background_goal` 派发后台目标、`EpistemicMemoryFirewall` 阻断玩笑污染事实记忆、外部 `untrusted_external` 网页结果同轮撤除写工具，以及语音打断后的 `unsaid_remainder` 接地恢复。
 3. **Tier III（领域外置策略叠加）与无头发现加载**：动态挂载与卸载连续状态动力学和世界书切面，并用 `@ai0/sdk` 的 `discoverAndMountExtensions` 脱离 `apps/daemon` 直接从磁盘发现装配 `SKILL.md` 与声明式扩展。
 
+## Stage 9 · 自举动态契约、一体自洽四核、跨域原子事务与认识论纠偏
+
+[stage9.test.ts](stage9-causal-consistency-and-revision/stage9.test.ts) 以六组零伴侣预设的对抗反例检验架构内在自洽性、全链路因果溯源与可实现性：
+
+1. **涌现式动态契约自举（`DynamicContractRegistry`）**：任何扩展在首次挂载需要某类契约（如 `perception_event:vision.facial_cue@1`）时无需改动 `@ai0/protocol` 即在 `ExtensionCoreHost` 动态生出该契约；`webchat` 与 `desktop_cam` 自动发现并复用，并行竞争契约互不干扰，不兼容 Schema 劫持被 `faulted_isolated` 熔断隔离，全部持有者卸载后引用计数归零自动撤回。
+2. **一体自洽 `PerceptionCore` 与 `X × Y × Z` 三轴正交扩展**：通道（`X` 轴）只做哑管道；跨通道模态转译器 `perception.transducer@1`（`Y` 轴）共享摄像头微表情转译并支持 V2 热升级；核内防抖滤波器 `perception.filter@1`（`Z` 轴）在并发 `stranger / public_all` 与 `owner_verified / only_owner` 话轮合并出队时零归属串扰。
+3. **一体自洽 `CognitionCore` 与零领域预设污染**：清退通用 `SKILL.md` 与睡眠整合中的伴侣硬编码；挂载 `custom.*` 动态状态域与 `cognition_protocol` 校验；验证 `cognition.capability_policy@1` 单调收紧（流氓插件投票 `ALLOW` 绝不可击穿 `untrusted_external` 底线，合规插件可将 `ALLOW` 收紧为 `DENY`）与 `modelPackageIds` 多模型故障回退链。
+4. **两阶段跨状态域原子事务（`StateTransactionBundle`）**：在真实 SQLite 事务之上联合提交 `D2 + D3 + D4 + D5 + custom.*`；当 `D4` 校验失败、`D5` 发生 MVCC 冲突或存储层抛错时，内存快照与 SQLite 100% 原子回滚，零半截脏状态残留。
+5. **认识论信念纠偏（`agent.revise_memory` ≠ 隐私 `HardForget`）**：外部错误信息入库 `M1` 并派生子推断记忆 `M2`、规划与后台任务 `T1` 后，经 `agent.revise_memory` 更正为 `M3`——活动检索仅返回 `M3`，审计历史完整保留 `M1`（`superseded`）与 `M2`（`stale_premise_invalidated`），且依赖旧前提的 `T1` 自动挂起为 `premise_invalidated_needs_review`。
+6. **中途崩溃对账恢复与跨端跨模型主体连续性**：模拟进程在 `W2` 任务第 `1/3` 步崩溃重启，新实例自动将僵尸 `running` 任务对账为 `interrupted_recoverable` 并续跑完成；通过 `PrincipalIdentityBinder` 跨 CLI、工程群聊与 WebChat 切换模型适配器时，保持主体连续性、`state_rev` 单调递增、群聊零私密记忆泄漏及 `ExpressionCore` 渠道回执溯源。
+
 ## 验证与运行
 
 在仓库根目录，使用已安装的工作区依赖运行以下命令。

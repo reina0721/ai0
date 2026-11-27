@@ -1,5 +1,5 @@
 import { AudienceScopeSchema, type AudienceScope, type DeliveryReceipt, type ExpressionEnvelope } from "@ai0/protocol";
-import type { ExtensionHostView, FacetRegistration } from "@ai0/extension-core";
+import { sortFacetsByPriority, type ExtensionHostView, type FacetRegistration } from "@ai0/extension-core";
 import {
   acknowledgeInterlocutorSegment,
   applyDeliveryReceiptToIntent,
@@ -28,12 +28,13 @@ export class GroundingReceiptTracker {
       const compatible = audience && this.host?.listFacets(expressionMediaTranscoderFacet).filter(({ packageId, implementation }) =>
         this.host!.allowsAudienceScope(packageId, audience, expressionMediaTranscoderFacet.id) &&
         implementation.cursor && Object.hasOwn(envelope.extensions, implementation.cursor.extension));
+      const sortedCompatible = compatible && compatible.length > 0 ? sortFacetsByPriority(compatible) : undefined;
       entry.segments.set(envelope.chunk_seq, {
         envelope: structuredClone(envelope),
         presented: 0,
         stage: "generated_unpresented",
         audience,
-        cursor: compatible?.length === 1 ? compatible[0] : undefined
+        cursor: sortedCompatible?.[0]
       });
     }
     this.intents.set(envelope.intent_id, entry);

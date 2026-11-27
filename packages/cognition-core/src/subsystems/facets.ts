@@ -1,8 +1,10 @@
 import { defineFacetPoint, type ExtensionHostView } from "@ai0/extension-core";
 import {
+  cognitionCapabilityPolicyContract,
   cognitionMemoryProviderContract,
   cognitionProposalPolicyContract,
   cognitionResponseContractPoint,
+  cognitionStateDomainContract,
   ContinuousStateDescriptorSchema,
   type ContinuousStateDescriptor,
   type StateDomain
@@ -85,6 +87,8 @@ export interface AttentionArbitratorPort {
 
 export const cognitionProposalPolicyFacet = defineFacetPoint(cognitionProposalPolicyContract);
 export const cognitionMemoryProviderFacet = defineFacetPoint(cognitionMemoryProviderContract);
+export const cognitionStateDomainFacet = defineFacetPoint(cognitionStateDomainContract);
+export const cognitionCapabilityPolicyFacet = defineFacetPoint(cognitionCapabilityPolicyContract);
 
 export const cognitionStateDynamicsFacet = defineFacetPoint<{ descriptors: readonly ContinuousStateDescriptor[] }>({
   owner: "cognition", name: "state_dynamics", version: 1,
@@ -134,8 +138,16 @@ export function selectReadableSnapshot(
   const domain_revs = Object.fromEntries(
     Object.entries(snapshot.domain_revs).filter(([domain]) => canRead(domain))
   ) as Partial<ReadOnlyCognitiveSnapshot["domain_revs"]>;
-  const domains = Object.entries(snapshot).filter(([domain]) => canRead(domain));
-  return structuredClone({ ...Object.fromEntries(domains), state_rev: snapshot.state_rev, domain_revs });
+  const domains = Object.entries(snapshot).filter(([domain]) => domain !== "custom_domains" && canRead(domain));
+  const customEntries = snapshot.custom_domains
+    ? Object.entries(snapshot.custom_domains).filter(([domain]) => canRead(domain))
+    : [];
+  return structuredClone({
+    ...Object.fromEntries(domains),
+    ...(customEntries.length > 0 ? { custom_domains: Object.fromEntries(customEntries) } : {}),
+    state_rev: snapshot.state_rev,
+    domain_revs
+  });
 }
 
 export function computeSensoryHabituation(sRaw: number, unchangedElapsedMs: number, gammaHabPerMinute = 0.35): number {

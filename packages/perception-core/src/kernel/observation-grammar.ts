@@ -7,6 +7,14 @@ export interface ObservationAdmission {
   audienceScope: AudienceScope;
   observedAtMs: number;
   sourceDefaults?: ObservationSourceDefaults;
+  principalTrust?: string;
+  taintLevel?: "trusted_owner" | "semi_trusted_friend" | "untrusted_external";
+  epistemicTier?: UniversalObservationFrame["provenance"]["epistemicTier"];
+  trustedGrant?: boolean;
+  ingressedVia?: { packageId: string; generation?: number };
+  transducedVia?: { packageId: string; generation: number; inputModality: string; outputModality: string };
+  filteredVia?: ReadonlyArray<{ packageId: string; generation: number }>;
+  dynamicContractId?: string;
 }
 
 export interface ObservationSourceDefaults {
@@ -40,10 +48,24 @@ export function normalizePerceptionEnvelopeToFrame(envelope: PerceptionEnvelope,
       socialFrame: frame?.contextFrame.socialFrame ?? "unspecified",
       audienceScope: admission.audienceScope
     },
-    provenance: { epistemicTier: "untrusted_utterance", trustedGrant: false },
+    provenance: {
+      epistemicTier: admission.epistemicTier ?? "untrusted_utterance",
+      trustedGrant: admission.trustedGrant ?? false,
+      ...(admission.principalTrust !== undefined ? { principalTrust: admission.principalTrust } : {}),
+      ...(admission.taintLevel !== undefined ? { taintLevel: admission.taintLevel } : {}),
+      ...(admission.ingressedVia !== undefined ? { ingressedVia: structuredClone(admission.ingressedVia) } : {}),
+      ...(admission.transducedVia !== undefined ? { transducedVia: structuredClone(admission.transducedVia) } : {}),
+      ...(admission.filteredVia !== undefined ? { filteredVia: structuredClone(admission.filteredVia) } : {}),
+      ...(admission.dynamicContractId !== undefined ? { dynamicContractId: admission.dynamicContractId } : {})
+    },
     interpretation: {
       ...interpretation,
       primaryCue: frame?.interpretation.primaryCue ?? envelope.summary_text,
+      ...(sensory?.competing_hypotheses
+        ? { competingHypotheses: sensory.competing_hypotheses.map((h) => h.summary_text) }
+        : frame?.interpretation.competingHypotheses
+          ? { competingHypotheses: [...frame.interpretation.competingHypotheses] }
+          : {}),
       rawPayload: frame ? frame.interpretation.rawPayload : envelope.extensions
     },
     chronology: {

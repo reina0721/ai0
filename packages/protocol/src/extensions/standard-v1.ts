@@ -143,37 +143,55 @@ export type RecognizedExtensions = Partial<{
 }>;
 
 export interface ParseKnownExtensionsResult {
-  recognized: RecognizedExtensions;
+  recognized: RecognizedExtensions & Record<string, unknown>;
   degraded_extensions: string[];
 }
 
 /**
- * Parses standard extension payloads that the receiver supports. Unknown,
- * unsupported, and malformed entries are reported for graceful degradation.
+ * Parses standard extension payloads and optional dynamically registered contract payloads
+ * that the receiver supports. Unknown, unsupported, and malformed entries are reported for
+ * graceful degradation.
  */
 export function parseKnownExtensions(
   extensions: Record<string, unknown>,
-  supportedExtensions?: ReadonlyArray<string>
+  supportedExtensions?: ReadonlyArray<string>,
+  dynamicValidator?: (key: string, payload: unknown) => unknown
 ): ParseKnownExtensionsResult {
-  const recognized: RecognizedExtensions = {};
+  const recognized: RecognizedExtensions & Record<string, unknown> = {};
   const degraded_extensions: string[] = [];
   const supported = supportedExtensions === undefined ? undefined : new Set(supportedExtensions);
 
   for (const [key, value] of Object.entries(extensions)) {
+    if (supported !== undefined && !supported.has(key)) {
+      degraded_extensions.push(key);
+      continue;
+    }
+
     const schema = StandardExtensionSchemas[key as StandardExtensionKey];
-
-    if (schema === undefined || (supported !== undefined && !supported.has(key))) {
-      degraded_extensions.push(key);
+    if (schema !== undefined) {
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
+        degraded_extensions.push(key);
+        continue;
+      }
+      recognized[key] = parsed.data;
       continue;
     }
 
-    const parsed = schema.safeParse(value);
-    if (!parsed.success) {
-      degraded_extensions.push(key);
-      continue;
+    if (dynamicValidator !== undefined) {
+      try {
+        const dynamicParsed = dynamicValidator(key, value);
+        if (dynamicParsed !== undefined) {
+          recognized[key] = dynamicParsed;
+          continue;
+        }
+      } catch {
+        degraded_extensions.push(key);
+        continue;
+      }
     }
 
-    (recognized as Record<string, unknown>)[key] = parsed.data;
+    degraded_extensions.push(key);
   }
 
   return { recognized, degraded_extensions };

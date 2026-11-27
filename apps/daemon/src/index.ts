@@ -147,6 +147,12 @@ function createCoordinatorStorage(
   traces: KernelTurnTrace[]
 ): KernelCoordinatorStorageMutator {
   return {
+    runInTransaction(operation) {
+      return getStorage().runInTransaction(() => operation());
+    },
+    reviseBeliefLineage(input) {
+      return getStorage().reviseBeliefLineage(input);
+    },
     latestStateRevision() {
       const db = getStorage().sqlite;
       return Number(db.prepare("SELECT MAX(rev) AS n FROM (SELECT MAX(state_rev_after) AS rev FROM event_log UNION ALL SELECT MAX(state_rev) FROM cognitive_state_checkpoints)").get()?.n ?? 0);
@@ -585,6 +591,8 @@ export class Ai0DaemonRuntime {
     this.liveRetriever = new HybridMemoryRetriever(nextStorage);
     this.liveHardForget = new HardForgetEngine(nextStorage.sqlite);
     this.coordinator.restoreCheckpoint();
+    this.coordinator.reconcileInterruptedWorkOnRestore();
+    this.workers.w2.hydrateFromCoordinator();
   }
 
   async runAgent(input: Omit<AgentOptions, "bindings" | "adapter" | "model" | "executeTool"> & {
@@ -1407,6 +1415,7 @@ function composeDaemonRuntime(
           principal: "owner_verified",
           audience_scope: "only_owner",
           capability_risk: params.capabilityRisk ?? "low_read_and_scoped_write",
+          ...(params.basedOnMemoryIds ? { based_on_memory_ids: [...params.basedOnMemoryIds] } : {}),
           steps: params.steps ?? [{ step_title: params.goal }]
         });
       },
@@ -1428,6 +1437,32 @@ function composeDaemonRuntime(
       },
       async proposeMemory() {
         return { accepted: false, reason: "Use structured episode completion for W2 durable memory" };
+      },
+      async reviseMemory(params) {
+        const verdict = coordinator.reviseMemoryBelief({
+          target_memory_id: params.targetMemoryId,
+          relation: params.relation,
+          ...(params.reason ? { reason: params.reason } : {}),
+          ...(params.replacementContent
+            ? {
+                replacement_memory: {
+                  memoryId: `mem_rev_${randomUUID()}`,
+                  content: params.replacementContent,
+                  memoryTier: params.memoryTier ?? "semantic_fact",
+                  audienceScope: "only_owner"
+                }
+              }
+            : {})
+        });
+        if (verdict.accepted) {
+          workers.w2.hydrateFromCoordinator();
+        }
+        return {
+          accepted: verdict.accepted,
+          ...(verdict.reason ? { reason: verdict.reason } : {}),
+          invalidatedMemoryIds: verdict.invalidated_memory_ids,
+          pausedTaskIds: verdict.paused_task_ids
+        };
       }
     })
   );
@@ -1448,10 +1483,13 @@ function composeDaemonRuntime(
         onTraceCommitted: (trace) => emitTelemetry("[TRACE]", { trace_id: trace.trace_id, rev: trace.state_rev_after }, "live")
       }
     ),
-    w2: new W2AgencyTaskWorker(coordinator, new ThreeDimensionalPolicyEngine(), virtualClock, w2IntrinsicHost),
+    w2: new W2AgencyTaskWorker(coordinator, new ThreeDimensionalPolicyEngine(extensionHost), virtualClock, w2IntrinsicHost),
     w3: new W3SleepReflectionWorker(coordinator, readOnlyView, virtualClock, extensionHost),
     w4: new W4MultimodalAnalyzerWorker(sensoryCoverage, virtualClock, extensionHost)
   };
+  if (coordinator.reconcileInterruptedWorkOnRestore().length > 0) {
+    workers.w2.hydrateFromCoordinator();
+  }
 
   const sandboxW1 = new W1FastDialogueWorker(
     sandboxCoordinator,

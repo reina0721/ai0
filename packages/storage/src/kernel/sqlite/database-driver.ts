@@ -252,8 +252,58 @@ export interface ReadOnlyStorageView {
   getTablePragmaStatus(): TablePragmaStatus;
 }
 
+export interface StorageBeliefRevisionInput {
+  readonly target_memory_id: string;
+  readonly relation: "supersedes" | "contradicts";
+  readonly replacement_memory?: {
+    readonly memory_id: string;
+    readonly content_text: string;
+    readonly memory_tier: string;
+    readonly epistemic_type: string;
+    readonly visibility_scope: AudienceScope;
+    readonly taint_level: TaintLevel;
+    readonly attributed_principal?: string;
+    readonly source_event_ids: readonly string[];
+  };
+  readonly virtual_ts_ms: number;
+  readonly state_rev: number;
+  readonly cancel_dependent_commitments?: boolean;
+}
+
+export interface StorageBeliefRevisionResult {
+  readonly target_updated: boolean;
+  readonly replacement_memory?: StoredMemory;
+  readonly invalidated_memory_ids: readonly string[];
+  readonly affected_commitment_ids: readonly string[];
+}
+
 export interface CoordinatorStorageOptions {
   initializeSchema?: boolean;
+}
+
+function normalizeStorageMemoryTier(tier: string): MemoryTier {
+  if (
+    tier === "episodic_experience" ||
+    tier === "semantic_fact" ||
+    tier === "relational_tacit" ||
+    tier === "kb_crystallized_gist" ||
+    tier === "topic_taboo_seal"
+  ) {
+    return tier;
+  }
+  return "episodic_experience";
+}
+
+function normalizeStorageEpistemicType(epistemicType: string): EpistemicType {
+  if (
+    epistemicType === "observed_firsthand" ||
+    epistemicType === "reported_hearsay" ||
+    epistemicType === "inferred_hypothesis" ||
+    epistemicType === "imagined_narrative"
+  ) {
+    return epistemicType;
+  }
+  return "observed_firsthand";
 }
 
 function clampLimit(limit: number | undefined): number {
@@ -598,6 +648,182 @@ export class CoordinatorStorageMutator implements ReadOnlyStorageView {
     if (Number(result.changes) !== 1) {
       throw new Error(`Cannot update missing memory: ${memoryId}`);
     }
+  }
+
+  getMemoryRecord(memoryId: string): StoredMemory | undefined {
+    return this.getMemoryById(memoryId);
+  }
+
+  bindChannelPrincipal(
+    channelId: string,
+    externalId: string,
+    principalId: string
+  ): void {
+    this.#database
+      .prepare(
+        `INSERT INTO channel_principal_bindings (channel_id, external_id, principal_id)
+         VALUES (?, ?, ?)
+         ON CONFLICT(channel_id, external_id) DO UPDATE SET principal_id = excluded.principal_id`
+      )
+      .run(channelId, externalId, principalId);
+  }
+
+  resolveChannelPrincipal(
+    channelId: string,
+    externalId: string
+  ): string | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT principal_id FROM channel_principal_bindings
+         WHERE channel_id = ? AND external_id = ?`
+      )
+      .get(channelId, externalId);
+    return typeof row?.principal_id === "string" ? row.principal_id : undefined;
+  }
+
+  /**
+   * Epistemic Belief Revision (distinct from privacy HardForget):
+   * Retains historical falsified/superseded memory text for audit, marks `grounding_status = 'disputed_retired'`
+   * and `invalidated_at_ts` / `valid_until_virtual_ts`, inserts any replacement memory with `supersedes` or
+   * `contradicts` lineage edge, cascades invalidation across derived child memories (`derived_from` /
+   * `crystallized_from`), and flags/cancels pending commitments sharing refuted source events.
+   */
+  reviseBeliefLineage(
+    input: StorageBeliefRevisionInput
+  ): StorageBeliefRevisionResult {
+    return this.runInTransaction(() => {
+      const target = this.getMemoryById(input.target_memory_id);
+      if (target === undefined) {
+        return {
+          target_updated: false,
+          invalidated_memory_ids: [],
+          affected_commitment_ids: []
+        };
+      }
+
+      const retireStmt = this.#database.prepare(
+        `UPDATE memories
+         SET valid_until_virtual_ts = COALESCE(valid_until_virtual_ts, ?),
+             invalidated_at_ts = COALESCE(invalidated_at_ts, ?),
+             grounding_status = 'disputed_retired'
+         WHERE memory_id = ?`
+      );
+      retireStmt.run(
+        input.virtual_ts_ms,
+        input.virtual_ts_ms,
+        input.target_memory_id
+      );
+
+      let storedReplacement: StoredMemory | undefined;
+      if (input.replacement_memory !== undefined) {
+        const rep = input.replacement_memory;
+        const existingRep = this.getMemoryById(rep.memory_id);
+        if (existingRep !== undefined) {
+          storedReplacement = existingRep;
+        } else {
+          const edges: MemoryLineageEdgeInput[] = [
+            {
+              parent_type: "memory",
+              parent_id: input.target_memory_id,
+              relation_type: input.relation
+            },
+            ...rep.source_event_ids.map((eventId) => ({
+              parent_type: "event" as const,
+              parent_id: eventId,
+              relation_type: "derived_from" as const
+            }))
+          ];
+          storedReplacement = this.insertMemoryWithLineage(
+            {
+              memory_id: rep.memory_id,
+              memory_tier: normalizeStorageMemoryTier(rep.memory_tier),
+              epistemic_type: normalizeStorageEpistemicType(rep.epistemic_type),
+              attributed_principal:
+                rep.attributed_principal ?? target.attributed_principal,
+              visibility_scope: rep.visibility_scope,
+              taint_level: rep.taint_level,
+              content_text: rep.content_text,
+              created_virtual_ts: input.virtual_ts_ms,
+              last_recalled_ts: input.virtual_ts_ms,
+              valid_from_virtual_ts: input.virtual_ts_ms,
+              created_at_rev: input.state_rev
+            },
+            edges
+          );
+        }
+      }
+
+      const invalidated = new Set<string>([input.target_memory_id]);
+      const queue: string[] = [input.target_memory_id];
+      const childStmt = this.#database.prepare(
+        `SELECT child_memory_id FROM memory_lineage_edges
+         WHERE parent_type = 'memory'
+           AND parent_id = ?
+           AND relation_type IN ('derived_from', 'crystallized_from')`
+      );
+      while (queue.length > 0) {
+        const currentParentId = queue.shift()!;
+        const childRows = childStmt.all(currentParentId) as Array<{
+          child_memory_id: string;
+        }>;
+        for (const row of childRows) {
+          const childId = String(row.child_memory_id);
+          if (invalidated.has(childId)) continue;
+          invalidated.add(childId);
+          retireStmt.run(input.virtual_ts_ms, input.virtual_ts_ms, childId);
+          queue.push(childId);
+        }
+      }
+
+      const eventParents = new Set<string>();
+      const eventParentStmt = this.#database.prepare(
+        `SELECT parent_id FROM memory_lineage_edges
+         WHERE child_memory_id = ? AND parent_type = 'event'`
+      );
+      for (const memId of invalidated) {
+        const rows = eventParentStmt.all(memId) as Array<{ parent_id: string }>;
+        for (const r of rows) {
+          eventParents.add(String(r.parent_id));
+        }
+      }
+
+      const affectedCommitments: string[] = [];
+      if (eventParents.size > 0) {
+        const commitmentRows = this.#database
+          .prepare(
+            `SELECT commitment_id FROM prospective_commitments
+             WHERE source_event_id IN (SELECT value FROM json_each(?))
+               AND status IN ('pending', 'due')`
+          )
+          .all(JSON.stringify([...eventParents])) as Array<{
+          commitment_id: string;
+        }>;
+        for (const c of commitmentRows) {
+          affectedCommitments.push(String(c.commitment_id));
+        }
+        if (
+          affectedCommitments.length > 0 &&
+          input.cancel_dependent_commitments === true
+        ) {
+          this.#database
+            .prepare(
+              `UPDATE prospective_commitments
+               SET status = 'cancelled'
+               WHERE commitment_id IN (SELECT value FROM json_each(?))`
+            )
+            .run(JSON.stringify(affectedCommitments));
+        }
+      }
+
+      return {
+        target_updated: true,
+        ...(storedReplacement !== undefined
+          ? { replacement_memory: storedReplacement }
+          : {}),
+        invalidated_memory_ids: [...invalidated],
+        affected_commitment_ids: affectedCommitments
+      };
+    });
   }
 
   upsertCommitment(

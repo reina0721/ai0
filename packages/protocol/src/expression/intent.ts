@@ -14,8 +14,27 @@ export const CommunicativeIntentEnvelopeSchema = z.object({
   deliveryConstraints: z.object({ audienceScope: AudienceScopeSchema, requireNonVerbalQuiet: z.boolean().optional(),
     maxLatencyMs: z.number().finite().nonnegative().optional() })
 });
+export const ExpressionDispatchProvenanceSchema = z.object({
+  realizerPackageId: z.string().optional(),
+  realizerGeneration: z.number().int().nonnegative().optional(),
+  decoratorTraces: z
+    .array(
+      z.object({
+        packageId: z.string(),
+        generation: z.number().int().nonnegative()
+      })
+    )
+    .default([])
+});
+export type ExpressionDispatchProvenance = z.infer<typeof ExpressionDispatchProvenanceSchema>;
+
 export const NegotiatedIntentDispatchSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("dispatched"), channelId: z.string(), envelope: ExpressionEnvelopeSchema }),
+  z.object({
+    status: z.literal("dispatched"),
+    channelId: z.string(),
+    envelope: ExpressionEnvelopeSchema,
+    provenance: ExpressionDispatchProvenanceSchema.optional()
+  }),
   z.object({ status: z.literal("held_pending_compliant_channel"), envelope: z.null() })
 ]);
 export type CommunicativeIntentEnvelope = z.infer<typeof CommunicativeIntentEnvelopeSchema>;

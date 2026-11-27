@@ -6,13 +6,28 @@ import {
   VenueTypeSchema
 } from "../core-v0/primitives.js";
 
-/** The five independently-versioned domains of cognitive state. */
-export const StateDomainSchema = z.enum([
+/** Independently-versioned domains of cognitive state (5 built-in domains + open custom.<ns>.<domain>). */
+export const WellKnownStateDomainSchema = z.enum([
   "D1_WORKING_TURN",
   "D2_CONTINUOUS_STATES",
   "D3_MEMORY_PROJECTION",
   "D4_COMMITMENTS_TASKS",
   "D5_IDENTITY_NARRATIVE"
+]);
+export type WellKnownStateDomain = z.infer<typeof WellKnownStateDomainSchema>;
+
+export const CustomStateDomainSchema = z
+  .string()
+  .regex(/^custom\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/)
+  .refine(
+    (domain): domain is `custom.${string}.${string}` => domain.startsWith("custom."),
+    "Custom state domains must match custom.<namespace>.<domain>"
+  );
+export type CustomStateDomain = z.infer<typeof CustomStateDomainSchema>;
+
+export const StateDomainSchema = z.union([
+  WellKnownStateDomainSchema,
+  CustomStateDomainSchema
 ]);
 export type StateDomain = z.infer<typeof StateDomainSchema>;
 
@@ -22,12 +37,17 @@ export const WellKnownExtensionFacetIdSchema = z.enum([
   "agent.skill_manual",
   "agent.model_adapter",
   "agent.context_contributor",
+  "agent.execution_guard",
   "perception.ingress",
   "perception.source",
+  "perception.transducer",
   "perception.extractor",
   "perception.filter",
+  "cognition.state_domain",
   "cognition.state_dynamics",
   "cognition.proposal_policy",
+  "cognition.capability_policy",
+  "cognition.consolidation_strategy",
   "cognition.response_contract",
   "cognition.attention_arbitrator",
   "cognition.context_contributor",
@@ -256,17 +276,17 @@ export const CapabilityRiskSchema = z.enum([
 ]);
 export type CapabilityRisk = z.infer<typeof CapabilityRiskSchema>;
 
-/** Carrier II: YAML frontmatter parsed from SKILL.md. */
+/** Carrier II: YAML frontmatter parsed from SKILL.md (persona fields optional with clean defaults). */
 export const SkillMarkdownFrontmatterSchema = z.object({
   projections: z.array(CarrierProjectionSchema).optional(),
   skill_id: z.string(),
   display_name: z.string(),
-  description: z.string(),
-  required_mcp_tools: z.array(z.string()),
-  capability_risk: CapabilityRiskSchema,
-  max_audience_scope: AudienceScopeSchema,
-  in_character_demeanor: z.string(),
-  crystallize_as_episodic_memory: z.boolean(),
+  description: z.string().default(""),
+  required_mcp_tools: z.array(z.string()).default([]),
+  capability_risk: CapabilityRiskSchema.default("read_only_safe"),
+  max_audience_scope: AudienceScopeSchema.default("only_owner"),
+  in_character_demeanor: z.string().default(""),
+  crystallize_as_episodic_memory: z.boolean().default(false),
   required_vault_secrets: z.array(z.string()).optional(),
   config_schema: z.record(z.unknown()).optional()
 });

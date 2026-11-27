@@ -29,7 +29,11 @@ import {
   PendingExpressionDelivery,
   type RealizerVocabularyNegotiator
 } from "@ai0/expression-core";
-import type { AdmittedSourceObservation, SensoryCoverageBucketManager } from "@ai0/perception-core";
+import {
+  perceptionTransducerFacet,
+  type AdmittedSourceObservation,
+  type SensoryCoverageBucketManager
+} from "@ai0/perception-core";
 import {
   ExpressionEnvelopeSchema,
   VerifiableTurnTraceSchema,
@@ -1211,7 +1215,64 @@ export class W4MultimodalAnalyzerWorker {
   async processMediaFrame(frame: unknown, audience: AudienceScope): Promise<void> {
     const host = this.extensionHost;
     if (!host) return;
-    for (const entry of host.listFacets(expressionMediaTranscoderFacet)) {
+    const frameObj =
+      typeof frame === "object" && frame !== null && !Array.isArray(frame)
+        ? (frame as Record<string, unknown>)
+        : undefined;
+    const inputModality = typeof frameObj?.modality === "string" ? frameObj.modality : "visual_semantic";
+    const channelId = typeof frameObj?.channel_id === "string" ? frameObj.channel_id : "channel.multimodal";
+    const sourceKey = typeof frameObj?.source_key === "string" ? frameObj.source_key : "transduced_stream";
+
+    for (const entry of sortFacetsByPriority(host.listFacets(perceptionTransducerFacet))) {
+      if (
+        !entry.implementation.inputModalities.includes(inputModality) ||
+        !host.allowsAudienceScope(entry.packageId, audience, entry.facetId)
+      ) {
+        continue;
+      }
+      const transduced = await host.invokeFacetAsync(entry, (facet) =>
+        facet.transduce(
+          {
+            modality: inputModality,
+            rawPayload: structuredClone(frame),
+            channelId,
+            ...(typeof frameObj?.summary_text === "string" ? { summaryText: frameObj.summary_text } : {})
+          },
+          new AbortController().signal
+        )
+      );
+      if (!transduced) continue;
+      if (transduced.dynamicEventContract) {
+        const { namespace, name, version } = transduced.dynamicEventContract;
+        if (host.getDynamicContract("perception_event", namespace, name, version)) {
+          host.validateDynamicContractPayload(
+            "perception_event",
+            namespace,
+            name,
+            version,
+            transduced.data ?? { primaryCue: transduced.primaryCue }
+          );
+        }
+      }
+      this.coverage.upsert({
+        channel_id: channelId,
+        modality: (transduced.outputModality as SensorModality) ?? "visual_semantic",
+        source_key: sourceKey,
+        coverage: "live_foveal",
+        summary_text: transduced.summaryText ?? transduced.primaryCue,
+        audience_scope: audience,
+        frame_span_ms: 0,
+        freshness_ttl_ms: 30_000,
+        updated_at_virtual_ts: this.clock.nowMs(),
+        competing_hypotheses: (transduced.competingHypotheses ?? []).map((text) => ({
+          text,
+          confidence: transduced.confidence ?? 0.5
+        })),
+        ...(transduced.confidence !== undefined ? { perception_confidence: transduced.confidence } : {})
+      });
+    }
+
+    for (const entry of sortFacetsByPriority(host.listFacets(expressionMediaTranscoderFacet))) {
       if (host.allowsAudienceScope(entry.packageId, audience, entry.facetId)) {
         await host.invokeFacetAsync(entry, (facet) => facet.onUpstreamMediaFrame?.(structuredClone(frame)));
       }

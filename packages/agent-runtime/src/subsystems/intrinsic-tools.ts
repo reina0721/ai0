@@ -1,6 +1,8 @@
 import { agentToolProviderFacet } from "@ai0/agent-core";
 import type { AgencyTaskRecord } from "@ai0/cognition-core";
 import type {
+  DynamicContractKind,
+  DynamicContractSnapshot,
   ExtensionHostView,
   ExtensionPackageState,
   FacetPoint,
@@ -34,6 +36,7 @@ export interface AgentActivePlan {
   readonly planId: string;
   readonly goal: string;
   readonly steps: readonly AgentPlanStep[];
+  readonly basedOnMemoryIds?: readonly string[];
   readonly updatedAtMs: number;
 }
 
@@ -72,7 +75,11 @@ export interface ActivatedSkillManual {
 }
 
 export interface IntrinsicToolRuntimePort {
-  updatePlan(goal: string | undefined, steps: readonly AgentPlanStep[]): AgentActivePlan;
+  updatePlan(
+    goal: string | undefined,
+    steps: readonly AgentPlanStep[],
+    basedOnMemoryIds?: readonly string[]
+  ): AgentActivePlan;
   delegateSubagent(params: SubagentDelegationParams, signal: AbortSignal): Promise<SubagentDelegationResult>;
   listSkills(query?: string): readonly SkillDirectoryEntry[];
   activateSkill(packageOrSkillId: string): ActivatedSkillManual;
@@ -80,15 +87,37 @@ export interface IntrinsicToolRuntimePort {
     goal: string;
     capabilityRisk?: CapabilityRisk;
     steps?: Array<{ step_title: string; actuator_or_tool_id?: string }>;
+    basedOnMemoryIds?: readonly string[];
   }): AgencyTaskRecord;
   recallMemories(
     query: Omit<CognitionMemoryQuery, "audienceScope">,
     signal: AbortSignal
   ): Promise<readonly CognitionMemoryRecord[]>;
   proposeMemory(
-    params: { content: string; memoryTier: CognitionMemoryTier; interactionFrame?: string },
+    params: {
+      content: string;
+      memoryTier: CognitionMemoryTier;
+      interactionFrame?: string;
+      basedOnMemoryIds?: readonly string[];
+    },
     signal: AbortSignal
   ): Promise<{ accepted: boolean; reason?: string; record?: CognitionMemoryRecord }>;
+  reviseMemory?(
+    params: {
+      targetMemoryId: string;
+      relation: "supersedes" | "contradicts";
+      replacementContent?: string;
+      memoryTier?: CognitionMemoryTier;
+      reason?: string;
+    },
+    signal: AbortSignal
+  ): Promise<{
+    accepted: boolean;
+    reason?: string;
+    invalidatedMemoryIds: readonly string[];
+    pausedTaskIds: readonly string[];
+    replacementRecord?: CognitionMemoryRecord;
+  }>;
 }
 
 const VALID_PLAN_STATUSES = new Set<AgentPlanStepStatus>(["pending", "in_progress", "completed", "blocked"]);
@@ -103,12 +132,21 @@ const VALID_CAPABILITY_RISKS = new Set<CapabilityRisk>([
   "low_read_and_scoped_write",
   "high_side_effect_privileged"
 ]);
+const VALID_REVISION_RELATIONS = new Set<"supersedes" | "contradicts">(["supersedes", "contradicts"]);
 
 function expectRecord(input: unknown, label: string): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new TypeError(`Expected object for ${label}`);
   }
   return input as Record<string, unknown>;
+}
+
+function parseOptionalStringArray(raw: unknown, fieldName: string): readonly string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string" || !item.trim())) {
+    throw new TypeError(`${fieldName} must be an array of non-empty strings`);
+  }
+  return raw.map((item) => (item as string).trim());
 }
 
 const passthroughResultSchema: AgentValueSchema = {
@@ -131,6 +169,7 @@ export function createIntrinsicAgentTools(
           required: ["steps"],
           properties: {
             goal: { type: "string" },
+            basedOnMemoryIds: { type: "array", items: { type: "string" } },
             steps: {
               type: "array",
               items: {
@@ -163,14 +202,23 @@ export function createIntrinsicAgentTools(
             }
             return { stepId, title, status };
           });
-          return { ...(typeof obj.goal === "string" ? { goal: obj.goal } : {}), steps };
+          const basedOnMemoryIds = parseOptionalStringArray(obj.basedOnMemoryIds, "basedOnMemoryIds");
+          return {
+            ...(typeof obj.goal === "string" ? { goal: obj.goal } : {}),
+            ...(basedOnMemoryIds ? { basedOnMemoryIds } : {}),
+            steps
+          };
         }
       },
       resultSchema: passthroughResultSchema,
       execute(call) {
         try {
-          const parsed = call.input as { goal?: string; steps: readonly AgentPlanStep[] };
-          const plan = port.updatePlan(parsed.goal, parsed.steps);
+          const parsed = call.input as {
+            goal?: string;
+            steps: readonly AgentPlanStep[];
+            basedOnMemoryIds?: readonly string[];
+          };
+          const plan = port.updatePlan(parsed.goal, parsed.steps, parsed.basedOnMemoryIds);
           return { status: "verified", value: plan };
         } catch (error) {
           return { status: "failed", error: error instanceof Error ? error.message : String(error) };
@@ -336,7 +384,8 @@ export function createIntrinsicAgentTools(
               type: "string",
               enum: ["read_only_safe", "low_read_and_scoped_write", "high_side_effect_privileged"]
             },
-            steps: { type: "array", items: { type: "string" } }
+            steps: { type: "array", items: { type: "string" } },
+            basedOnMemoryIds: { type: "array", items: { type: "string" } }
           }
         },
         parse(raw) {
@@ -352,10 +401,12 @@ export function createIntrinsicAgentTools(
             Array.isArray(obj.steps) && obj.steps.every((s) => typeof s === "string" && s.trim())
               ? (obj.steps as string[]).map((step_title) => ({ step_title }))
               : undefined;
+          const basedOnMemoryIds = parseOptionalStringArray(obj.basedOnMemoryIds, "basedOnMemoryIds");
           return {
             goal: obj.goal.trim(),
             ...(risk ? { capabilityRisk: risk } : {}),
-            ...(steps ? { steps } : {})
+            ...(steps ? { steps } : {}),
+            ...(basedOnMemoryIds ? { basedOnMemoryIds } : {})
           };
         }
       },
@@ -366,6 +417,7 @@ export function createIntrinsicAgentTools(
             goal: string;
             capabilityRisk?: CapabilityRisk;
             steps?: Array<{ step_title: string }>;
+            basedOnMemoryIds?: readonly string[];
           };
           const task = port.dispatchBackgroundGoal(parsed);
           return {
@@ -374,7 +426,8 @@ export function createIntrinsicAgentTools(
               taskId: task.task_id,
               goal: task.goal,
               status: task.status,
-              capabilityRisk: task.capability_risk
+              capabilityRisk: task.capability_risk,
+              ...(task.based_on_memory_ids ? { basedOnMemoryIds: task.based_on_memory_ids } : {})
             }
           };
         } catch (error) {
@@ -439,7 +492,8 @@ export function createIntrinsicAgentTools(
               type: "string",
               enum: ["episodic_trace", "perceptual_hypothesis", "non_literal_frame", "semantic_fact"]
             },
-            interactionFrame: { type: "string" }
+            interactionFrame: { type: "string" },
+            basedOnMemoryIds: { type: "array", items: { type: "string" } }
           }
         },
         parse(raw) {
@@ -454,10 +508,12 @@ export function createIntrinsicAgentTools(
           if (obj.interactionFrame !== undefined && typeof obj.interactionFrame !== "string") {
             throw new TypeError("interactionFrame must be a string");
           }
+          const basedOnMemoryIds = parseOptionalStringArray(obj.basedOnMemoryIds, "basedOnMemoryIds");
           return {
             content: obj.content.trim(),
             memoryTier: tier,
-            ...(typeof obj.interactionFrame === "string" ? { interactionFrame: obj.interactionFrame } : {})
+            ...(typeof obj.interactionFrame === "string" ? { interactionFrame: obj.interactionFrame } : {}),
+            ...(basedOnMemoryIds ? { basedOnMemoryIds } : {})
           };
         }
       },
@@ -468,10 +524,87 @@ export function createIntrinsicAgentTools(
             content: string;
             memoryTier: CognitionMemoryTier;
             interactionFrame?: string;
+            basedOnMemoryIds?: readonly string[];
           };
           const outcome = await port.proposeMemory(parsed, signal);
           if (!outcome.accepted) {
             return { status: "failed", error: outcome.reason ?? "MEMORY_PROPOSAL_REJECTED" };
+          }
+          return { status: "verified", value: outcome };
+        } catch (error) {
+          if (signal.aborted) throw error;
+          return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+      project: (value) => value
+    },
+    {
+      name: "agent.revise_memory",
+      description:
+        "Epistemic belief revision: refute or supersede an outdated/false memory record while preserving audit history, cascading stale-premise invalidation to derived memories, and pausing dependent active tasks.",
+      capabilityRisk: "low_read_and_scoped_write",
+      inputSchema: {
+        jsonSchema: {
+          type: "object",
+          required: ["targetMemoryId", "relation"],
+          properties: {
+            targetMemoryId: { type: "string" },
+            relation: { type: "string", enum: ["supersedes", "contradicts"] },
+            replacementContent: { type: "string" },
+            memoryTier: {
+              type: "string",
+              enum: ["episodic_trace", "perceptual_hypothesis", "non_literal_frame", "semantic_fact"]
+            },
+            reason: { type: "string" }
+          }
+        },
+        parse(raw) {
+          const obj = expectRecord(raw, "agent.revise_memory");
+          if (typeof obj.targetMemoryId !== "string" || !obj.targetMemoryId.trim()) {
+            throw new TypeError("targetMemoryId must be a non-empty string");
+          }
+          const relation = obj.relation as "supersedes" | "contradicts";
+          if (!VALID_REVISION_RELATIONS.has(relation)) {
+            throw new TypeError("relation must be 'supersedes' or 'contradicts'");
+          }
+          if (obj.replacementContent !== undefined && typeof obj.replacementContent !== "string") {
+            throw new TypeError("replacementContent must be a string");
+          }
+          const tier =
+            obj.memoryTier !== undefined ? (obj.memoryTier as CognitionMemoryTier) : undefined;
+          if (tier !== undefined && !VALID_MEMORY_TIERS.has(tier)) {
+            throw new TypeError("Invalid memoryTier");
+          }
+          if (obj.reason !== undefined && typeof obj.reason !== "string") {
+            throw new TypeError("reason must be a string");
+          }
+          return {
+            targetMemoryId: obj.targetMemoryId.trim(),
+            relation,
+            ...(typeof obj.replacementContent === "string" && obj.replacementContent.trim()
+              ? { replacementContent: obj.replacementContent.trim() }
+              : {}),
+            ...(tier !== undefined ? { memoryTier: tier } : {}),
+            ...(typeof obj.reason === "string" && obj.reason.trim() ? { reason: obj.reason.trim() } : {})
+          };
+        }
+      },
+      resultSchema: passthroughResultSchema,
+      async execute(call, signal) {
+        if (!port.reviseMemory) {
+          return { status: "failed", error: "MEMORY_REVISION_UNAVAILABLE" };
+        }
+        try {
+          const parsed = call.input as {
+            targetMemoryId: string;
+            relation: "supersedes" | "contradicts";
+            replacementContent?: string;
+            memoryTier?: CognitionMemoryTier;
+            reason?: string;
+          };
+          const outcome = await port.reviseMemory(parsed, signal);
+          if (!outcome.accepted) {
+            return { status: "failed", error: outcome.reason ?? "MEMORY_REVISION_REJECTED" };
           }
           return { status: "verified", value: outcome };
         } catch (error) {
@@ -565,6 +698,29 @@ export class IntrinsicToolsHostOverlay implements ExtensionHostView {
     audience?: AudienceScope
   ): (input: I, signal?: AbortSignal) => Promise<O> {
     return this.base.bindService(contract, providerPackageId, audience);
+  }
+
+  listDynamicContracts(kind?: DynamicContractKind): readonly DynamicContractSnapshot[] {
+    return this.base.listDynamicContracts(kind);
+  }
+
+  getDynamicContract(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    version: number
+  ): DynamicContractSnapshot | undefined {
+    return this.base.getDynamicContract(kind, namespace, name, version);
+  }
+
+  validateDynamicContractPayload<T = unknown>(
+    kind: DynamicContractKind,
+    namespace: string,
+    name: string,
+    version: number,
+    payload: unknown
+  ): T {
+    return this.base.validateDynamicContractPayload(kind, namespace, name, version, payload);
   }
 
   allowsReadDomain(id: string, domain: StateDomain): boolean {
