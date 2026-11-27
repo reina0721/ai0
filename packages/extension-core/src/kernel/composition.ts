@@ -8,18 +8,6 @@ export interface ExtensionPoint<T> {
   readonly parse: (value: unknown) => T;
 }
 
-export interface ConsoleNavigationItem { id: string; label: string; path: string }
-export const consoleNavigation: ExtensionPoint<ConsoleNavigationItem> = {
-  owner: "ai0.console", name: "navigation", version: 1,
-  parse(input) {
-    const item = input as Partial<ConsoleNavigationItem> | null;
-    if (!item || typeof item.id !== "string" || !item.id || typeof item.label !== "string" ||
-        !item.label || typeof item.path !== "string" || !item.path.startsWith("/") || item.path.startsWith("//") || item.path.includes("\\"))
-      throw new TypeError("Navigation requires an id, label and local route");
-    return { id: item.id, label: item.label, path: item.path };
-  }
-};
-
 export interface ExtensionScope {
   define<T>(point: ExtensionPoint<T>, accept: (value: T) => () => void): () => void;
   contribute<T>(point: ExtensionPoint<T>, value: T, active?: (scope: ExtensionScope) => void): void;

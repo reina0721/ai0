@@ -1,8 +1,13 @@
 import { cognitionResponseContractPoint } from "@ai0/protocol";
 import { defineFacetPoint } from "@ai0/extension-core";
-import { perceptionExtractorContract, cognitionProposalPolicyContract } from "@ai0/protocol";
+import {
+  cognitionMemoryProviderContract,
+  cognitionProposalPolicyContract,
+  perceptionExtractorContract
+} from "@ai0/protocol";
 export const perceptionExtractorFacet = defineFacetPoint(perceptionExtractorContract);
 export const cognitionProposalPolicyFacet = defineFacetPoint(cognitionProposalPolicyContract);
+export const cognitionMemoryProviderFacet = defineFacetPoint(cognitionMemoryProviderContract);
 import {
   ConsolePageSchema,
   perceptionSourceContract,

@@ -31,6 +31,7 @@ export const WellKnownExtensionFacetIdSchema = z.enum([
   "cognition.response_contract",
   "cognition.attention_arbitrator",
   "cognition.context_contributor",
+  "cognition.memory_provider",
   "cognition.sleep_organ",
   "expression.realizer",
   "expression.media_transcoder",
@@ -44,7 +45,9 @@ export type WellKnownExtensionFacetId = z.infer<typeof WellKnownExtensionFacetId
 
 export const ExtensionFacetIdSchema = z.union([
   WellKnownExtensionFacetIdSchema,
-  z.string().regex(/^(?:channel|agent|perception|cognition|expression|console|extension)\.[a-z][a-z0-9_]*$/)
+  z.string().regex(
+    /^(?:(?:channel|agent|perception|cognition|expression|console|extension)\.[a-z][a-z0-9_]*|custom\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)$/
+  )
 ]);
 export type ExtensionFacetId = z.infer<typeof ExtensionFacetIdSchema>;
 
@@ -213,6 +216,7 @@ export const Ai0ExtensionManifestSchema = z.object({
   homepage: z.string().optional(),
   tags: z.array(z.string()).optional(),
   carrier_kind: ExtensionCarrierKindSchema,
+  default_enabled: z.boolean().optional(),
   facets: z.array(ExtensionFacetIdSchema),
   services: ExtensionServicesSchema.optional(),
   projections: z.array(CarrierProjectionSchema).optional(),

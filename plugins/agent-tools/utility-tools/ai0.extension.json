@@ -1,0 +1,20 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.utility-tools",
+  "display_name": "确定性计算与结构化辅助工具箱",
+  "description": "零宿主 I/O 与零网络副作用的通用推理辅助工具包：提供时区日期时间换算（util.datetime）、无 eval 精确数学表达式求值（util.calculate）与 JSON 结构路径投影（util.json_query）。",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "native_code_plugin",
+  "default_enabled": true,
+  "facets": [
+    "agent.tool_provider"
+  ],
+  "entry": "./dist/index.js",
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "public_all",
+    "network_access": false
+  }
+}

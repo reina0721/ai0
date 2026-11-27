@@ -7,6 +7,7 @@ export const FACET_LABELS: Record<string, string> = {
   "cognition.proposal_policy": "状态提案门控",
   "cognition.attention_arbitrator": "注意力仲裁",
   "cognition.context_contributor": "上下文贡献",
+  "cognition.memory_provider": "记忆提供",
   "cognition.response_contract": "响应契约",
   "cognition.sleep_organ": "睡眠巩固",
   "expression.realizer": "下行表达",

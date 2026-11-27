@@ -1,4 +1,4 @@
-import type { ExtensionCoreHost, FacetRegistration } from "@ai0/extension-core";
+import type { ExtensionHostView, FacetRegistration } from "@ai0/extension-core";
 import {
   AgentPromptInputSchema,
   AuthorityRoleSchema,
@@ -46,7 +46,7 @@ export interface AgentToolAuthorizationMeta {
 
 /** These grants belong to the host. An extension cannot promote its own fragments to instructions. */
 export interface AgentBindings {
-  host: ExtensionCoreHost;
+  host: ExtensionHostView;
   modelPackageId?: string;
   manualPackageIds?: readonly string[];
   initialTaint?: TaintLevel;

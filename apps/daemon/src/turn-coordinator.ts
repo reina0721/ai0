@@ -9,6 +9,7 @@ import {
   ADDITIONAL_BLACKBOARD_SLOT_TOKENS,
   BlackboardCompiler,
   cognitionContextContributorFacet,
+  cognitionMemoryProviderFacet,
   estimateBlackboardTokens,
   evaluateCrisisGuard,
   MetabolicRegionRouter,
@@ -599,7 +600,7 @@ export class W1FastDialogueWorker {
     const { recalled, sqlFilter } =
       crisis.status === "INTERCEPTED_CRISIS"
         ? { recalled: [] as readonly RecalledMemoryItem[], sqlFilter: "SHORT_CIRCUITED_BY_L0_SB243" }
-        : this.recallMemories(input, preSnapshot);
+        : await this.recallMemoriesAsync(input, preSnapshot, signal);
     if (crisis.status !== "INTERCEPTED_CRISIS") onStage?.("recall");
 
     const organContributions: { source: string; version: string; title: string; content: string }[] = [];
@@ -895,6 +896,58 @@ export class W1FastDialogueWorker {
             ? `visibility_scope IN ('${input.audience_scope}', 'public_all') AND invalidated_at_ts IS NULL`
             : "visibility_scope = 'public_all' AND invalidated_at_ts IS NULL";
     return { recalled, sqlFilter };
+  }
+
+  private async recallMemoriesAsync(
+    input: W1TurnInput,
+    preSnapshot: ReadOnlyCognitiveSnapshot,
+    signal?: AbortSignal
+  ): Promise<{ recalled: readonly RecalledMemoryItem[]; sqlFilter: string }> {
+    const base = this.recallMemories(input, preSnapshot);
+    const host = this.extensionHost;
+    if (!host) return base;
+
+    const externalEntries = sortFacetsByPriority(host.listFacets(cognitionMemoryProviderFacet)).filter(
+      (entry) =>
+        entry.packageId !== "host.soul-memory" &&
+        host.allowsAudienceScope(entry.packageId, input.audience_scope, entry.facetId)
+    );
+    if (externalEntries.length === 0) return base;
+
+    const seenIds = new Set(base.recalled.map((m) => m.memory_id));
+    const merged: RecalledMemoryItem[] = [...base.recalled];
+    for (const entry of externalEntries) {
+      const records = await host.invokeFacetAsync(entry, (provider) =>
+        provider.retrieve(
+          {
+            query: input.summary_text,
+            audienceScope: input.audience_scope,
+            limit: 6
+          },
+          signal
+        )
+      );
+      signal?.throwIfAborted();
+      for (const rec of records ?? []) {
+        const scopeAllowed =
+          input.audience_scope === "only_owner" ||
+          rec.audienceScope === "public_all" ||
+          rec.audienceScope === input.audience_scope;
+        if (!scopeAllowed || seenIds.has(rec.memoryId)) continue;
+        seenIds.add(rec.memoryId);
+        merged.push({
+          memory_id: rec.memoryId,
+          memory_tier: rec.memoryTier === "semantic_fact" ? "semantic_fact" : "episodic_experience",
+          epistemic_type: "reported_hearsay",
+          visibility_scope: rec.audienceScope,
+          taint_level: "untrusted_external",
+          score: rec.score ?? 0.5,
+          content_text: rec.content,
+          source_event_ids: []
+        });
+      }
+    }
+    return { recalled: merged, sqlFilter: base.sqlFilter };
   }
 
   private commitTurnResult(

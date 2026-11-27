@@ -13,6 +13,7 @@
     }
   },
   "scripts": {
+    "agent": "node --conditions=development --import tsx apps/daemon/src/agent-cli.ts",
     "dev": "pnpm build:plugins && concurrently -k -n daemon,console -c cyan,magenta \"pnpm dev:daemon\" \"pnpm dev:console\"",
     "build:plugins": "pnpm --filter \"{./plugins/**}...\" -r --if-present build",
     "dev:daemon": "node --watch --conditions=development --import tsx apps/daemon/src/cli.ts --port 4174",

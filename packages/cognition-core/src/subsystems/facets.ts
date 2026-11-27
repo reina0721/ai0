@@ -1,5 +1,6 @@
-import { defineFacetPoint, type ExtensionCoreHost } from "@ai0/extension-core";
+import { defineFacetPoint, type ExtensionHostView } from "@ai0/extension-core";
 import {
+  cognitionMemoryProviderContract,
   cognitionProposalPolicyContract,
   cognitionResponseContractPoint,
   ContinuousStateDescriptorSchema,
@@ -83,6 +84,7 @@ export interface AttentionArbitratorPort {
 }
 
 export const cognitionProposalPolicyFacet = defineFacetPoint(cognitionProposalPolicyContract);
+export const cognitionMemoryProviderFacet = defineFacetPoint(cognitionMemoryProviderContract);
 
 export const cognitionStateDynamicsFacet = defineFacetPoint<{ descriptors: readonly ContinuousStateDescriptor[] }>({
   owner: "cognition", name: "state_dynamics", version: 1,
@@ -124,7 +126,7 @@ export const cognitionSleepOrganFacet = defineFacetPoint<CognitionSleepOrgan>({
 });
 
 export function selectReadableSnapshot(
-  host: ExtensionCoreHost,
+  host: ExtensionHostView,
   packageId: string,
   snapshot: ReadOnlyCognitiveSnapshot
 ): ReadableCognitiveSnapshot {

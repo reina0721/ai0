@@ -1,6 +1,14 @@
 import { ExtensionFacetIdSchema } from "@ai0/protocol";
 
-export type FacetOwner = "channel" | "agent" | "perception" | "cognition" | "expression" | "console" | "extension";
+export type FacetOwner =
+  | "channel"
+  | "agent"
+  | "perception"
+  | "cognition"
+  | "expression"
+  | "console"
+  | "extension"
+  | `custom.${string}`;
 
 export interface FacetPoint<T> {
   readonly owner: FacetOwner;

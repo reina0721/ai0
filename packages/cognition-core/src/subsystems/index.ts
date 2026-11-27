@@ -1,4 +1,5 @@
 export * from "./facets.js";
+export * from "./memory-provider.js";
 export * from "./proposal-policies.js";
 export * from "./continuous-domain.js";
 export * from "./epistemic-firewall.js";

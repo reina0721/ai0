@@ -1,6 +1,7 @@
 import { Ai0ExtensionManifestSchema, type Ai0ExtensionManifest, type AudienceScope, type StateDomain, type ExtensionServiceRef } from "@ai0/protocol";
 import type { FacetPoint } from "../kernel/facet-point.js";
 import { ServiceBindingError, type ServiceContract, type ServiceStatus } from "../kernel/service-contract.js";
+import { ScopedExtensionView, type ScopedExtensionPolicy } from "./scoped-view.js";
 import { ServiceDirectory, type ServiceActivation, type ServiceActivationScope } from "./service-directory.js";
 
 export type PackageConfig = Readonly<Record<string, unknown>>;
@@ -42,13 +43,38 @@ export function sortFacetsByPriority<T extends { priority?: number }>(facets: re
     || (a.packageId < b.packageId ? -1 : a.packageId > b.packageId ? 1 : 0));
 }
 
-export class ExtensionCoreHost {
+export interface ExtensionHostChangeEvent {
+  readonly packageId: string;
+  readonly reason: "mounted" | "unmounted" | "enabled_changed" | "configured" | "faulted_isolated" | "service_updated";
+}
+
+export interface ExtensionHostView {
+  listPackages(): ExtensionPackageState[];
+  getPackage(id: string): ExtensionPackageState | undefined;
+  listFacets<T>(point: FacetPoint<T>): readonly FacetRegistration<T>[];
+  invokeFacet<T, R>(entry: FacetRegistration<T>, invoke: (implementation: T) => R): R | undefined;
+  invokeFacetAsync<T, R>(entry: FacetRegistration<T>, invoke: (implementation: T) => R | Promise<R>): Promise<R | undefined>;
+  leaseFacet<T>(entry: FacetRegistration<T>): { signal: AbortSignal; dispose(): void };
+  bindService<I, O>(
+    contract: ServiceContract<I, O>,
+    providerPackageId: string,
+    audience?: AudienceScope
+  ): (input: I, signal?: AbortSignal) => Promise<O>;
+  allowsReadDomain(id: string, domain: StateDomain): boolean;
+  allowsProposeDomain(id: string, domain: StateDomain): boolean;
+  allowsAudienceScope(id: string, audience: AudienceScope, facet?: string): boolean;
+  allowsNetworkAccess(id: string): boolean;
+  createScopedView(policy: ScopedExtensionPolicy): ExtensionHostView;
+}
+
+export class ExtensionCoreHost implements ExtensionHostView {
   private readonly packages = new Map<string, MountedPackage>();
   private readonly transitioning = new Set<string>();
   private readonly revisions = new Map<string, number>();
   private readonly services = new ServiceDirectory();
   private readonly issued = new WeakMap<FacetRegistration<unknown>, { registration: MountedPackage["registrations"][number]; binding: string }>();
   private readonly revoked = new Set<() => void>();
+  private readonly listeners = new Set<(event: ExtensionHostChangeEvent) => void>();
   private generation = 0;
 
   registerPackage(definition: ExtensionPackageDefinition, config: PackageConfig = {}) {
@@ -63,7 +89,7 @@ export class ExtensionCoreHost {
       manifest, activate: definition.activate, config: structuredClone(config), rev: (this.revisions.get(id) ?? -1) + 1,
       enabled: true, status: "disabled", registrations: [], disposers: []
     };
-    this.transition(id, () => {
+    this.transition(id, "mounted", () => {
       this.packages.set(id, pkg);
       this.revisions.set(id, pkg.rev);
       this.start(pkg);
@@ -74,7 +100,7 @@ export class ExtensionCoreHost {
   unmountPackage(id: string): boolean {
     const pkg = this.packages.get(id);
     if (!pkg) return false;
-    this.transition(id, () => {
+    this.transition(id, "unmounted", () => {
       this.packages.delete(id);
       this.stop(pkg, "disabled");
     });
@@ -84,7 +110,7 @@ export class ExtensionCoreHost {
   setPackageEnabled(id: string, enabled: boolean): void {
     const pkg = this.require(id);
     if (pkg.enabled === enabled && pkg.status !== "faulted_isolated") return;
-    this.transition(id, () => {
+    this.transition(id, "enabled_changed", () => {
       pkg.enabled = enabled;
       if (enabled) this.start(pkg);
       else this.stop(pkg, "disabled");
@@ -99,7 +125,7 @@ export class ExtensionCoreHost {
     const pkg = this.require(id);
     if (pkg.rev !== expectedRev) throw new Error(`Extension revision conflict: expected ${expectedRev}, current ${pkg.rev}`);
     const nextConfig = structuredClone(config);
-    this.transition(id, () => {
+    this.transition(id, "configured", () => {
       pkg.config = nextConfig;
       this.revisions.set(id, ++pkg.rev);
       this.stop(pkg, "disabled");
@@ -120,11 +146,24 @@ export class ExtensionCoreHost {
   setServiceAccess(consumer: string, ref: ExtensionServiceRef, allowed: boolean): void {
     this.services.setAccess(consumer, ref, allowed);
     this.notifyRevocations();
+    this.emitChange({ packageId: consumer, reason: "service_updated" });
   }
 
   selectServiceProvider(ref: ExtensionServiceRef, packageId?: string): void {
     this.services.select(ref, packageId);
     this.notifyRevocations();
+    this.emitChange({ packageId: packageId ?? ref.owner, reason: "service_updated" });
+  }
+
+  onDidChange(listener: (event: ExtensionHostChangeEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  createScopedView(policy: ScopedExtensionPolicy): ExtensionHostView {
+    return new ScopedExtensionView(this, policy);
   }
 
   bindService<I, O>(contract: ServiceContract<I, O>, providerPackageId: string, audience: AudienceScope = "only_owner") {
@@ -186,7 +225,7 @@ export class ExtensionCoreHost {
       const result = invoke(entry.implementation);
       return this.livePackage(entry) ? result : undefined;
     } catch (error) {
-      if (!(error instanceof ServiceBindingError) && this.livePackage(entry)) this.transition(entry.packageId, () => this.isolate(pkg, error));
+      if (!(error instanceof ServiceBindingError) && this.livePackage(entry)) this.transition(entry.packageId, "faulted_isolated", () => this.isolate(pkg, error));
       return undefined;
     }
   }
@@ -198,7 +237,10 @@ export class ExtensionCoreHost {
       const result = await invoke(entry.implementation);
       return this.livePackage(entry) ? result : undefined;
     } catch (error) {
-      if (!(error instanceof ServiceBindingError) && this.livePackage(entry)) this.isolate(pkg, error);
+      if (!(error instanceof ServiceBindingError) && this.livePackage(entry)) {
+        this.isolate(pkg, error);
+        this.emitChange({ packageId: entry.packageId, reason: "faulted_isolated" });
+      }
       return undefined;
     }
   }
@@ -221,7 +263,17 @@ export class ExtensionCoreHost {
     return this.permissions(id)?.network_access === true;
   }
 
-  private transition(id: string, update: () => void): void {
+  private emitChange(event: ExtensionHostChangeEvent): void {
+    for (const listener of [...this.listeners]) {
+      try {
+        listener(event);
+      } catch {
+        // Listener errors must never destabilize host transitions.
+      }
+    }
+  }
+
+  private transition(id: string, reason: ExtensionHostChangeEvent["reason"], update: () => void): void {
     if (this.transitioning.has(id)) throw new Error(`Package lifecycle is already changing: ${id}`);
     this.transitioning.add(id);
     try {
@@ -229,6 +281,7 @@ export class ExtensionCoreHost {
     } finally {
       this.transitioning.delete(id);
       this.notifyRevocations();
+      this.emitChange({ packageId: id, reason });
     }
   }
 

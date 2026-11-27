@@ -1,4 +1,4 @@
-import type { ExtensionCoreHost, FacetRegistration } from "@ai0/extension-core";
+import type { ExtensionHostView, FacetRegistration } from "@ai0/extension-core";
 import type { AudienceScope, ContinuousStateDescriptor } from "@ai0/protocol";
 import { ContinuousStateMetaEngine } from "../kernel/continuous-state-engine.js";
 import { cognitionStateDynamicsFacet } from "./facets.js";
@@ -12,7 +12,7 @@ type Cell = { owner: Source; engine: ContinuousStateMetaEngine; attribution?: St
 export class MountedContinuousStates {
   private readonly cells = new Map<string, Cell>();
   private seed: ContinuousDomainSnapshot = { values: {}, attributions: {} };
-  constructor(private readonly host: ExtensionCoreHost | undefined, private readonly now: () => number) {}
+  constructor(private readonly host: ExtensionHostView | undefined, private readonly now: () => number) {}
 
   restore(snapshot: ContinuousDomainSnapshot) {
     this.cells.clear();

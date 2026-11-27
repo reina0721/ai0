@@ -105,6 +105,9 @@ importers:
       '@ai0/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@ai0/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@ai0/cognition-core':
         specifier: workspace:*
         version: link:../../packages/cognition-core
@@ -276,6 +279,45 @@ importers:
       yaml:
         specifier: 2.9.1
         version: 2.9.1
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+
+  plugins/agent-tools/mcp-bridge:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.2
+        version: 1.32.2(zod@3.25.76)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+
+  plugins/agent-tools/utility-tools:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+
+  plugins/agent-tools/web-tools:
+    dependencies:
+      '@ai0/protocol':
+        specifier: workspace:*
+        version: link:../../../packages/protocol
+      '@ai0/sdk':
+        specifier: workspace:*
+        version: link:../../../packages/sdk
       zod:
         specifier: ^3.24.0
         version: 3.25.76

@@ -3,7 +3,37 @@ import { parse as parseYaml } from "yaml";
 export * from "./facets.js";
 export * from "./agent-facets.js";
 export * from "./carrier-projections.js";
-import type { ExtensionScope, ExtensionPackageDefinition } from "@ai0/extension-core";
+export * from "./headless-loader.js";
+import type { ExtensionPoint, ExtensionScope, ExtensionPackageDefinition } from "@ai0/extension-core";
+
+export interface ConsoleNavigationItem {
+  id: string;
+  label: string;
+  path: string;
+}
+
+export const consoleNavigation: ExtensionPoint<ConsoleNavigationItem> = {
+  owner: "ai0.console",
+  name: "navigation",
+  version: 1,
+  parse(input) {
+    const item = input as Partial<ConsoleNavigationItem> | null;
+    if (
+      !item ||
+      typeof item.id !== "string" ||
+      !item.id ||
+      typeof item.label !== "string" ||
+      !item.label ||
+      typeof item.path !== "string" ||
+      !item.path.startsWith("/") ||
+      item.path.startsWith("//") ||
+      item.path.includes("\\")
+    ) {
+      throw new TypeError("Navigation requires an id, label and local route");
+    }
+    return { id: item.id, label: item.label, path: item.path };
+  }
+};
 import {
   Ai0ExtensionManifestSchema,
   SkillMarkdownFrontmatterSchema,

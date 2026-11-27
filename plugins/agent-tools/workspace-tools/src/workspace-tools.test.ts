@@ -99,6 +99,86 @@ describe("builtin.workspace-tools polymorphic workspace plugin", () => {
         value: { matches: [{ path: "src/hello.ts", line: 2 }] }
       });
 
+      const listed = await byName.get("workspace.list_directory")!.execute(
+        { kind: "tool", id: "l1", name: "workspace.list_directory", input: { maxDepth: 2 } },
+        signal
+      );
+      expect(listed).toMatchObject({
+        status: "verified",
+        value: {
+          root: ".",
+          entries: [
+            { path: "src", kind: "directory" },
+            { path: "src/hello.ts", kind: "file" }
+          ],
+          truncated: false
+        }
+      });
+
+      const globbed = await byName.get("workspace.glob_files")!.execute(
+        { kind: "tool", id: "g1", name: "workspace.glob_files", input: { pattern: "**/*.{ts,tsx}" } },
+        signal
+      );
+      expect(globbed).toMatchObject({
+        status: "verified",
+        value: {
+          pattern: "**/*.{ts,tsx}",
+          matches: [{ path: "src/hello.ts" }],
+          truncated: false
+        }
+      });
+
+      // Failed second hunk rolls back cleanly without corrupting file
+      const rolledBack = await byName.get("workspace.apply_patch")!.execute(
+        {
+          kind: "tool",
+          id: "p_fail",
+          name: "workspace.apply_patch",
+          input: {
+            path: "src/hello.ts",
+            edits: [
+              { target: "export const greeting = 'hello';", replacement: "export const greeting = 'corrupted';" },
+              { target: "NON_EXISTENT_HUNK", replacement: "noop" }
+            ]
+          }
+        },
+        signal
+      );
+      expect(rolledBack).toMatchObject({ status: "failed", error: expect.stringContaining("Hunk #2") });
+
+      const patched = await byName.get("workspace.apply_patch")!.execute(
+        {
+          kind: "tool",
+          id: "p_ok",
+          name: "workspace.apply_patch",
+          input: {
+            path: "src/hello.ts",
+            edits: [
+              { target: "export const greeting = 'hello';", replacement: "export const greeting = 'patched';" },
+              { target: "export const version = 2;", replacement: "export const version = 3;" }
+            ]
+          }
+        },
+        signal
+      );
+      expect(patched).toMatchObject({ status: "verified", value: { path: "src/hello.ts", appliedEdits: 2 } });
+
+      // Initialize git repo in temp dir and verify read-only workspace.git_status_diff
+      await byName.get("workspace.run_command")!.execute(
+        { kind: "tool", id: "git_init", name: "workspace.run_command", input: { command: "git init" } },
+        signal
+      );
+      const gitCheck = await byName.get("workspace.git_status_diff")!.execute(
+        { kind: "tool", id: "git_st", name: "workspace.git_status_diff", input: {} },
+        signal
+      );
+      expect(gitCheck).toMatchObject({
+        status: "verified",
+        value: {
+          statusLines: expect.arrayContaining([expect.stringMatching(/src\/hello\.ts|src\//u)])
+        }
+      });
+
       // Verify run_command scrubs sensitive API_KEY env vars
       const cmdRes = await byName.get("workspace.run_command")!.execute(
         {

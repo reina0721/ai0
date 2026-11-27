@@ -1,4 +1,4 @@
-import type { ExtensionCoreHost } from "@ai0/extension-core";
+import type { ExtensionHostView } from "@ai0/extension-core";
 import { randomUUID } from "node:crypto";
 import { singleStepDriver } from "../kernel/turn-runtime.js";
 import { runAgentTurn } from "./request-assembly.js";
@@ -6,7 +6,7 @@ import { extractStructuredJson, type StructuredModelRequest, type StructuredMode
 import { traceStructuredRequest } from "./model-request-trace.js";
 
 /** Adapt a structured caller to the same selected, generation-checked model as ordinary agent runs. */
-export function registeredModelTransport(host: ExtensionCoreHost, packageId: string) {
+export function registeredModelTransport(host: ExtensionHostView, packageId: string) {
   return {
     async generateStructured<T>(input: StructuredModelRequest<T>, signal = new AbortController().signal): Promise<StructuredModelResponse<T>> {
       const lease = input.dynamicLlmConfig?.traceLease;

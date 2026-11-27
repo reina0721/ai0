@@ -1,5 +1,5 @@
 import { runAgentTurn, type AgentRunResult, type ApprovedActionTurn } from "@ai0/agent-core";
-import { sortFacetsByPriority, type ExtensionCoreHost } from "@ai0/extension-core";
+import { sortFacetsByPriority, type ExtensionHostView } from "@ai0/extension-core";
 import type {
   AgentModelAdapter,
   AgentOutputProfile,
@@ -117,7 +117,7 @@ export class AgencyTaskWorker {
     private readonly coordinator: AuthoritativeStateCoordinator,
     private readonly policy: CapabilityPolicyGate,
     private readonly clock: IVirtualClock,
-    private readonly extensionHost?: ExtensionCoreHost,
+    private readonly extensionHost?: ExtensionHostView,
     private readonly completionImpulses: Readonly<Record<string, number>> = { instant_valence: 0.2, drive_curiosity: 0.1 }
   ) {}
 
@@ -127,7 +127,7 @@ export class AgencyTaskWorker {
 
   async executeToolLoopTask(options: ToolLoopTaskExecutionOptions): Promise<ToolLoopTaskExecutionResult> {
     const host = this.extensionHost;
-    if (!host) throw new Error("ExtensionCoreHost is required for multi-step tool loop tasks");
+    if (!host) throw new Error("ExtensionHostView is required for multi-step tool loop tasks");
     const task = this.requireTask(options.taskId);
     if (task.status !== "running") {
       throw new Error(`Task ${options.taskId} is not runnable (status=${task.status})`);
@@ -387,7 +387,7 @@ export class SleepConsolidationWorker {
     private readonly coordinator: AuthoritativeStateCoordinator,
     private readonly storage: ReadOnlyCognitiveEventView,
     private readonly clock: IVirtualClock,
-    private readonly extensionHost?: ExtensionCoreHost,
+    private readonly extensionHost?: ExtensionHostView,
     private readonly milestoneRules: readonly MilestoneThresholdRule[] = DEFAULT_MILESTONE_RULES
   ) {}
 

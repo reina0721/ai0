@@ -1,10 +1,10 @@
-import type { ExtensionCoreHost } from "@ai0/extension-core";
+import type { ExtensionHostView } from "@ai0/extension-core";
 import type { ProposalReview, StateProposal } from "../kernel/state-domain-arbiter.js";
 import { cognitionProposalPolicyFacet } from "./facets.js";
 
 /** Grants and reducer validation stay with the host. A policy may veto or refine only this domain's payload. */
 export function mountedProposalPolicies<P extends StateProposal>(
-  host: ExtensionCoreHost,
+  host: ExtensionHostView,
   allows: (packageId: string, domain: string) => boolean
 ) {
   return (proposal: P): ProposalReview<P> => {

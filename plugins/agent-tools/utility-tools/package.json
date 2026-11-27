@@ -1,0 +1,17 @@
+{
+  "name": "@ai0/plugin-utility-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ai0/protocol": "workspace:*",
+    "@ai0/sdk": "workspace:*",
+    "zod": "^3.24.0"
+  }
+}

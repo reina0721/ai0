@@ -1,6 +1,13 @@
 import { allowedCollections, mountedCollectionIds, profileMounts, searchKnowledge } from "./knowledge-service.js";
 import { countDeliveredSources, listKnowledgeCollections, turnKnowledgeSources } from "@ai0/storage";
-import { ExtensionCoreHost, ExtensionComposition, cognitionStateDynamicsFacet, cognitionAttentionArbitratorFacet } from "@ai0/sdk";
+import {
+  agentSkillManualFacet,
+  cognitionAttentionArbitratorFacet,
+  cognitionStateDynamicsFacet,
+  ExtensionComposition,
+  ExtensionCoreHost
+} from "@ai0/sdk";
+import { createIntrinsicAgentTools, IntrinsicToolsHostOverlay } from "@ai0/agent-runtime";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,7 +101,7 @@ import {
   listAvailableSoulInstances,
   readVaultProviderKey
 } from "./studio-service.js";
-import { mountKnowledgeTaskExecutor } from "./task-executors.js";
+import { mountKnowledgeTaskExecutor, mountSoulMemoryProvider } from "./task-executors.js";
 import { channelInference, selectResponseContract, ChannelRequestPreview } from "./channel-inference.js";
 import type { SoulConsoleStudioConfig } from "@ai0/storage";
 import { RuntimePluginLoader, type InstallExternalPluginInput } from "./plugin-loader.js";
@@ -1343,6 +1350,88 @@ function composeDaemonRuntime(
       recordInterruption(record) { workers.w1.recordInterruption(record); }
     }
   });
+  const w2ActiveSkills = new Set<string>();
+  const w2IntrinsicHost = new IntrinsicToolsHostOverlay(
+    extensionHost,
+    () => true,
+    createIntrinsicAgentTools({
+      updatePlan(goal, steps) {
+        const planId = "plan_w2_active";
+        const resolvedGoal = goal ?? steps[0]?.title ?? "W2 Plan";
+        return { planId, goal: resolvedGoal, steps, updatedAtMs: virtualClock.nowMs() };
+      },
+      async delegateSubagent() {
+        throw new Error("Nested subagent delegation inside Daemon W2 task loop is disabled by policy");
+      },
+      listSkills(query) {
+        const q = query?.trim().toLowerCase();
+        return extensionHost
+          .listFacets(agentSkillManualFacet)
+          .filter((entry) => extensionHost.allowsAudienceScope(entry.packageId, "only_owner", entry.facetId))
+          .map((entry) => {
+            const pkg = extensionHost.getPackage(entry.packageId);
+            const summary = (pkg?.manifest.description ?? entry.implementation.instructions.slice(0, 160)).trim();
+            return {
+              packageId: entry.packageId,
+              skillId: entry.implementation.id,
+              ...(pkg?.manifest.display_name ? { displayName: pkg.manifest.display_name } : {}),
+              summary,
+              ...(entry.implementation.allowedTools ? { allowedTools: entry.implementation.allowedTools } : {}),
+              active: w2ActiveSkills.has(entry.packageId)
+            };
+          })
+          .filter((s) => !q || `${s.packageId} ${s.skillId} ${s.displayName ?? ""} ${s.summary}`.toLowerCase().includes(q));
+      },
+      activateSkill(packageOrSkillId) {
+        const matched = extensionHost
+          .listFacets(agentSkillManualFacet)
+          .find(
+            (e) =>
+              extensionHost.allowsAudienceScope(e.packageId, "only_owner", e.facetId) &&
+              (e.packageId === packageOrSkillId || e.implementation.id === packageOrSkillId)
+          );
+        if (!matched) throw new Error(`Skill manual unavailable: ${packageOrSkillId}`);
+        w2ActiveSkills.add(matched.packageId);
+        return {
+          packageId: matched.packageId,
+          skillId: matched.implementation.id,
+          instructions: matched.implementation.instructions,
+          ...(matched.implementation.allowedTools ? { allowedTools: matched.implementation.allowedTools } : {})
+        };
+      },
+      dispatchBackgroundGoal(params) {
+        return workers.w2.startTask({
+          task_id: `task_${randomUUID()}`,
+          goal: params.goal,
+          source_event_id: "w2_self_dispatch",
+          principal: "owner_verified",
+          audience_scope: "only_owner",
+          capability_risk: params.capabilityRisk ?? "low_read_and_scoped_write",
+          steps: params.steps ?? [{ step_title: params.goal }]
+        });
+      },
+      async recallMemories(query) {
+        const res = (runtimeRef?.hybridMemoryRetriever ?? liveRetriever).retrieve({
+          query_text: query.query,
+          audience_scope: "only_owner",
+          principal_trust: "owner_verified",
+          current_virtual_ts: virtualClock.nowMs()
+        });
+        return res.recalled_memories.slice(0, query.limit ?? 6).map((m) => ({
+          memoryId: m.memory_id,
+          content: m.content_text,
+          memoryTier: m.memory_tier === "semantic_fact" ? ("semantic_fact" as const) : ("episodic_trace" as const),
+          audienceScope: m.visibility_scope,
+          createdAtMs: virtualClock.nowMs(),
+          score: m.score
+        }));
+      },
+      async proposeMemory() {
+        return { accepted: false, reason: "Use structured episode completion for W2 durable memory" };
+      }
+    })
+  );
+
   const workers: DaemonWorkers = {
     w1: new W1FastDialogueWorker(
       coordinator,
@@ -1359,7 +1448,7 @@ function composeDaemonRuntime(
         onTraceCommitted: (trace) => emitTelemetry("[TRACE]", { trace_id: trace.trace_id, rev: trace.state_rev_after }, "live")
       }
     ),
-    w2: new W2AgencyTaskWorker(coordinator, new ThreeDimensionalPolicyEngine(), virtualClock, extensionHost),
+    w2: new W2AgencyTaskWorker(coordinator, new ThreeDimensionalPolicyEngine(), virtualClock, w2IntrinsicHost),
     w3: new W3SleepReflectionWorker(coordinator, readOnlyView, virtualClock, extensionHost),
     w4: new W4MultimodalAnalyzerWorker(sensoryCoverage, virtualClock, extensionHost)
   };
@@ -1468,6 +1557,8 @@ function composeDaemonRuntime(
     options.llmConfig, options.dialogueModelPackageId
   );
   mountKnowledgeTaskExecutor(extensionHost, runtimeRef);
+  mountSoulMemoryProvider(extensionHost, () => runtimeRef!.hybridMemoryRetriever, virtualClock);
+  mountSoulMemoryProvider(sandboxExtensionHost, () => sandboxRetriever, sandboxClock);
   return runtimeRef;
 }
 

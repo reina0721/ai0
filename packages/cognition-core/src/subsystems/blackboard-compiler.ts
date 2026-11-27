@@ -18,6 +18,13 @@ export interface BlackboardSlotPolicy {
   content?: string;
 }
 
+export interface DynamicBlackboardSlotInput {
+  readonly slot_id: string;
+  readonly content: string;
+  readonly max_tokens?: number;
+  readonly priority?: number;
+}
+
 export interface BlackboardPolicy {
   preset_id?: string;
   max_total_tokens: number;
@@ -25,6 +32,7 @@ export interface BlackboardPolicy {
   slots?: Partial<Record<BlackboardSlotId, BlackboardSlotPolicy>>;
   slot_token_budgets?: Partial<Record<BlackboardSlotId, number>>;
   slot_content?: Partial<Record<BlackboardSlotId, string>>;
+  extra_slots?: readonly DynamicBlackboardSlotInput[];
   narrative_self_text?: string;
   memory_projection_text?: string;
   last_user_interaction_ts_ms?: number;
@@ -47,9 +55,10 @@ export interface BlackboardEventStorage {
 }
 
 export interface CompiledBlackboardSlot {
-  slot_id: BlackboardSlotId;
+  slot_id: BlackboardSlotId | (string & {});
   tokens: number;
   locked: boolean;
+  priority?: number;
   budget?: number;
   disposition?: "included" | "trimmed" | "empty";
   content: string;
@@ -192,6 +201,21 @@ export class BlackboardCompiler {
         slot_id: slotId,
         content: slotText,
         locked,
+        ...(configured?.priority !== undefined ? { priority: configured.priority } : {}),
+        budget: cap,
+        disposition: original !== slotText ? "trimmed" : slotText ? "included" : "empty",
+        tokens: estimateBlackboardTokens(slotText)
+      });
+    }
+    for (const extra of policy.extra_slots ?? []) {
+      const cap = extra.max_tokens ?? 256;
+      const original = extra.content;
+      const slotText = truncate(original, cap);
+      slots.push({
+        slot_id: extra.slot_id,
+        content: slotText,
+        locked: false,
+        ...(extra.priority !== undefined ? { priority: extra.priority } : {}),
         budget: cap,
         disposition: original !== slotText ? "trimmed" : slotText ? "included" : "empty",
         tokens: estimateBlackboardTokens(slotText)
@@ -221,8 +245,8 @@ export class BlackboardCompiler {
       .map((slot, index) => ({ slot, index }))
       .filter(({ slot }) => !slot.locked)
       .sort((a, b) => {
-        const ap = policy.slots?.[a.slot.slot_id]?.priority ?? a.index;
-        const bp = policy.slots?.[b.slot.slot_id]?.priority ?? b.index;
+        const ap = a.slot.priority ?? policy.slots?.[a.slot.slot_id as BlackboardSlotId]?.priority ?? a.index;
+        const bp = b.slot.priority ?? policy.slots?.[b.slot.slot_id as BlackboardSlotId]?.priority ?? b.index;
         return bp - ap;
       });
     for (const { slot } of lowestFirst) {

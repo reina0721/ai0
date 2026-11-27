@@ -2,17 +2,18 @@
 
 ## 一、部署包与能力切面
 
-`ExtensionPackage` 是管理与部署单元，对应一个插件目录或发行 bundle。Owner 以 `extension_id` 安装、授权、启停、配置、热重载和隔离整包。`CapabilityFacet` 是与核心集成的能力切面，同一包通过 `facets: ExtensionFacetId[]` 声明所实现的多个接点。切面名格式为 `<owner>.<name>`。owner 限于 `channel`、`agent`、`perception`、`cognition`、`expression`、`console`、`extension`，name 可按 `[a-z][a-z0-9_]*` 扩展。清单中的名称表达声明，消费方按 `FacetPoint` 的 ID 和版本匹配活动贡献。
+`ExtensionPackage` 是管理与部署单元，对应一个插件目录或发行 bundle。Owner 以 `extension_id` 安装、授权、启停、配置、热重载和隔离整包。`CapabilityFacet` 是与核心集成的能力切面，同一包通过 `facets: ExtensionFacetId[]` 声明所实现的多个接点。核心切面名格式为 `<owner>.<name>`（owner 限于 `channel`、`agent`、`perception`、`cognition`、`expression`、`console`、`extension`），第三方生态亦可通过 `custom.<namespace>.<name>` 定义自定义多提供方切面与 `HookPoint` 钩子。消费方按 `FacetPoint` 的 ID 和版本匹配活动贡献，并通过 `host.createScopedView(policy)`（`ScopedExtensionView`）在会话、快慢双环与子智能体层级执行严格单调收窄的注入裁剪。`@ai0/sdk` 同时提供无头目录发现加载器 `discoverAndMountExtensions`。
 
 | 命名空间 | 已知接点 | 责任 |
 | --- | --- | --- |
 | `channel.*` | `channel.bridge` | 通道身份与协议路径。 |
-| `agent.*` | `agent.tool_provider`、`agent.skill_manual`、`agent.model_adapter` | 工具、技能说明与模型调用适配。 |
-| `perception.*` | `perception.ingress`、`perception.filter` | 注册通道观察能力与流水线过滤。 |
-| `cognition.*` | `cognition.state_dynamics`、`cognition.attention_arbitrator`、`cognition.context_contributor`、`cognition.sleep_organ` | 描述符、焦点、黑板槽位与睡眠工作。 |
+| `agent.*` | `agent.tool_provider`、`agent.skill_manual`、`agent.model_adapter`、`agent.context_contributor` | 工具、技能说明、模型调用适配与步骤上下文。 |
+| `perception.*` | `perception.ingress`、`perception.source`、`perception.extractor`、`perception.filter` | 通道观察能力、被动感知信源、特征提取与流水线过滤。 |
+| `cognition.*` | `cognition.state_dynamics`、`cognition.proposal_policy`、`cognition.response_contract`、`cognition.attention_arbitrator`、`cognition.context_contributor`、`cognition.memory_provider`、`cognition.sleep_organ` | 状态动力学、提案门控、响应契约、注意力仲裁、黑板槽位、可插拔记忆检索与睡眠巩固。 |
 | `expression.*` | `expression.realizer`、`expression.media_transcoder`、`expression.intent_decorator` | 表达词表、媒体转码与意图修饰。 |
 | `console.*` | `console.surface`、`console.ui_slot`、`console.config_schema` | 独立页面、插槽和表单字段。 |
 | `extension.*` | `extension.asset_codec` | 资产接点命名，实际消费由宿主接点及载体适配决定。 |
+| `custom.<ns>.*` | 第三方自定义多提供方切面与 `HookPoint` | 支持 `runWaterfallHook` 瀑布变换与 `runBroadcastHook` 事件广播，异常自动包级熔断隔离。 |
 
 “躯壳 (Shell)”将输入输出传输和化身表现绑定，导致纯文本桥也要承担设备与动作语义。交互通道 `InteractionChannel` 以 `channel_id` 标识双向端点，具身表现切面 `EmbodimentSurface` 由 `capabilities.embodiment_surface` 独立声明。WebChat v1 顶栏静态头像对应 `null`，Terminal 与 NapCat OneBot QQ 桥同样可收发文本。经授权的普通交流意图由 `RealizerVocabularyNegotiator` 协商为 `fallback_text`。未来 WebChat 顶栏动画或 `desktop_stage` 接入可在 `expression.realizer` 声明新 token，现有核心按词表绑定关键帧。静默、动作授权与受众检查贯穿两种交付。
 

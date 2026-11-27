@@ -196,6 +196,14 @@ $$
 
 另一组实验将幻灯片容量限制、资产解码和翻页游标作为相互独立的贡献。卸载该包后，状态更新恢复原域规则，资产解码报告不可用，未结算的展示回执使用已有文本进度。Gateway 和 daemon 的集成测试另行覆盖认证观察、字幕多切面及实际导入路径。
 
+## Stage 8 · 通用智能体底座与情境主体愿景底座的双层合拢
+
+`stage8-universal-agent-convergence/stage8.test.ts` 验证双轮同构渐进派生的最终合拢：
+
+1. **Tier I（纯通用智能体工程底座与子层热替换）**：在旁路具身层与零伴侣插件下运行 `@ai0/agent-runtime`，验证内置 `InMemoryCognitiveMemoryProvider` 与外部 `cognition.memory_provider@1` 的零改核热替换、虚拟工作区 `agent.tool_provider@1` 替换、`agent.update_plan` 多步规划、`custom.*` 命名空间 `HookPoint` 瀑布执行，以及 `agent.delegate_subagent` 通过 `ScopedExtensionView` 单调收窄拦截越权写工具与网络工具。
+2. **Tier I + Tier II（具身与社会情境主体正交合拢）**：开启感知、认知、表达三核与 `dual_speed_w1_w2`，在零伴侣插件下验证 `W1` 自主通过 `agent.dispatch_background_goal` 派发后台目标、`EpistemicMemoryFirewall` 阻断玩笑污染事实记忆、外部 `untrusted_external` 网页结果同轮撤除写工具，以及语音打断后的 `unsaid_remainder` 接地恢复。
+3. **Tier III（领域外置策略叠加）与无头发现加载**：动态挂载与卸载连续状态动力学和世界书切面，并用 `@ai0/sdk` 的 `discoverAndMountExtensions` 脱离 `apps/daemon` 直接从磁盘发现装配 `SKILL.md` 与声明式扩展。
+
 ## 验证与运行
 
 在仓库根目录，使用已安装的工作区依赖运行以下命令。

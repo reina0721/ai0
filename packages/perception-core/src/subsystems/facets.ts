@@ -1,4 +1,4 @@
-import { defineFacetPoint, sortFacetsByPriority, type ExtensionCoreHost } from "@ai0/extension-core";
+import { defineFacetPoint, sortFacetsByPriority, type ExtensionHostView } from "@ai0/extension-core";
 import {
   InteractionChannelSchema,
   perceptionExtractorContract,
@@ -20,7 +20,7 @@ export const perceptionSourceFacet = defineFacetPoint(perceptionSourceContract);
 /** Host attribution is bound to a registration. Resource text cannot supply a principal or a revision. */
 export interface AdmittedSourceObservation { source: string; sourceKey: string; revision: number; content: string; audience: AudienceScope }
 export async function subscribePerceptionSource(
-  host: ExtensionCoreHost,
+  host: ExtensionHostView,
   packageId: string,
   audience: AudienceScope,
   signal: AbortSignal,
@@ -76,7 +76,7 @@ export const perceptionFilterFacet = defineFacetPoint<PerceptionFilter>({
 });
 
 export class PerceptionFilterPipeline {
-  constructor(private readonly host?: ExtensionCoreHost) {}
+  constructor(private readonly host?: ExtensionHostView) {}
 
   ingest(event: DebounceInputEvent, channelId: string, nowMs: number): PerceptionFilterResult | { kind: "neutral_retract" } {
     let current = event;
@@ -99,7 +99,7 @@ export class PerceptionFilterPipeline {
 }
 
 export class ObservationNormalizer {
-  constructor(private readonly clock: PerceptionClockPort, private readonly host?: ExtensionCoreHost) {}
+  constructor(private readonly clock: PerceptionClockPort, private readonly host?: ExtensionHostView) {}
   normalize(envelope: PerceptionEnvelope, admission: Omit<ObservationAdmission, "observedAtMs">) {
     const frame = normalizePerceptionEnvelopeToFrame(envelope, { ...admission, observedAtMs: this.clock.nowMs() });
     const host = this.host;

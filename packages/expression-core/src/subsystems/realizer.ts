@@ -1,4 +1,4 @@
-import { sortFacetsByPriority, type ExtensionCoreHost } from "@ai0/extension-core";
+import { sortFacetsByPriority, type ExtensionHostView } from "@ai0/extension-core";
 import { expressionIntentDecoratorFacet, expressionRealizerFacet } from "./facets.js";
 import { CommunicativeIntentEnvelopeSchema, DeliveryReceiptSchema, InteractionChannelSchema, type CommunicativeIntentEnvelope, type ExpressionEnvelope,
   type ExpressionVocabulary, type InteractionChannel, type NegotiatedIntentDispatch } from "@ai0/protocol";
@@ -22,7 +22,7 @@ export type PresentationRenderer = (input: {
 }) => ExpressionEnvelope["extensions"];
 
 /** Capture a host-approved endpoint and its generation before offering an action for dispatch. */
-export function bindActuatorDelivery(host: ExtensionCoreHost, packageId: string, channelId: string,
+export function bindActuatorDelivery(host: ExtensionHostView, packageId: string, channelId: string,
   permits: (actuatorId: string) => boolean) {
   const entries = host.listFacets(expressionRealizerFacet).filter(entry =>
     entry.packageId === packageId && entry.implementation.channel.channel_id === channelId && entry.implementation.deliver);
@@ -55,7 +55,7 @@ export class RealizerVocabularyNegotiator {
   private readonly channels = new Map<string, InteractionChannel>();
   private readonly media = new Map<string, ExpressionVocabulary>();
 
-  constructor(private readonly extensionHost?: ExtensionCoreHost, private readonly style?: Readonly<EmbodiedPresentationStyle>,
+  constructor(private readonly extensionHost?: ExtensionHostView, private readonly style?: Readonly<EmbodiedPresentationStyle>,
     private readonly renderer?: PresentationRenderer) {}
 
   mount(channel: InteractionChannel) { this.channels.set(channel.channel_id, InteractionChannelSchema.parse(channel)); }

@@ -1,5 +1,5 @@
 import { AudienceScopeSchema, type AudienceScope, type DeliveryReceipt, type ExpressionEnvelope } from "@ai0/protocol";
-import type { ExtensionCoreHost, FacetRegistration } from "@ai0/extension-core";
+import type { ExtensionHostView, FacetRegistration } from "@ai0/extension-core";
 import {
   acknowledgeInterlocutorSegment,
   applyDeliveryReceiptToIntent,
@@ -18,7 +18,7 @@ interface TranscodedSegment extends GroundingSegmentState {
 
 export class GroundingReceiptTracker {
   private readonly intents = new Map<string, GroundingIntentState<TranscodedSegment>>();
-  constructor(private readonly host?: ExtensionCoreHost) {}
+  constructor(private readonly host?: ExtensionHostView) {}
 
   recordGenerated(envelope: ExpressionEnvelope) {
     const entry = this.intents.get(envelope.intent_id) ?? { segments: new Map<number, TranscodedSegment>() };

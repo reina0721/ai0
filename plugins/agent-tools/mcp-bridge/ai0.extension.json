@@ -1,0 +1,45 @@
+{
+  "manifest_version": "2.0.0",
+  "extension_id": "builtin.mcp-bridge",
+  "display_name": "渐进式 MCP 标准协议桥",
+  "description": "兼容标准 mcpServers 配置的无头通用 MCP 客户端扩展包：以 3 个固定工具（mcp.list_servers_and_tools / mcp.call_tool / mcp.read_resource）按需代理任意数量 stdio/SSE/HTTP MCP 服务，避免大批量工具 Schema 撑爆上下文窗口。",
+  "version": "1.0.0",
+  "author": "ai0-official",
+  "carrier_kind": "native_code_plugin",
+  "default_enabled": false,
+  "facets": [
+    "agent.tool_provider",
+    "console.config_schema"
+  ],
+  "entry": "./dist/index.js",
+  "permissions": {
+    "read_blackboard_domains": [],
+    "propose_mutation_domains": [],
+    "max_audience_scope": "only_owner",
+    "network_access": true
+  },
+  "console_contributions": {
+    "config_fields": [
+      {
+        "key": "mcp_servers_json",
+        "label": "MCP Servers 配置 JSON（标准 {\"mcpServers\": {...}} 格式）",
+        "type": "text",
+        "default": ""
+      },
+      {
+        "key": "default_timeout_ms",
+        "label": "单次 MCP 连接与调用超时（ms）",
+        "type": "int",
+        "default": 15000,
+        "min": 1000,
+        "max": 120000
+      },
+      {
+        "key": "allow_local_http_mcp",
+        "label": "允许连接本机 HTTP/SSE MCP 端点",
+        "type": "bool",
+        "default": false
+      }
+    ]
+  }
+}

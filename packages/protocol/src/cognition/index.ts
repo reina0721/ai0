@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AudienceScope } from "../core-v0/audience.js";
 
 export const StateTopologySchema = z.enum(["bipolar_tanh", "unipolar_sigmoid"]);
 export const ContinuousStateDescriptorSchema = z.object({
@@ -62,6 +63,56 @@ export const cognitionProposalPolicyContract = {
     const value = raw as CognitionProposalPolicy | null;
     if (typeof value?.domain !== "string" || !value.domain || typeof value.review !== "function")
       throw new TypeError("Invalid cognition.proposal_policy");
+    return value;
+  }
+} as const;
+
+export type CognitionMemoryTier =
+  | "episodic_trace"
+  | "perceptual_hypothesis"
+  | "non_literal_frame"
+  | "semantic_fact";
+
+export interface CognitionMemoryRecord {
+  readonly memoryId: string;
+  readonly content: string;
+  readonly memoryTier: CognitionMemoryTier;
+  readonly audienceScope: AudienceScope;
+  readonly createdAtMs: number;
+  readonly score?: number;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface CognitionMemoryQuery {
+  readonly query: string;
+  readonly audienceScope: AudienceScope;
+  readonly limit?: number;
+  readonly tiers?: readonly CognitionMemoryTier[];
+}
+
+export interface CognitionMemoryProvider {
+  readonly priority?: number;
+  retrieve(
+    query: CognitionMemoryQuery,
+    signal?: AbortSignal
+  ): readonly CognitionMemoryRecord[] | Promise<readonly CognitionMemoryRecord[]>;
+  store?(record: CognitionMemoryRecord, signal?: AbortSignal): void | Promise<void>;
+}
+
+export const cognitionMemoryProviderContract = {
+  owner: "cognition",
+  name: "memory_provider",
+  version: 1,
+  parse(raw: unknown): CognitionMemoryProvider {
+    const value = raw as CognitionMemoryProvider | null;
+    if (
+      !value ||
+      typeof value.retrieve !== "function" ||
+      (value.store !== undefined && typeof value.store !== "function") ||
+      (value.priority !== undefined && !Number.isFinite(value.priority))
+    ) {
+      throw new TypeError("Invalid cognition.memory_provider facet");
+    }
     return value;
   }
 } as const;

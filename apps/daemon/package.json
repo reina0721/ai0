@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ai0/agent-core": "workspace:*",
+    "@ai0/agent-runtime": "workspace:*",
     "@ai0/cognition-core": "workspace:*",
     "@ai0/console-webui": "workspace:*",
     "@ai0/expression-core": "workspace:*",

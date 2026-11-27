@@ -732,6 +732,10 @@ async function verifyDomainAndAuthorBoundaries() {
           report(rule, relativePath(file) + " imports application or plugin code via " + specifier);
         }
       }
+      if (name === "extension-core" && relativePath(file).startsWith("packages/extension-core/src/kernel/") &&
+          /\b(?:consoleNavigation|ConsoleNavigationItem)\b/.test(stripped)) {
+        report(rule, relativePath(file) + " embeds Console UI navigation contracts inside L0 extension-core/kernel.");
+      }
       if (HEADLESS_CORES.includes(name) || name === "sdk") {
         for (const [point, identity] of facetDeclarations(file, source)) {
           (name === "sdk" ? sdkFacets : ownerFacets).set(point, identity);

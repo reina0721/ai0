@@ -1,4 +1,4 @@
-import type { ExtensionCoreHost } from "@ai0/extension-core";
+import type { ExtensionHostView } from "@ai0/extension-core";
 import type { AudienceScope, StateDomain, TaintLevel } from "@ai0/protocol";
 import { StateDomainArbiter } from "../kernel/state-domain-arbiter.js";
 import type { IVirtualClock } from "../kernel/virtual-clock.js";
@@ -186,7 +186,7 @@ export class AuthoritativeStateCoordinator {
   constructor(
     private readonly clock: IVirtualClock,
     private readonly storage: CoordinatorStorageMutator,
-    extensionHost?: ExtensionCoreHost,
+    extensionHost?: ExtensionHostView,
     options: { nonLiteralFrames?: Iterable<string> } = {}
   ) {
     this.firewall = new EpistemicMemoryFirewall({ nonLiteralFrames: options.nonLiteralFrames });

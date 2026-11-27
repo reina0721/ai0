@@ -32,7 +32,7 @@
 
 当前 daemon 黑板仍对产品配置中的共享域分别授予读写权限。第三方可以自有私有状态、声明连续状态轴或发表版本化服务；跨包共享全新的持久黑板域还需要证明并实现命名、授权、恢复和遗忘的一致约定。只扩大域名枚举无法满足这些保证。
 
-宿主在 Studio 配置中列出交互话轮可调用的查询工具（`readOnlyTools`，且 W1 强制校验 `capabilityRisk === "read_only_safe"` 与认知污点门控），并通过 `maxInteractiveSteps` 确定每轮最多的模型步骤。写改与命令执行等副作用能力（如多态插件 `builtin.workspace-tools` 提供的 `write_file / edit_file / run_command`）绝不硬编码进感知/认知/表达核心源码：在 `@ai0/agent-runtime` 的 `"direct_inline"` 编码任务拓扑中经策略与同轮污点熔断校验后直接内联闭环；在 `"dual_speed_w1_w2"` 具身伴侣拓扑中则路由至 W2 多步工具环，实时推进 `D4` 本体感觉状态供表达层感知，并响应 `AbortSignal` 打断取消。被动工作区文件变更监听（`workspace.fs_watch`）通过 `perception.source@1` 进入感知过滤管线，与内环主动求知工具 `workspace.read_file` 正交互补。标准 `SKILL.md` 在未显式声明 `projections` 时默认按需投影为 `agent.skill_manual@1`。
+宿主在 Studio 配置中列出交互话轮可调用的查询工具（`readOnlyTools`，且 W1 强制校验 `capabilityRisk === "read_only_safe"` 与认知污点门控），并通过 `maxInteractiveSteps` 确定每轮最多的模型步骤。写改与命令执行等副作用能力（如一等内置标准工具包 `builtin.workspace-tools` 提供的 `list_directory / read_file / search_files / write_file / edit_file / run_command`，以及防 SSRF 的 `builtin.web-tools` `web.fetch_url`）绝不硬编码进感知/认知/表达或无头 `agent-core` 源码：在 `@ai0/agent-runtime` 的 `"direct_inline"` 编码任务拓扑中经策略与同轮污点熔断校验后直接内联闭环；在 `"dual_speed_w1_w2"` 具身伴侣拓扑中则路由至 W2 多步工具环，实时推进 `D4` 本体感觉状态供表达层感知，并响应 `AbortSignal` 打断取消。`@ai0/agent-runtime` 同时内置可被同名 `agent.tool_provider@1` 覆盖替换的内生规划、基于 `ScopedExtensionView` 单调收窄的子智能体委派、后台目标登记以及经由 `cognition.memory_provider@1` 与 `EpistemicMemoryFirewall` 的记忆工具（由 `labs/stage8-universal-agent-convergence` 证伪验证）。被动工作区文件变更监听（`workspace.fs_watch`）通过 `perception.source@1` 进入感知过滤管线，与内环主动求知工具 `workspace.read_file` 正交互补。标准 `SKILL.md` 在未显式声明 `projections` 时默认按需投影为 `agent.skill_manual@1`。
 
 ## 用字幕校勘推翻错误设计
 

@@ -61,6 +61,22 @@ function atomicWriteUtf8(targetPath: string, content: string): void {
   }
 }
 
+const ListDirectoryInputSchema = z.object({
+  path: z.string().optional(),
+  maxDepth: z.number().int().min(1).max(4).optional()
+});
+const ListDirectoryResultSchema = z.object({
+  root: z.string(),
+  entries: z.array(
+    z.object({
+      path: z.string(),
+      kind: z.enum(["file", "directory"]),
+      sizeBytes: z.number().int().nonnegative().optional()
+    })
+  ),
+  truncated: z.boolean()
+});
+
 const ReadFileInputSchema = z.object({
   path: z.string().min(1),
   startLine: z.number().int().min(1).optional(),
@@ -92,6 +108,170 @@ const SearchFilesResultSchema = z.object({
   ),
   truncated: z.boolean()
 });
+
+const GlobFilesInputSchema = z.object({
+  pattern: z.string().min(1),
+  path: z.string().optional(),
+  maxResults: z.number().int().min(1).max(200).optional()
+});
+const GlobFilesResultSchema = z.object({
+  pattern: z.string(),
+  matches: z.array(
+    z.object({
+      path: z.string(),
+      sizeBytes: z.number().int().nonnegative(),
+      mtimeMs: z.number()
+    })
+  ),
+  truncated: z.boolean()
+});
+
+const GitStatusDiffInputSchema = z.object({
+  path: z.string().optional(),
+  staged: z.boolean().optional(),
+  maxDiffBytes: z.number().int().min(512).max(262_144).optional()
+});
+const GitStatusDiffResultSchema = z.object({
+  branch: z.string(),
+  statusLines: z.array(z.string()),
+  diff: z.string(),
+  truncated: z.boolean()
+});
+
+const ApplyPatchInputSchema = z.object({
+  path: z.string().min(1),
+  edits: z
+    .array(
+      z.object({
+        target: z.string().min(1),
+        replacement: z.string()
+      })
+    )
+    .min(1)
+    .max(30)
+});
+const ApplyPatchResultSchema = z.object({
+  path: z.string(),
+  appliedEdits: z.number().int().positive(),
+  bytesWritten: z.number().int().nonnegative(),
+  sha256: z.string()
+});
+
+function globToRegExp(globPattern: string): RegExp {
+  const normalized = globPattern.trim().replace(/\\/gu, "/").replace(/^\.\/+/u, "");
+  let regex = "^";
+  let i = 0;
+  while (i < normalized.length) {
+    const ch = normalized[i]!;
+    if (ch === "*") {
+      if (normalized[i + 1] === "*") {
+        if (normalized[i + 2] === "/") {
+          regex += "(?:.+/)?";
+          i += 3;
+        } else {
+          regex += ".*";
+          i += 2;
+        }
+      } else {
+        regex += "[^/]*";
+        i += 1;
+      }
+    } else if (ch === "?") {
+      regex += "[^/]";
+      i += 1;
+    } else if (ch === "{") {
+      const close = normalized.indexOf("}", i + 1);
+      if (close !== -1) {
+        const alts = normalized
+          .slice(i + 1, close)
+          .split(",")
+          .map((s) => s.replace(/[.+^$|()[\]\\]/gu, "\\$&"));
+        regex += `(?:${alts.join("|")})`;
+        i = close + 1;
+      } else {
+        regex += "\\{";
+        i += 1;
+      }
+    } else if (".+^$|()[]\\".includes(ch)) {
+      regex += `\\${ch}`;
+      i += 1;
+    } else {
+      regex += ch;
+      i += 1;
+    }
+  }
+  regex += "$";
+  return new RegExp(regex, "iu");
+}
+
+function runGitReadOnly(
+  workspaceRoot: string,
+  args: readonly string[],
+  signal: AbortSignal,
+  maxBytes = 65_536
+): Promise<{ code: number | null; stdout: string; stderr: string; truncated: boolean }> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    signal.throwIfAborted();
+    const child = spawn("git", [...args], {
+      cwd: workspaceRoot,
+      shell: false,
+      windowsHide: true,
+      env: sanitizeEnvironment(process.env)
+    });
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    let truncated = false;
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      void terminateChildTree(child.pid, () => child.kill("SIGTERM"));
+    }, 10_000);
+
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      void terminateChildTree(child.pid, () => child.kill("SIGTERM")).then(() =>
+        rejectPromise(signal.reason ?? new DOMException("Aborted", "AbortError"))
+      );
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      if (totalBytes < maxBytes) {
+        const slice = chunk.subarray(0, Math.max(0, maxBytes - totalBytes));
+        chunks.push(slice);
+        totalBytes += slice.byteLength;
+        if (slice.byteLength < chunk.byteLength) truncated = true;
+      } else {
+        truncated = true;
+      }
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      if (stderr.length < 4096) stderr += chunk.toString("utf8").slice(0, 4096 - stderr.length);
+    });
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolvePromise({ code: 1, stdout: "", stderr: err.message, truncated: false });
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolvePromise({
+        code,
+        stdout: Buffer.concat(chunks).toString("utf8"),
+        stderr,
+        truncated
+      });
+    });
+  });
+}
 
 const WriteFileInputSchema = z.object({
   path: z.string().min(1),
@@ -177,6 +357,98 @@ export function createWorkspaceToolDefinitions(config: WorkspaceToolsConfig): Ag
   const defaultTimeoutMs = Math.max(500, Math.min(300_000, Number(config.command_timeout_ms ?? 15_000)));
 
   const tools: AgentToolDefinition[] = [
+    {
+      name: "workspace.list_directory",
+      description: "List files and subdirectories inside the configured workspace sandbox.",
+      capabilityRisk: "read_only_safe",
+      inputSchema: zodValueSchema(ListDirectoryInputSchema, {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          maxDepth: { type: "integer", minimum: 1, maximum: 4 }
+        },
+        additionalProperties: false
+      }),
+      resultSchema: zodValueSchema(ListDirectoryResultSchema, {
+        type: "object",
+        required: ["root", "entries", "truncated"],
+        properties: {
+          root: { type: "string" },
+          entries: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["path", "kind"],
+              properties: {
+                path: { type: "string" },
+                kind: { type: "string", enum: ["file", "directory"] },
+                sizeBytes: { type: "integer" }
+              }
+            }
+          },
+          truncated: { type: "boolean" }
+        }
+      }),
+      execute(call) {
+        try {
+          const input = ListDirectoryInputSchema.parse(call.input ?? {});
+          const targetDir = resolveSandboxedWorkspacePath(workspaceRoot, input.path ?? ".", true);
+          if (!existsSync(targetDir.absolutePath) || !statSync(targetDir.absolutePath).isDirectory()) {
+            return { status: "failed", error: `Directory not found: ${targetDir.relativePosixPath}` };
+          }
+          const maxDepth = input.maxDepth ?? 2;
+          const maxEntries = 200;
+          const entries: Array<{ path: string; kind: "file" | "directory"; sizeBytes?: number }> = [];
+          let truncated = false;
+
+          const walk = (dir: string, depth: number) => {
+            if (depth > maxDepth || truncated) return;
+            const dirEntries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+              a.name.localeCompare(b.name)
+            );
+            for (const item of dirEntries) {
+              if (truncated) return;
+              if (IGNORED_SEARCH_DIRS.has(item.name)) continue;
+              const full = join(dir, item.name);
+              let resolved;
+              try {
+                resolved = resolveSandboxedWorkspacePath(workspaceRoot, full, item.isDirectory());
+              } catch {
+                continue;
+              }
+              if (item.isDirectory()) {
+                entries.push({ path: resolved.relativePosixPath, kind: "directory" });
+                if (entries.length >= maxEntries) {
+                  truncated = true;
+                  return;
+                }
+                if (depth < maxDepth) walk(resolved.absolutePath, depth + 1);
+              } else if (item.isFile()) {
+                const sizeBytes = statSync(resolved.absolutePath).size;
+                entries.push({ path: resolved.relativePosixPath, kind: "file", sizeBytes });
+                if (entries.length >= maxEntries) {
+                  truncated = true;
+                  return;
+                }
+              }
+            }
+          };
+
+          walk(targetDir.absolutePath, 1);
+          return {
+            status: "verified",
+            value: {
+              root: targetDir.relativePosixPath,
+              entries,
+              truncated
+            }
+          };
+        } catch (error) {
+          return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+      project: (value) => value
+    },
     {
       name: "workspace.read_file",
       description: "Read UTF-8 text from a file within the configured workspace with optional 1-based line range.",
@@ -347,6 +619,179 @@ export function createWorkspaceToolDefinitions(config: WorkspaceToolsConfig): Ag
         }
       },
       project: (value) => value
+    },
+    {
+      name: "workspace.glob_files",
+      description: "Find workspace files by glob pattern (supports *, **, ?, {a,b}), sorted newest first.",
+      capabilityRisk: "read_only_safe",
+      inputSchema: zodValueSchema(GlobFilesInputSchema, {
+        type: "object",
+        required: ["pattern"],
+        properties: {
+          pattern: { type: "string" },
+          path: { type: "string" },
+          maxResults: { type: "integer", minimum: 1, maximum: 200 }
+        },
+        additionalProperties: false
+      }),
+      resultSchema: zodValueSchema(GlobFilesResultSchema, {
+        type: "object",
+        required: ["pattern", "matches", "truncated"],
+        properties: {
+          pattern: { type: "string" },
+          matches: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["path", "sizeBytes", "mtimeMs"],
+              properties: {
+                path: { type: "string" },
+                sizeBytes: { type: "integer" },
+                mtimeMs: { type: "number" }
+              }
+            }
+          },
+          truncated: { type: "boolean" }
+        }
+      }),
+      execute(call) {
+        try {
+          const input = GlobFilesInputSchema.parse(call.input);
+          const startTarget = resolveSandboxedWorkspacePath(workspaceRoot, input.path ?? ".", true);
+          if (!existsSync(startTarget.absolutePath) || !statSync(startTarget.absolutePath).isDirectory()) {
+            return { status: "failed", error: `Directory not found: ${startTarget.relativePosixPath}` };
+          }
+          const matcher = globToRegExp(input.pattern);
+          const maxResults = input.maxResults ?? 100;
+          const allMatched: Array<{ path: string; sizeBytes: number; mtimeMs: number }> = [];
+
+          const walk = (dir: string) => {
+            for (const entry of readdirSync(dir, { withFileTypes: true })) {
+              if (IGNORED_SEARCH_DIRS.has(entry.name)) continue;
+              const full = join(dir, entry.name);
+              let resolved;
+              try {
+                resolved = resolveSandboxedWorkspacePath(workspaceRoot, full, entry.isDirectory());
+              } catch {
+                continue;
+              }
+              if (entry.isDirectory()) {
+                walk(resolved.absolutePath);
+              } else if (entry.isFile()) {
+                const relFromStart =
+                  startTarget.relativePosixPath === "."
+                    ? resolved.relativePosixPath
+                    : resolved.relativePosixPath.slice(startTarget.relativePosixPath.length + 1);
+                if (matcher.test(relFromStart) || matcher.test(resolved.relativePosixPath)) {
+                  const st = statSync(resolved.absolutePath);
+                  allMatched.push({
+                    path: resolved.relativePosixPath,
+                    sizeBytes: st.size,
+                    mtimeMs: st.mtimeMs
+                  });
+                }
+              }
+            }
+          };
+
+          walk(startTarget.absolutePath);
+          allMatched.sort((a, b) => b.mtimeMs - a.mtimeMs || a.path.localeCompare(b.path));
+          const truncated = allMatched.length > maxResults;
+          return {
+            status: "verified",
+            value: {
+              pattern: input.pattern,
+              matches: allMatched.slice(0, maxResults),
+              truncated
+            }
+          };
+        } catch (error) {
+          return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+      project: (value) => value
+    },
+    {
+      name: "workspace.git_status_diff",
+      description:
+        "Inspect read-only Git branch, working-tree porcelain status, and bounded diff inside the workspace without shell execution.",
+      capabilityRisk: "read_only_safe",
+      inputSchema: zodValueSchema(GitStatusDiffInputSchema, {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          staged: { type: "boolean" },
+          maxDiffBytes: { type: "integer", minimum: 512, maximum: 262144 }
+        },
+        additionalProperties: false
+      }),
+      resultSchema: zodValueSchema(GitStatusDiffResultSchema, {
+        type: "object",
+        required: ["branch", "statusLines", "diff", "truncated"],
+        properties: {
+          branch: { type: "string" },
+          statusLines: { type: "array", items: { type: "string" } },
+          diff: { type: "string" },
+          truncated: { type: "boolean" }
+        }
+      }),
+      async execute(call, signal) {
+        try {
+          const input = GitStatusDiffInputSchema.parse(call.input ?? {});
+          const scopedTarget = resolveSandboxedWorkspacePath(workspaceRoot, input.path ?? ".", true);
+          const maxDiff = Math.min(262_144, input.maxDiffBytes ?? maxReadBytes);
+          const pathFilter = scopedTarget.relativePosixPath === "." ? [] : ["--", scopedTarget.relativePosixPath];
+
+          const insideRes = await runGitReadOnly(
+            workspaceRoot,
+            ["rev-parse", "--is-inside-work-tree"],
+            signal,
+            1024
+          );
+          if (insideRes.code !== 0 || insideRes.stdout.trim() !== "true") {
+            return {
+              status: "failed",
+              error: (insideRes.stderr.trim() || "Not a git repository or git unavailable").slice(0, 300)
+            };
+          }
+          const symRefRes = await runGitReadOnly(
+            workspaceRoot,
+            ["symbolic-ref", "--short", "HEAD"],
+            signal,
+            1024
+          );
+          const revParseRes =
+            symRefRes.code === 0
+              ? symRefRes
+              : await runGitReadOnly(workspaceRoot, ["rev-parse", "--abbrev-ref", "HEAD"], signal, 1024);
+          const branchName = revParseRes.code === 0 && revParseRes.stdout.trim() ? revParseRes.stdout.trim() : "HEAD";
+          const statusRes = await runGitReadOnly(
+            workspaceRoot,
+            ["status", "--porcelain=v1", ...pathFilter],
+            signal,
+            32_768
+          );
+          const diffArgs = ["diff", ...(input.staged ? ["--cached"] : []), ...pathFilter];
+          const diffRes = await runGitReadOnly(workspaceRoot, diffArgs, signal, maxDiff);
+
+          return {
+            status: "verified",
+            value: {
+              branch: branchName,
+              statusLines: statusRes.stdout
+                .split(/\r?\n/u)
+                .map((l) => l.trimEnd())
+                .filter(Boolean),
+              diff: diffRes.stdout,
+              truncated: diffRes.truncated
+            }
+          };
+        } catch (error) {
+          if (signal.aborted) throw error;
+          return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+      project: (value) => value
     }
   ];
 
@@ -440,6 +885,87 @@ export function createWorkspaceToolDefinitions(config: WorkspaceToolsConfig): Ag
             return {
               status: "verified",
               value: { path: relativePosixPath, sha256: actualSha, bytesWritten: verifyBuf.byteLength }
+            };
+          } catch (error) {
+            return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+          }
+        },
+        project: (value) => value
+      },
+      {
+        name: "workspace.apply_patch",
+        description:
+          "Atomically apply multiple exact target->replacement hunks to a workspace file with all-or-nothing rollback.",
+        capabilityRisk: "low_read_and_scoped_write",
+        inputSchema: zodValueSchema(ApplyPatchInputSchema, {
+          type: "object",
+          required: ["path", "edits"],
+          properties: {
+            path: { type: "string" },
+            edits: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["target", "replacement"],
+                properties: {
+                  target: { type: "string" },
+                  replacement: { type: "string" }
+                },
+                additionalProperties: false
+              }
+            }
+          },
+          additionalProperties: false
+        }),
+        resultSchema: zodValueSchema(ApplyPatchResultSchema, {
+          type: "object",
+          required: ["path", "appliedEdits", "bytesWritten", "sha256"],
+          properties: {
+            path: { type: "string" },
+            appliedEdits: { type: "integer" },
+            bytesWritten: { type: "integer" },
+            sha256: { type: "string" }
+          }
+        }),
+        execute(call) {
+          try {
+            const input = ApplyPatchInputSchema.parse(call.input);
+            const { absolutePath, relativePosixPath } = resolveSandboxedWorkspacePath(workspaceRoot, input.path);
+            if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
+              return { status: "failed", error: `File not found: ${relativePosixPath}` };
+            }
+            let working = readFileSync(absolutePath, "utf8");
+            for (let idx = 0; idx < input.edits.length; idx += 1) {
+              const hunk = input.edits[idx]!;
+              const pos = working.indexOf(hunk.target);
+              if (pos === -1) {
+                return {
+                  status: "failed",
+                  error: `Hunk #${idx + 1} target not found in ${relativePosixPath}; file left untouched`
+                };
+              }
+              if (working.indexOf(hunk.target, pos + hunk.target.length) !== -1) {
+                return {
+                  status: "failed",
+                  error: `Hunk #${idx + 1} target is ambiguous in ${relativePosixPath}; file left untouched`
+                };
+              }
+              working = working.slice(0, pos) + hunk.replacement + working.slice(pos + hunk.target.length);
+            }
+            atomicWriteUtf8(absolutePath, working);
+            const verifyBuf = readFileSync(absolutePath);
+            const actualSha = sha256Hex(verifyBuf);
+            if (actualSha !== sha256Hex(working)) {
+              return { status: "failed", error: "Post-patch integrity verification mismatch" };
+            }
+            return {
+              status: "verified",
+              value: {
+                path: relativePosixPath,
+                appliedEdits: input.edits.length,
+                bytesWritten: verifyBuf.byteLength,
+                sha256: actualSha
+              }
             };
           } catch (error) {
             return { status: "failed", error: error instanceof Error ? error.message : String(error) };
